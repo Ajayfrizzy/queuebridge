@@ -1,0 +1,37 @@
+# macOS
+.DS_Store
+
+# Dependencies
+node_modules/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Build outputs
+dist/
+build/
+.next/
+coverage/
+.turbo/
+
+# Editor
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# TypeScript incremental build info
+*.tsbuildinfo
+
+# Test environment
+.env.test
+.env.test.local
+
+# pnpm
+pnpm-debug.log
+
+# Vite
+*.local

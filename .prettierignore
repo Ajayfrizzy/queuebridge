@@ -1,0 +1,7 @@
+dist/
+node_modules/
+coverage/
+*.d.ts
+pnpm-lock.yaml
+infra/migrations/*.sql
+infra/seeds/*.sql

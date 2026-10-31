@@ -1,0 +1,310 @@
+import { describe, expect, it } from 'vitest';
+import { PriorityClass, QueueAction, Role, TicketState } from '@queuebridge/contracts';
+import { comparePriority, transition, validatePriorityOverride } from './state-machine.js';
+
+// ---------------------------------------------------------------------------
+// Valid transitions
+// ---------------------------------------------------------------------------
+
+describe('transition — valid transitions', () => {
+  it('waiting → called via call_next by counter operator', () => {
+    const result = transition({
+      currentState: TicketState.WAITING,
+      action: QueueAction.TICKET_CALL_NEXT,
+      actorRole: Role.STAFF_COUNTER,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.newState).toBe(TicketState.CALLED);
+    }
+  });
+
+  it('called → serving by counter operator', () => {
+    const result = transition({
+      currentState: TicketState.CALLED,
+      action: QueueAction.TICKET_SERVE,
+      actorRole: Role.STAFF_COUNTER,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.newState).toBe(TicketState.SERVING);
+  });
+
+  it('serving → completed by counter operator', () => {
+    const result = transition({
+      currentState: TicketState.SERVING,
+      action: QueueAction.TICKET_COMPLETE,
+      actorRole: Role.STAFF_COUNTER,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.newState).toBe(TicketState.COMPLETED);
+  });
+
+  it('called → missed by counter operator', () => {
+    const result = transition({
+      currentState: TicketState.CALLED,
+      action: QueueAction.TICKET_MISS,
+      actorRole: Role.STAFF_COUNTER,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.newState).toBe(TicketState.MISSED);
+  });
+
+  it('missed → waiting via supervisor with grace_window_active policy', () => {
+    const result = transition({
+      currentState: TicketState.MISSED,
+      action: QueueAction.TICKET_RESUME,
+      actorRole: Role.SUPERVISOR,
+      satisfiedPolicies: ['grace_window_active'],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.newState).toBe(TicketState.WAITING);
+  });
+
+  it('paused → waiting by counter operator', () => {
+    const result = transition({
+      currentState: TicketState.PAUSED,
+      action: QueueAction.TICKET_RESUME,
+      actorRole: Role.STAFF_COUNTER,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.newState).toBe(TicketState.WAITING);
+  });
+
+  it('supervisor can call next', () => {
+    const result = transition({
+      currentState: TicketState.WAITING,
+      action: QueueAction.TICKET_CALL_NEXT,
+      actorRole: Role.SUPERVISOR,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('supervisor can recall a called ticket back to waiting', () => {
+    const result = transition({
+      currentState: TicketState.CALLED,
+      action: QueueAction.TICKET_RESUME,
+      actorRole: Role.SUPERVISOR,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.newState).toBe(TicketState.WAITING);
+  });
+
+  it('serving → transferred by counter operator', () => {
+    const result = transition({
+      currentState: TicketState.SERVING,
+      action: QueueAction.TICKET_TRANSFER,
+      actorRole: Role.STAFF_COUNTER,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.newState).toBe(TicketState.TRANSFERRED);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Rejected transitions — wrong state
+// ---------------------------------------------------------------------------
+
+describe('transition — invalid state transitions', () => {
+  it('cannot call from completed state', () => {
+    const result = transition({
+      currentState: TicketState.COMPLETED,
+      action: QueueAction.TICKET_CALL_NEXT,
+      actorRole: Role.STAFF_COUNTER,
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.reason).toContain('completed');
+    }
+  });
+
+  it('cannot complete from waiting state', () => {
+    const result = transition({
+      currentState: TicketState.WAITING,
+      action: QueueAction.TICKET_COMPLETE,
+      actorRole: Role.STAFF_COUNTER,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('cannot call from cancelled state', () => {
+    const result = transition({
+      currentState: TicketState.CANCELLED,
+      action: QueueAction.TICKET_CALL_NEXT,
+      actorRole: Role.SUPERVISOR,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('cannot directly transition out of needs_review', () => {
+    const result = transition({
+      currentState: TicketState.NEEDS_REVIEW,
+      action: QueueAction.TICKET_RESUME,
+      actorRole: Role.SUPERVISOR,
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.reason).toContain('needs_review');
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Rejected transitions — wrong role
+// ---------------------------------------------------------------------------
+
+describe('transition — unauthorized role', () => {
+  it('visitor_anonymous cannot call next', () => {
+    const result = transition({
+      currentState: TicketState.WAITING,
+      action: QueueAction.TICKET_CALL_NEXT,
+      actorRole: Role.VISITOR_ANONYMOUS,
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.reason).toContain('visitor_anonymous');
+    }
+  });
+
+  it('auditor cannot complete a ticket', () => {
+    const result = transition({
+      currentState: TicketState.SERVING,
+      action: QueueAction.TICKET_COMPLETE,
+      actorRole: Role.AUDITOR,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('reception staff cannot call next', () => {
+    const result = transition({
+      currentState: TicketState.WAITING,
+      action: QueueAction.TICKET_CALL_NEXT,
+      actorRole: Role.STAFF_RECEPTION,
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Policy preconditions
+// ---------------------------------------------------------------------------
+
+describe('transition — policy preconditions', () => {
+  it('missed → waiting fails without grace_window_active policy', () => {
+    const result = transition({
+      currentState: TicketState.MISSED,
+      action: QueueAction.TICKET_RESUME,
+      actorRole: Role.SUPERVISOR,
+      // grace_window_active NOT in satisfiedPolicies
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.reason).toContain('grace_window_active');
+    }
+  });
+
+  it('missed → waiting succeeds WITH grace_window_active policy', () => {
+    const result = transition({
+      currentState: TicketState.MISSED,
+      action: QueueAction.TICKET_RESUME,
+      actorRole: Role.SUPERVISOR,
+      satisfiedPolicies: ['grace_window_active'],
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Priority override validation
+// ---------------------------------------------------------------------------
+
+describe('validatePriorityOverride', () => {
+  it('accepts a valid supervisor override', () => {
+    const error = validatePriorityOverride({
+      actorRole: Role.SUPERVISOR,
+      reasonCode: 'medical_urgency',
+      reasonText: 'Patient shows signs of acute distress',
+      policyVersion: 'v1',
+    });
+    expect(error).toBeNull();
+  });
+
+  it('accepts a facility_admin override', () => {
+    const error = validatePriorityOverride({
+      actorRole: Role.FACILITY_ADMIN,
+      reasonCode: 'elderly_visitor',
+      reasonText: 'Elderly visitor requires priority service',
+      policyVersion: 'v1',
+    });
+    expect(error).toBeNull();
+  });
+
+  it('rejects counter operator attempting override', () => {
+    const error = validatePriorityOverride({
+      actorRole: Role.STAFF_COUNTER,
+      reasonCode: 'urgent',
+      reasonText: 'Seems urgent',
+      policyVersion: 'v1',
+    });
+    expect(error).not.toBeNull();
+    expect(error).toContain('SUPERVISOR');
+  });
+
+  it('rejects override without reason code', () => {
+    const error = validatePriorityOverride({
+      actorRole: Role.SUPERVISOR,
+      reasonCode: '',
+      reasonText: 'Some reason',
+      policyVersion: 'v1',
+    });
+    expect(error).not.toBeNull();
+    expect(error).toContain('reason code');
+  });
+
+  it('rejects override with too-short reason text', () => {
+    const error = validatePriorityOverride({
+      actorRole: Role.SUPERVISOR,
+      reasonCode: 'urgent',
+      reasonText: 'ok',
+      policyVersion: 'v1',
+    });
+    expect(error).not.toBeNull();
+    expect(error).toContain('reason text');
+  });
+
+  it('rejects override without policy version', () => {
+    const error = validatePriorityOverride({
+      actorRole: Role.SUPERVISOR,
+      reasonCode: 'urgent',
+      reasonText: 'Valid reason text here',
+      policyVersion: '',
+    });
+    expect(error).not.toBeNull();
+    expect(error).toContain('Policy version');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Priority ordering
+// ---------------------------------------------------------------------------
+
+describe('comparePriority', () => {
+  it('urgent has higher priority than priority', () => {
+    expect(comparePriority(PriorityClass.URGENT, PriorityClass.PRIORITY)).toBeLessThan(0);
+  });
+
+  it('priority has higher priority than normal', () => {
+    expect(comparePriority(PriorityClass.PRIORITY, PriorityClass.NORMAL)).toBeLessThan(0);
+  });
+
+  it('urgent has higher priority than normal', () => {
+    expect(comparePriority(PriorityClass.URGENT, PriorityClass.NORMAL)).toBeLessThan(0);
+  });
+
+  it('same class compares equal', () => {
+    expect(comparePriority(PriorityClass.NORMAL, PriorityClass.NORMAL)).toBe(0);
+  });
+
+  it('normal has lower priority than urgent', () => {
+    expect(comparePriority(PriorityClass.NORMAL, PriorityClass.URGENT)).toBeGreaterThan(0);
+  });
+});
