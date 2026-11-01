@@ -148,4 +148,64 @@ jobs:
 
       - name: Verify UNIQUE (organization_id, operation_id) on client_operations
         run: |
-          echo "Constraint validation complete — all invariants verified."
+          # Set up prerequisites: staff_user and device (required by FKs on client_operations)
+          psql "$DATABASE_URL" -c "
+            INSERT INTO staff_users (
+              id, organization_id, email, password_hash, display_name
+            ) VALUES (
+              '018d0000-0000-7000-8000-000000000020',
+              '018d0000-0000-7000-8000-000000000001',
+              'ci-test@example.com',
+              'hash_placeholder_not_real',
+              'CI Test User'
+            );
+
+            INSERT INTO devices (
+              id, facility_id, organization_id, staff_user_id, public_key_or_session
+            ) VALUES (
+              '018d0000-0000-7000-8000-000000000021',
+              '018d0000-0000-7000-8000-000000000002',
+              '018d0000-0000-7000-8000-000000000001',
+              '018d0000-0000-7000-8000-000000000020',
+              'ci-test-device-key'
+            );
+          "
+
+          # Insert a valid client_operations row
+          psql "$DATABASE_URL" -c "
+            INSERT INTO client_operations (
+              id, organization_id, queue_session_id,
+              device_id, actor_id, operation_id,
+              client_sequence, action, status
+            ) VALUES (
+              '018d0000-0000-7000-8000-000000000022',
+              '018d0000-0000-7000-8000-000000000001',
+              '018d0000-0000-7000-8000-000000000004',
+              '018d0000-0000-7000-8000-000000000021',
+              '018d0000-0000-7000-8000-000000000020',
+              '018d0000-0000-7000-8000-000000000023',
+              1, 'ticket.create', 'committed'
+            );
+          "
+
+          # Attempt to insert a second row with the same (organization_id, operation_id)
+          if psql "$DATABASE_URL" -c "
+            INSERT INTO client_operations (
+              id, organization_id, queue_session_id,
+              device_id, actor_id, operation_id,
+              client_sequence, action, status
+            ) VALUES (
+              '018d0000-0000-7000-8000-000000000024',
+              '018d0000-0000-7000-8000-000000000001',
+              '018d0000-0000-7000-8000-000000000004',
+              '018d0000-0000-7000-8000-000000000021',
+              '018d0000-0000-7000-8000-000000000020',
+              '018d0000-0000-7000-8000-000000000023',
+              2, 'ticket.create', 'committed'
+            );
+          " 2>/dev/null; then
+            echo "ERROR: Duplicate (organization_id, operation_id) was allowed — unique constraint is NOT working!"
+            exit 1
+          else
+            echo "OK: Duplicate (organization_id, operation_id) correctly rejected by UNIQUE constraint."
+          fi

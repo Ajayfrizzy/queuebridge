@@ -23,7 +23,7 @@
     "@queuebridge/contracts": "workspace:*"
   },
   "devDependencies": {
-    "@vitest/coverage-v8": "2.1.8",
-    "vitest": "2.1.8"
+    "@vitest/coverage-v8": "4.1.12",
+    "vitest": "4.1.12"
   }
 }

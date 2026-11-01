@@ -16,7 +16,7 @@ export type WorkerEnv = z.infer<typeof EnvSchema>;
 export function parseEnv(rawEnv: NodeJS.ProcessEnv = process.env): WorkerEnv {
   const result = EnvSchema.safeParse(rawEnv);
   if (!result.success) {
-    const errors = result.error.errors.map((e) => `  ${e.path.join('.')}: ${e.message}`).join('\n');
+    const errors = result.error.issues.map((e) => `  ${e.path.join('.')}: ${e.message}`).join('\n');
     throw new Error(`Worker environment variable validation failed:\n${errors}`);
   }
   return result.data;

@@ -89,7 +89,7 @@ export function TicketCard({
             ({waitEstimate.confidence} confidence)
           </span>
           <ul className="qb-estimate-factors" aria-label="Estimate factors">
-            {waitEstimate.factors.map((factor, i) => (
+            {waitEstimate.factors.map((factor: string, i: number) => (
               <li key={i}>{factor}</li>
             ))}
           </ul>

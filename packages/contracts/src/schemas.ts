@@ -51,7 +51,7 @@ export const CommandEnvelopeSchema = z.object({
   /** Client-side sequence within this device's current batch */
   client_sequence: z.number().int().nonnegative(),
   action: z.nativeEnum(QueueAction),
-  payload: z.record(z.unknown()),
+  payload: z.record(z.string(), z.unknown()),
   /** Diagnostic only — never used for global ordering */
   created_at_client: IsoDateTimeSchema,
   schema_version: z.literal(1),
@@ -146,7 +146,7 @@ export const QueueEventSchema = z.object({
   actor_id: UuidSchema.nullable(),
   operation_id: UuidV7Schema.nullable(),
   event_type: z.nativeEnum(QueueAction),
-  payload: z.record(z.unknown()),
+  payload: z.record(z.string(), z.unknown()),
   /** SHA-256 hash of previous event (genesis: SHA-256 of domain separator) */
   prev_hash: z.string().length(64),
   /** SHA-256 hash: domain_separator || queue_session_id || sequence || prev_hash || canonical_json */
@@ -212,7 +212,7 @@ export type ApiError = z.infer<typeof ApiErrorSchema>;
 export const SendMessageParamsSchema = z.object({
   to: z.string().min(1),
   template_key: z.string().min(1),
-  params: z.record(z.string()),
+  params: z.record(z.string(), z.string()),
   idempotency_key: z.string().min(1),
   /** True if this is a sandbox/test send — never make real network calls in this mode */
   sandbox: z.boolean(),
@@ -251,7 +251,7 @@ export const UssdSessionParamsSchema = z.object({
   input: z.string(),
   facility_id: UuidSchema.optional(),
   /** Current USSD session state stored server-side */
-  session_state: z.record(z.unknown()).optional(),
+  session_state: z.record(z.string(), z.unknown()).optional(),
 });
 export type UssdSessionParams = z.infer<typeof UssdSessionParamsSchema>;
 
@@ -261,7 +261,7 @@ export const UssdResponseSchema = z.object({
   /** Whether the session should continue (CON) or end (END) */
   action: z.enum(['CON', 'END']),
   /** Updated session state to persist server-side */
-  next_state: z.record(z.unknown()).optional(),
+  next_state: z.record(z.string(), z.unknown()).optional(),
 });
 export type UssdResponse = z.infer<typeof UssdResponseSchema>;
 

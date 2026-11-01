@@ -73,6 +73,10 @@ export function reconcileBatch(
           reason: result.rejection_reason,
         });
         break;
+      default:
+        // Exhaustive check — all CommandDisposition values are handled above
+        newStatus = SyncStatus.REJECTED;
+        break;
     }
 
     return { ...op, local_status: newStatus, server_result: result };

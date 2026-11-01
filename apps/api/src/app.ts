@@ -1,4 +1,4 @@
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
 import type { ApiError } from '@queuebridge/contracts';
 import type { Env } from './env.js';
 
@@ -46,7 +46,7 @@ export async function buildApp(env: Env): Promise<FastifyInstance> {
   // Global error handler — RFC 9457 problem detail responses
   // ---------------------------------------------------------------------------
 
-  app.setErrorHandler(async (error, req, reply) => {
+  app.setErrorHandler(async (error: FastifyError, req, reply) => {
     const status = reply.statusCode >= 400 ? reply.statusCode : 500;
 
     const problem: ApiError = {
