@@ -254,5 +254,5 @@ export const PRIORITY_ORDER: Record<PriorityClass, number> = {
  * Compare two priority classes. Returns negative if a has higher priority than b.
  */
 export function comparePriority(a: PriorityClass, b: PriorityClass): number {
-  return PRIORITY_ORDER[a] - PRIORITY_ORDER[b];
+  return (PRIORITY_ORDER[a] ?? 0) - (PRIORITY_ORDER[b] ?? 0);
 }

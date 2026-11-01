@@ -10,8 +10,8 @@
     "typecheck": "tsc --noEmit --project tsconfig.json",
     "dev": "node --watch --experimental-vm-modules dist/server.js",
     "start": "node dist/server.js",
-    "test": "vitest run --exclude '**/*.db.test.ts'",
-    "test:db": "vitest run --include '**/*.db.test.ts'",
+    "test": "vitest run --exclude 'src/**/*.db.test.ts'",
+    "test:db": "vitest run --passWithNoTests '.db.test'",
     "test:coverage": "vitest run --coverage",
     "clean": "rm -rf dist tsconfig.tsbuildinfo"
   },
