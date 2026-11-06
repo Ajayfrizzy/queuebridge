@@ -1,0 +1,38 @@
+{
+  "name": "@queuebridge/web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "React mobile-first PWA for QueueBridge — visitor, staff, supervisor, and public board",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "typecheck": "tsc --noEmit --project tsconfig.json",
+    "dev": "vite",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@queuebridge/contracts": "workspace:*",
+    "@queuebridge/domain": "workspace:*",
+    "@queuebridge/continuity": "workspace:*",
+    "@queuebridge/ui": "workspace:*",
+    "i18next": "24.2.0",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "react-i18next": "15.2.0",
+    "react-router-dom": "7.18.5",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/react": "19.0.1",
+    "@types/react-dom": "19.0.2",
+    "@vitejs/plugin-react": "5.2.0",
+    "@vitest/coverage-v8": "4.1.12",
+    "jsdom": "25.0.1",
+    "vite": "6.4.5",
+    "vite-plugin-pwa": "0.21.1",
+    "vitest": "4.1.12"
+  }
+}
