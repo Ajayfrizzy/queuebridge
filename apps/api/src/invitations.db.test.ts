@@ -316,4 +316,167 @@ describe('staff invitation flow (invite → preview → accept → role)', () =>
       await app.close();
     }
   });
+
+  describe('expired invitations do not block replacements', () => {
+    it('an expired invitation is retired and a replacement can be issued; the old token stays dead', async () => {
+      const email = `expired-${Date.now()}@example.test`;
+      const old = await invite('auditor', email);
+      await t.db`UPDATE staff_invitations SET expires_at = NOW() - INTERVAL '1 minute' WHERE id = ${old.invitation.id}`;
+
+      const replacement = await org.admin.post<InviteBody>(
+        `/api/v1/facilities/${fid}/invitations`,
+        {
+          email,
+          role: 'auditor',
+        },
+      );
+      expect(replacement.status).toBe(201);
+      expect(replacement.body.token).not.toBe(old.token);
+
+      // old token: still unusable
+      expect(
+        (await new TestClient(t.app).post('/api/v1/invitations/preview', { token: old.token }))
+          .status,
+      ).toBe(410);
+      expect(
+        (
+          await new TestClient(t.app).post('/api/v1/invitations/accept', {
+            token: old.token,
+            display_name: 'Old Token',
+            password: TEST_PASSWORD,
+          })
+        ).status,
+      ).toBe(410);
+      // new token: works
+      expect(
+        (
+          await new TestClient(t.app).post('/api/v1/invitations/accept', {
+            token: replacement.body.token,
+            display_name: 'New Token',
+            password: TEST_PASSWORD,
+          })
+        ).status,
+      ).toBe(201);
+
+      // exactly one row of this email/role was ever open; the old one is retired, not deleted
+      const rows = await t.db<{ id: string; revoked_at: Date | null; accepted_at: Date | null }[]>`
+        SELECT id, revoked_at, accepted_at FROM staff_invitations
+         WHERE facility_id = ${fid} AND email = ${email} ORDER BY created_at`;
+      expect(rows).toHaveLength(2);
+      expect(rows[0]?.revoked_at).not.toBeNull();
+      expect(rows[1]?.accepted_at).not.toBeNull();
+    });
+
+    it('is audited without leaking the email or any token', async () => {
+      const email = `audit-exp-${Date.now()}@example.test`;
+      const old = await invite('supervisor', email);
+      await t.db`UPDATE staff_invitations SET expires_at = NOW() - INTERVAL '1 hour' WHERE id = ${old.invitation.id}`;
+      const rep = await org.admin.post<InviteBody>(`/api/v1/facilities/${fid}/invitations`, {
+        email,
+        role: 'supervisor',
+      });
+      const ev = await t.db<{ details: unknown; actor_id: string; target_id: string }[]>`
+        SELECT details, actor_id, target_id FROM admin_events
+         WHERE event_type = 'invitation.expired_retired' AND target_id = ${old.invitation.id}`;
+      expect(ev).toHaveLength(1);
+      expect(ev[0]?.actor_id).toBe(org.adminId);
+      const dump = JSON.stringify(ev);
+      expect(dump).not.toContain(email);
+      expect(dump).not.toContain(old.token);
+      expect(dump).not.toContain(rep.body.token);
+    });
+
+    it('genuinely pending invitations still deduplicate (409), expired status is not required', async () => {
+      const email = `pending-${Date.now()}@example.test`;
+      await invite('staff_reception', email);
+      const dup = await org.admin.post(`/api/v1/facilities/${fid}/invitations`, {
+        email,
+        role: 'staff_reception',
+      });
+      expect(dup.status).toBe(409);
+      const open =
+        await t.db`SELECT 1 FROM staff_invitations WHERE facility_id = ${fid} AND email = ${email}
+          AND accepted_at IS NULL AND revoked_at IS NULL`;
+      expect(open).toHaveLength(1);
+    });
+
+    it('a still-pending invitation and an expired one for DIFFERENT roles are independent', async () => {
+      const email = `roles-${Date.now()}@example.test`;
+      const keep = await invite('supervisor', email);
+      const stale = await invite('auditor', email);
+      await t.db`UPDATE staff_invitations SET expires_at = NOW() - INTERVAL '1 minute' WHERE id = ${stale.invitation.id}`;
+      expect(
+        (await org.admin.post(`/api/v1/facilities/${fid}/invitations`, { email, role: 'auditor' }))
+          .status,
+      ).toBe(201);
+      // the other role's pending invitation was not retired
+      const kept = await t.db<{ revoked_at: Date | null }[]>`
+        SELECT revoked_at FROM staff_invitations WHERE id = ${keep.invitation.id}`;
+      expect(kept[0]?.revoked_at).toBeNull();
+    });
+
+    it('never touches another facility’s or another organization’s expired invitations', async () => {
+      const email = `scope-${Date.now()}@example.test`;
+      const otherFid = (await createFacility(org, 'Scope Other')).id;
+      const here = await invite('auditor', email);
+      const there = await org.admin.post<InviteBody>(`/api/v1/facilities/${otherFid}/invitations`, {
+        email,
+        role: 'auditor',
+      });
+      const foreign = await signupOrg(t.app);
+      const foreignFid = (await createFacility(foreign)).id;
+      const alien = await foreign.admin.post<InviteBody>(
+        `/api/v1/facilities/${foreignFid}/invitations`,
+        { email, role: 'auditor' },
+      );
+      await t.db`UPDATE staff_invitations SET expires_at = NOW() - INTERVAL '1 minute'
+                  WHERE id IN (${here.invitation.id}, ${there.body.invitation.id}, ${alien.body.invitation.id})`;
+
+      expect(
+        (await org.admin.post(`/api/v1/facilities/${fid}/invitations`, { email, role: 'auditor' }))
+          .status,
+      ).toBe(201);
+      const states = await t.db<{ id: string; revoked_at: Date | null }[]>`
+        SELECT id, revoked_at FROM staff_invitations
+         WHERE id IN (${there.body.invitation.id}, ${alien.body.invitation.id})`;
+      expect(states.every((s) => s.revoked_at === null)).toBe(true);
+    });
+
+    it('concurrent replacement requests: exactly one is created, the rest get 409, no 500', async () => {
+      const email = `race-exp-${Date.now()}@example.test`;
+      const old = await invite('staff_counter', email);
+      await t.db`UPDATE staff_invitations SET expires_at = NOW() - INTERVAL '1 minute' WHERE id = ${old.invitation.id}`;
+      const results = await Promise.all(
+        [1, 2, 3, 4, 5].map(() =>
+          org.admin.post(`/api/v1/facilities/${fid}/invitations`, { email, role: 'staff_counter' }),
+        ),
+      );
+      const statuses = results.map((r) => r.status);
+      expect(statuses.filter((s) => s === 201)).toHaveLength(1);
+      expect(statuses.filter((s) => s === 409)).toHaveLength(4);
+      expect(statuses.filter((s) => s >= 500)).toHaveLength(0);
+      const open =
+        await t.db`SELECT 1 FROM staff_invitations WHERE facility_id = ${fid} AND email = ${email}
+          AND accepted_at IS NULL AND revoked_at IS NULL`;
+      expect(open).toHaveLength(1);
+    });
+
+    it('the expired invitation remains visible in history, not as pending', async () => {
+      const email = `hist-${Date.now()}@example.test`;
+      const old = await invite('staff_reception', email);
+      await t.db`UPDATE staff_invitations SET expires_at = NOW() - INTERVAL '1 minute' WHERE id = ${old.invitation.id}`;
+      await org.admin.post(`/api/v1/facilities/${fid}/invitations`, {
+        email,
+        role: 'staff_reception',
+      });
+      const list = await org.admin.get<{ invitations: { id: string; status: string }[] }>(
+        `/api/v1/facilities/${fid}/invitations`,
+      );
+      expect(list.body.invitations.find((i) => i.id === old.invitation.id)?.status).toBe('revoked');
+      expect(
+        list.body.invitations.filter((i) => i.status === 'pending' && i.id !== old.invitation.id)
+          .length,
+      ).toBeGreaterThan(0);
+    });
+  });
 });

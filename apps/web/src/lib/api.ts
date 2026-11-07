@@ -26,7 +26,7 @@ export function setUnauthenticatedHandler(handler: (() => void) | null): void {
 }
 
 /** Paths where a 401 is an expected answer (bad credentials / probing), not a lost session. */
-const PUBLIC_401 = ['/auth/login', '/auth/me', '/invitations/'];
+const PUBLIC_401 = ['/auth/login', '/auth/logout', '/auth/me', '/invitations/'];
 
 /** An RFC 9457 problem response from the API (or a network failure with status 0). */
 export class ApiRequestError extends Error {

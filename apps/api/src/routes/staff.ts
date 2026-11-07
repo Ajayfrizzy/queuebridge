@@ -202,6 +202,28 @@ export async function staffRoutes(app: FastifyInstance, deps: RouteDeps): Promis
       const expiresAt = new Date(Date.now() + INVITATION_TTL_MS);
       try {
         const row = await db.begin(async (tx) => {
+          // Retire EXPIRED, never-accepted invitations for the same facility + email + role so
+          // they cannot block a replacement via the "one open invitation" unique index. Their
+          // tokens were already unusable (expires_at is enforced on preview/accept); marking
+          // them revoked just frees the slot. Scoped by organization AND facility. Genuinely
+          // pending (unexpired) invitations are untouched, so they still dedupe (409).
+          const retired = await tx<{ id: string }[]>`
+            UPDATE staff_invitations SET revoked_at = NOW()
+             WHERE facility_id = ${facility.id} AND organization_id = ${auth.organizationId}
+               AND lower(email) = ${body.email} AND role = ${body.role}
+               AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at <= NOW()
+            RETURNING id`;
+          for (const old of retired) {
+            await recordAdminEvent(tx, {
+              organizationId: auth.organizationId,
+              facilityId: facility.id,
+              actorId: auth.staffUserId,
+              eventType: 'invitation.expired_retired',
+              targetType: 'invitation',
+              targetId: old.id,
+              details: { role: body.role },
+            });
+          }
           const rows = await tx<InvitationRow[]>`
             INSERT INTO staff_invitations
               (organization_id, facility_id, email, role, token_hash, invited_by, expires_at)

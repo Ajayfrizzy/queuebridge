@@ -99,3 +99,10 @@ format, strict lint, typecheck (8), build, unit (api 25, web 11, others unchange
 ## Pre-PR review addendum
 
 Full diff reviewed (no secrets/debug code/unrelated files). A race in the last-org-admin safeguard (two admins deactivating each other concurrently) was found and fixed with row locking, covered by 3 new real-PostgreSQL tests (244 total).
+
+## PR #2 review fixes (Codex P2 ×3)
+
+- Expired invitations are retired transactionally (audited) when a replacement is issued; pending ones still dedupe.
+- Logout only completes after server confirmation; accessible failure notice with retry/dismiss.
+- `useLoad` ignores stale, out-of-order and old-key responses.
+- Tests: +7 DB, +9 unit, +7 browser. Totals: 251 DB, 49 Playwright. Evidence in `docs/testing/M1-evidence.md`.

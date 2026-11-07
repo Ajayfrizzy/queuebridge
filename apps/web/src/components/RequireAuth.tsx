@@ -4,8 +4,8 @@ import { useAuth } from '../auth.js';
 import { Loading } from './Form.js';
 
 export function RequireAuth(): ReactElement {
-  const { user, loading } = useAuth();
+  const { user, loading, signedOut } = useAuth();
   if (loading) return <Loading what="your session" />;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to={signedOut ? '/' : '/login'} replace />;
   return <Outlet />;
 }
