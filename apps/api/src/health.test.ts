@@ -8,7 +8,7 @@ let app: FastifyInstance;
 beforeAll(async () => {
   const env = parseEnv({
     NODE_ENV: 'test',
-    DATABASE_URL: 'postgres://localhost:5432/queuebridge_test',
+    DATABASE_URL: 'postgres://postgres:x@127.0.0.1:1/queuebridge_unreachable',
     SESSION_SECRET: 'test-session-secret-at-least-32-characters-long',
     CORS_ORIGIN: 'http://localhost:5173',
     LOG_LEVEL: 'silent',
@@ -41,21 +41,13 @@ describe('GET /health', () => {
 });
 
 describe('GET /health/ready', () => {
-  it('returns 200 with ok status', async () => {
-    const response = await app.inject({
-      method: 'GET',
-      url: '/health/ready',
-    });
-    expect(response.statusCode).toBe(200);
-    const body = JSON.parse(response.body) as { status: string };
-    expect(body.status).toBe('ok');
-  });
-
-  it('includes a checks object', async () => {
+  it('returns 503 (not a false "ok") when the database is unreachable', async () => {
+    // Port 1 refuses connections: the readiness probe must report the dependency as down.
     const response = await app.inject({ method: 'GET', url: '/health/ready' });
-    const body = JSON.parse(response.body) as { checks: Record<string, string> };
-    expect(body.checks).toBeDefined();
-    expect(typeof body.checks).toBe('object');
+    expect(response.statusCode).toBe(503);
+    const body = JSON.parse(response.body) as { status: string; checks: Record<string, string> };
+    expect(body.status).toBe('unavailable');
+    expect(body.checks['database']).toBe('unavailable');
   });
 });
 
@@ -85,6 +77,14 @@ describe('env validation', () => {
         SESSION_SECRET: 'short',
       }),
     ).toThrow();
+  });
+
+  it('defaults the API port to 3002 so it never collides with other local projects on 3001', () => {
+    const env = parseEnv({
+      DATABASE_URL: 'postgres://localhost:5432/test',
+      SESSION_SECRET: 'a'.repeat(32),
+    });
+    expect(env.PORT).toBe(3002);
   });
 
   it('accepts valid env configuration', () => {

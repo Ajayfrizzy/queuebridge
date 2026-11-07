@@ -11,7 +11,7 @@ export default defineConfig({
       reporter: ['text', 'lcov'],
     },
     env: {
-      VITE_API_BASE_URL: 'http://localhost:3001',
+      VITE_API_BASE_URL: 'http://localhost:3002',
       VITE_APP_ENV: 'test',
     },
   },

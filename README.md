@@ -79,7 +79,7 @@ pnpm db:migrate
 pnpm db:seed                  # optional: load dev fixture data
 
 # 4. Start development servers
-pnpm dev:api                  # Fastify API on http://localhost:3001
+pnpm dev:api                  # Fastify API on http://localhost:3002
 pnpm dev:web                  # Vite/React on http://localhost:5173
 pnpm dev:worker               # Notification worker
 ```

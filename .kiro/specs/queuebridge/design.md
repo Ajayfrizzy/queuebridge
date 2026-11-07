@@ -374,13 +374,13 @@ CONTACT_ENCRYPTION_KEY    # 32-byte hex key for phone number encryption
 AUDIT_SIGNING_KEY_ID      # identifies the signing key
 AUDIT_SIGNING_KEY         # private key for checkpoint signatures
 CORS_ORIGIN               # allowed origins
-PORT                      # default 3001
+PORT                      # default 3002 (3001 is left free for other local projects)
 ```
 
 ### apps/web
 
 ```
-VITE_API_BASE_URL         # e.g. http://localhost:3001
+VITE_API_BASE_URL         # e.g. http://localhost:3002
 VITE_APP_ENV              # development | production
 ```
 

@@ -202,6 +202,8 @@ export const ApiErrorSchema = z.object({
   instance: z.string().optional(),
   /** Whether the caller should retry */
   retryable: z.boolean().optional(),
+  /** Per-field validation problems (field path + message; never the submitted value) */
+  errors: z.array(z.object({ field: z.string(), message: z.string() })).optional(),
 });
 export type ApiError = z.infer<typeof ApiErrorSchema>;
 

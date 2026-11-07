@@ -84,7 +84,8 @@ VALUES
 ON CONFLICT DO NOTHING;
 
 -- ---------------------------------------------------------------------------
--- Staff user (password: dev-password — bcrypt hash below is for testing only)
+-- Staff user (login: org slug demo-health-centre, admin@demo.local, password
+-- dev-only-not-for-production — argon2id hash below, for local development only)
 -- In production: NEVER commit real password hashes or use this test user
 -- ---------------------------------------------------------------------------
 
@@ -93,8 +94,8 @@ VALUES (
   '018d1a2b-3c4d-7e5f-8a9b-6c7d8e9f0a1b',
   '018d1a2b-3c4d-7e5f-8a9b-0c1d2e3f4a5b',
   'admin@demo.local',
-  -- bcrypt hash of 'dev-only-not-for-production' at cost 12 — DO NOT USE IN PRODUCTION
-  '$2b$12$placeholder_hash_replace_with_real_hash_before_use',
+  -- argon2id hash of 'dev-only-not-for-production' — DO NOT USE IN PRODUCTION
+  '$argon2id$v=19$m=19456,t=2,p=1$004Eu9ae6GZNudp7JI9tdw$f3nKmg2fdazeg9qT/rPMO2gQ0wtSnfjYk4nTk5a7ZyM',
   'Demo Admin',
   'active'
 )
@@ -108,3 +109,14 @@ VALUES
   ('018d1a2b-3c4d-7e5f-8a9b-9c0d1e2f3a4b', '018d1a2b-3c4d-7e5f-8a9b-6c7d8e9f0a1b', '018d1a2b-3c4d-7e5f-8a9b-1c2d3e4f5a6b', 'staff_counter'),
   ('018d1a2b-3c4d-7e5f-8a9b-0c1d2e3f4a5c', '018d1a2b-3c4d-7e5f-8a9b-6c7d8e9f0a1b', '018d1a2b-3c4d-7e5f-8a9b-1c2d3e4f5a6b', 'auditor')
 ON CONFLICT (staff_user_id, facility_id, role) DO NOTHING;
+
+-- Organization-wide administrator (M1): org_admin rows carry no facility_id
+INSERT INTO role_assignments (id, staff_user_id, organization_id, facility_id, role)
+VALUES (
+  '018d1a2b-3c4d-7e5f-8a9b-0c1d2e3f4a5d',
+  '018d1a2b-3c4d-7e5f-8a9b-6c7d8e9f0a1b',
+  '018d1a2b-3c4d-7e5f-8a9b-0c1d2e3f4a5b',
+  NULL,
+  'org_admin'
+)
+ON CONFLICT DO NOTHING;

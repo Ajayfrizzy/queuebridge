@@ -154,6 +154,14 @@ jobs:
           TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/queuebridge_test
           SESSION_SECRET: ci-test-session-secret-placeholder-at-least-32-chars
 
+      - name: Install Playwright Chromium
+        run: pnpm --filter @queuebridge/web exec playwright install --with-deps chromium
+
+      - name: Run browser tests (real API + PostgreSQL + built web app)
+        run: pnpm --filter @queuebridge/web test:e2e
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/queuebridge_test
+
   build:
     name: Build all packages and apps
     runs-on: ubuntu-latest
@@ -187,7 +195,7 @@ jobs:
       - name: Build all
         run: pnpm build
         env:
-          VITE_API_BASE_URL: http://localhost:3001
+          VITE_API_BASE_URL: http://localhost:3002
           VITE_APP_ENV: production
 
   security-audit:
