@@ -149,7 +149,9 @@ Rules:
 - Rate-limit `POST /api/v1/que/ask` per user and per IP.
 - AI inference is unavailable to `visitor_anonymous`; the AI endpoint requires a staff session.
 - Offline staff help caches only generic role-level procedures, never tenant-sensitive content.
-  Cached bundles are bound to user ID and role digest, expire no later than the session, and are
-  purged on confirmed sign-out, 401, role change, user switch or expiry (design §11.5).
+  Cached bundles are bound to user ID and role digest, expire by elapsed time (with clock-rollback
+  detection) no later than the session, and are purged on confirmed sign-out, 401, role change,
+  user switch or expiry (design §11.5). Offline expiry is a best-effort display bound, not a
+  confidentiality control — which is why tenant-sensitive content is never cached.
 - No inference provider may be selected or integrated without a separate explicit decision; no
   payment card, personal spending or automatic paid overage.

@@ -527,18 +527,47 @@ interface CachedRestrictedBundle {
   roleDigest: string; // SHA-256 of sorted role grants (role + facility_id) at issue time
   audiences: Audience[];
   kbVersion: number;
-  issuedAt: string; // server time
+  issuedAt: string; // server time (diagnostic; never compared with the device clock)
   authorizedUntil: string; // server-set: min(session expires_at, issuedAt + QUE_OFFLINE_HELP_TTL)
+  validForMs: number; // server-computed: authorizedUntil - issuedAt (a duration, not a timestamp)
   articles: KbArticle[];
+}
+
+interface OfflineHelpClock {
+  receivedAtLocalMs: number; // device Date.now() when the bundle was received
+  highWaterLocalMs: number; // largest Date.now() ever observed for this bundle (persisted)
 }
 ```
 
-- The server sets `authorizedUntil` (default TTL equals the session lifetime, 12 h; never longer).
-- The client checks `authorizedUntil` against the device clock before every display. Expired →
-  restricted articles hidden; public help remains. The server value is an upper bound and the
-  bundle is refetched on reconnect, so a skewed client clock cannot extend the server limit.
-- Offline, the client cannot learn about revocations; the TTL bounds that window. This residual
-  exposure is acceptable only because cached content is generic procedure, not tenant data.
+Expiry is evaluated as **elapsed time since receipt**, never by comparing the device clock with a
+server timestamp, so a device clock that is simply wrong (ahead or behind) has no effect:
+
+- The server sends `validForMs` (default TTL equals the session lifetime, 12 h; never longer). The
+  client stores `receivedAtLocalMs` and `highWaterLocalMs` with the bundle.
+- Before every display: `elapsed = Date.now() - receivedAtLocalMs`. Restricted articles are shown
+  only if `0 <= elapsed < validForMs - SAFETY_MARGIN_MS` (margin covers network latency and
+  rounding; default 5 min).
+- **Clock rollback:** if `Date.now() < highWaterLocalMs - ROLLBACK_TOLERANCE_MS` (default 2 min), the
+  device clock has moved backwards. The bundle is marked _unverifiable_: restricted articles are
+  hidden until a fresh authorized fetch succeeds. Otherwise `highWaterLocalMs` is advanced and
+  persisted.
+- **Within one page session:** the client also tracks `performance.now()` (monotonic, unaffected by
+  wall-clock changes) from load; if wall-clock elapsed and monotonic elapsed disagree by more than
+  the tolerance, the bundle is treated as unverifiable.
+- **Restart / reload while offline:** the persisted `receivedAtLocalMs` and `highWaterLocalMs`
+  continue to apply; monotonic tracking restarts. A restart combined with a clock moved backwards
+  _before_ the restart is still caught by the high-water mark.
+- **Missing or corrupt clock metadata:** treated as expired.
+
+**Qualified guarantee (honest limit).** These checks enforce expiry against wrong, drifting or
+accidentally reset clocks. They cannot defeat a person who fully controls the device (for example,
+freezing or carefully manipulating the clock, or reading IndexedDB directly) — cached data on a
+device is ultimately readable by that device's owner. The offline expiry is therefore a
+best-effort bound on **display**, not a confidentiality control. Confidentiality comes from
+§11.5.1: restricted bundles contain only generic, non-tenant-sensitive procedures, so extended
+access reveals nothing an unauthorized person could not learn from public documentation of the
+product. Server-side authorization (every online request) remains authoritative, and revocation
+always takes effect at the first online contact.
 
 #### 11.5.3 Role-change handling and cache invalidation
 
