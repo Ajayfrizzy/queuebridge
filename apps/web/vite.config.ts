@@ -31,6 +31,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // API calls must never be answered with the cached app shell
+        navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
           {
             urlPattern: /^https?:\/\/.*\/api\/v1\/facilities\/.+\/public/,
@@ -48,7 +50,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: process.env['VITE_API_BASE_URL'] ?? 'http://localhost:3001',
+        target: process.env['API_PROXY_TARGET'] ?? 'http://localhost:3002',
         changeOrigin: true,
       },
     },

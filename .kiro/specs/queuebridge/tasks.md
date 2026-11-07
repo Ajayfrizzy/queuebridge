@@ -1,7 +1,7 @@
 # QueueBridge — Spec Tasks
 
 **Spec version:** 1.0  
-**Status:** M0 in progress; M1–M7 planned  
+**Status:** M0 complete; M1 implemented (pending CI + human review); M2–M7 planned  
 **Each task:** implement → test → validate → mark done
 
 ---
@@ -97,31 +97,46 @@
 
 ### M1.1 Organization and facility APIs
 
-- [ ] `POST /api/v1/organizations` — create org with admin user
-- [ ] `POST /api/v1/facilities` — create facility under org
-- [ ] `POST /api/v1/facilities/:id/services` — add service
-- [ ] `POST /api/v1/facilities/:id/counters` — add counter
-- [ ] `POST /counter_service_capabilities` — assign service to counter
+- [x] `POST /api/v1/organizations` — create org with admin user
+- [x] `POST /api/v1/facilities` — create facility under org
+- [x] `POST /api/v1/facilities/:id/services` — add service
+- [x] `POST /api/v1/facilities/:id/counters` — add counter
+- [x] `POST /counter_service_capabilities` — assign service to counter
 
 ### M1.2 Staff and RBAC
 
-- [ ] Staff authentication: signup, login, session cookie
-- [ ] Role assignment: `facility_admin`, `supervisor`, `staff_counter`, `staff_reception`, `auditor`
-- [ ] RBAC middleware: every protected route validates role against resource scope
-- [ ] Staff invitation flow: email invite → accept → role assignment
-- [ ] Tenant isolation tests: cross-org access returns 404
+- [x] Staff authentication: signup, login, session cookie
+- [x] Role assignment: `facility_admin`, `supervisor`, `staff_counter`, `staff_reception`, `auditor`
+- [x] RBAC middleware: every protected route validates role against resource scope
+- [x] Staff invitation flow: invite → accept → role assignment (email delivery not configured: link is shown once to the admin and shared manually)
+- [x] Tenant isolation tests: cross-org access returns 404
 
 ### M1.3 Facility admin UI (apps/web)
 
-- [ ] Org signup and facility creation form
-- [ ] Service and counter configuration
-- [ ] Staff invitation and role management
-- [ ] QR code and join link generation for facility
+- [x] Org signup and facility creation form
+- [x] Service and counter configuration
+- [x] Staff invitation and role management
+- [x] QR code and join link generation for facility
+
+### M1.4 Post-review refinements (manual acceptance follow-up)
+
+- [x] Organization/facility "address" fields renamed to "URL identifier (slug)" with explanatory hints
+- [x] Notifications: dismissible (button + Escape), auto-dismiss after 8 s, hidden polite live region retained for screen readers
+- [x] Facility readiness derived server-side (`GET /facilities/:id/readiness`): an ACTIVE counter must serve an ACTIVE service; counts alone never imply ready
+- [x] Join link/QR labelled "Not live yet" until visitor registration exists (M2); API reports `operational: false`
+- [x] Service policy display lists only the enabled priority classes
+- [x] Inactive services/counters excluded from operational eligibility; assignments on inactive counters remain configurable and preserved
+- [x] Staff screen: Active staff / Deactivated staff / Organization administrators / Pending invitations / Invitation history; org_admin deactivate and reactivate with confirmation
+- [x] Role revocation, role grant, and deactivation proven effective for already-authenticated sessions (API + browser); UI returns to sign-in with a "session ended" notice on 401
+- [x] API default port 3002 (3001 left free for other local projects)
+- [x] Desktop layout: 80rem container, two-column workspace at >= 64rem, single column below
+
+Deferred to M2 (not implemented here): routing-engine eligibility tests, visitor registration, making the join link operational.
 
 ### M1 exit criteria
 
-- [ ] Permission and isolation checks pass (all Group 8 security tests for M1 scope)
-- [ ] New facility can configure service, counter, invite staff without DB admin
+- [x] Permission and isolation checks pass (all Group 8 security tests for M1 scope)
+- [x] New facility can configure service, counter, invite staff without DB admin
 
 ---
 

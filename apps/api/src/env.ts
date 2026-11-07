@@ -6,7 +6,7 @@ import { z } from 'zod';
  */
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  PORT: z.coerce.number().int().min(1).max(65535).default(3001),
+  PORT: z.coerce.number().int().min(1).max(65535).default(3002),
   DATABASE_URL: z.string().url('DATABASE_URL must be a valid postgres:// URL'),
   SESSION_SECRET: z
     .string()
@@ -17,7 +17,17 @@ const EnvSchema = z.object({
     .optional(),
   AUDIT_SIGNING_KEY_ID: z.string().min(1).optional(),
   AUDIT_SIGNING_KEY: z.string().min(1).optional(),
+  /** Comma-separated list of allowed browser origins (CORS + CSRF origin check). */
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
+  /** Public origin of the web app; used to build join links. */
+  WEB_BASE_URL: z.string().url().default('http://localhost:5173'),
+  /** Max requests per minute per client IP on unauthenticated auth endpoints. */
+  AUTH_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(10),
+  /** Set true only when running behind a trusted reverse proxy (honours X-Forwarded-For). */
+  TRUST_PROXY: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 });
 
@@ -34,4 +44,11 @@ export function parseEnv(rawEnv: NodeJS.ProcessEnv = process.env): Env {
     throw new Error(`Environment variable validation failed:\n${errors}`);
   }
   return result.data;
+}
+
+/** Parse CORS_ORIGIN into a list of normalised origins. */
+export function allowedOrigins(env: Env): string[] {
+  return env.CORS_ORIGIN.split(',')
+    .map((o) => o.trim().replace(/\/$/, ''))
+    .filter((o) => o.length > 0);
 }

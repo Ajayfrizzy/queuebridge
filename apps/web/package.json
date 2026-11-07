@@ -11,14 +11,16 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@queuebridge/continuity": "workspace:*",
     "@queuebridge/contracts": "workspace:*",
     "@queuebridge/domain": "workspace:*",
-    "@queuebridge/continuity": "workspace:*",
     "@queuebridge/ui": "workspace:*",
     "i18next": "24.2.0",
+    "qrcode": "1.5.4",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "react-i18next": "15.2.0",
@@ -26,11 +28,16 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
+    "@playwright/test": "1.65.0",
+    "@types/node": "22.10.2",
+    "@types/qrcode": "1.5.6",
     "@types/react": "19.0.1",
     "@types/react-dom": "19.0.2",
     "@vitejs/plugin-react": "5.2.0",
     "@vitest/coverage-v8": "4.1.12",
     "jsdom": "25.0.1",
+    "jsqr": "1.4.0",
     "vite": "6.4.5",
     "vite-plugin-pwa": "0.21.1",
     "vitest": "4.1.12"
