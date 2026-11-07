@@ -139,3 +139,99 @@
 - REQ-NFR.4: The system SHALL support horizontal scaling of `apps/api` and `apps/worker`.
 - REQ-NFR.5: Core visitor flows SHALL be usable on Android devices with constrained connections.
 - REQ-NFR.6: All environment variables SHALL be validated at startup using Zod; missing required vars SHALL prevent startup.
+
+---
+
+## REQ-F13: Ask Que Anything — context-aware self-service navigation assistant (planned)
+
+> **Added:** 2026-11-07 as a planned feature (PRD Addendum A, ADR-011). Additive: it does not change
+> REQ-F1–REQ-F12, REQ-SEC or REQ-NFR, and it is not one of the ten core feature groups counted in
+> the PRD definition of done. Scheduled for milestone **MQ** (between M5 and M6; see `tasks.md`).
+> Que is a navigation and help assistant, **not** a general-purpose chatbot.
+
+### REQ-F13.1 Guided navigation
+
+- REQ-F13.1.1: Que SHALL derive context from the current screen (route identifier), the user's server-derived roles at the current facility (or `visitor_anonymous`), and the capability manifest.
+- REQ-F13.1.2: Que SHALL offer next-step guidance and navigation links only to screens the user's roles are permitted to open, using the same permission map the API enforces.
+- REQ-F13.1.3: When a task requires a role the user lacks, Que SHALL say which role is required (by role name, never by naming individuals) and SHALL NOT link to the restricted screen.
+- REQ-F13.1.4: Every route referenced by Que SHALL exist in the web router; dead or unregistered routes SHALL fail CI.
+
+### REQ-F13.2 Searchable help
+
+- REQ-F13.2.1: Que SHALL provide keyword search over KB articles visible to the user's audience.
+- REQ-F13.2.2: The KB SHALL cover: visitor registration, ticket status, ticket recovery, staff operations (reception, counter, supervisor), facility configuration, and connectivity/sync states.
+- REQ-F13.2.3: Each article SHALL declare: stable ID, audiences, required capabilities, related route IDs, `available_since` milestone, content version and last-reviewed date.
+
+### REQ-F13.3 Offline knowledge base
+
+- REQ-F13.3.1: Essential instructions SHALL be available offline through the PWA: public (visitor) articles via the service-worker precache; role-restricted articles via a per-user authenticated cache.
+- REQ-F13.3.2: Deterministic search and navigation SHALL work fully offline once content is cached.
+- REQ-F13.3.3: Que SHALL indicate when it is offline and showing built-in help, and SHALL show the content version in use.
+- REQ-F13.3.4: Role-restricted cached content SHALL be cleared on sign-out, session end, deactivation or role change detected by the client.
+- REQ-F13.3.6: Offline staff help SHALL contain only generic, role-level procedural articles. It SHALL NOT cache tenant-sensitive content: no organization, facility, service, counter, staff, visitor or ticket data, no names, emails, phone numbers, ticket codes, recovery secrets, internal IDs, or facility configuration.
+- REQ-F13.3.7: Each cached restricted bundle SHALL carry an authorization expiry no later than the issuing session's expiry; after expiry the client SHALL stop showing restricted articles (offline or online) and fall back to public help until a fresh authorized fetch succeeds.
+- REQ-F13.3.8: Cached restricted bundles SHALL be bound to the user ID and a digest of the user's role grants at issue time; on every successful `/auth/me` or Que API response with a different user or role digest, the client SHALL purge the cache before showing restricted help.
+- REQ-F13.3.9: Cache invalidation SHALL also occur on: confirmed sign-out, any 401 from an authenticated request, KB bundle version change, and when a different user signs in on the same device. Failed sign-out (server not confirmed) SHALL NOT be treated as signed out.
+- REQ-F13.3.5: The KB SHALL support incremental updates (versioned bundle, per-article versions) without app redeploys of unrelated features.
+
+### REQ-F13.4 Optional AI explanation layer
+
+- REQ-F13.4.1: Natural-language questions MAY be answered by an AI layer that rephrases or combines only KB articles already authorized for the user.
+- REQ-F13.4.2: The AI layer SHALL be disabled by default and SHALL only be enabled with an approved free-tier or sponsored inference provider. No paid mode SHALL exist in configuration.
+- REQ-F13.4.3: Inference SHALL run server-side through a provider-neutral `InferenceAdapter`; provider credentials SHALL never reach the browser.
+- REQ-F13.4.4: Enabling the AI layer for a facility SHALL require an explicit `facility_admin` or `org_admin` opt-in, recorded as an audited admin event.
+- REQ-F13.4.5: Questions SHALL be redacted of likely personal data (phone numbers, emails, ticket recovery secrets, ticket codes) before leaving the server; tenant operational data SHALL NOT be sent to the provider.
+- REQ-F13.4.6: A hard daily request cap SHALL keep usage within the provider's free/sponsored allowance; exceeding it SHALL trigger deterministic fallback, never a paid overage.
+- REQ-F13.4.7: AI inference SHALL be unavailable to `visitor_anonymous`. The AI endpoint SHALL require an authenticated staff session; anonymous visitors SHALL continue to receive public deterministic help.
+- REQ-F13.4.8: No inference provider SHALL be selected or integrated before a separate, explicit project decision. Candidate providers SHALL be researched during MQ and are eligible only if they require no personal spending, no payment card and have no automatic paid overage.
+
+### REQ-F13.5 Role-based access and tenant isolation
+
+- REQ-F13.5.1: Que SHALL never disclose content, data or navigation targets the user is not authorized to access.
+- REQ-F13.5.2: Role-restricted KB content SHALL be filtered server-side by the authenticated session; client-side filtering is advisory only.
+- REQ-F13.5.3: Que SHALL NOT read or reveal another organization's or facility's data; any facility-specific context SHALL come only from endpoints the user is already authorized to read.
+- REQ-F13.5.4: Visitors SHALL receive only public articles and never staff procedures, internal IDs or other visitors' data.
+
+### REQ-F13.6 Read-only behaviour
+
+- REQ-F13.6.1: Que SHALL NOT create, modify or delete tickets, priorities, queue state, staff, roles, permissions or facility settings.
+- REQ-F13.6.2: Que SHALL expose no tool/function-calling capability to the AI layer.
+- REQ-F13.6.3: Que endpoints SHALL write no tenant operational data; only aggregate, non-PII usage counters MAY be recorded.
+
+### REQ-F13.7 Safe fallback
+
+- REQ-F13.7.1: When AI is disabled, unavailable, slow (timeout), rate-limited, out of quota, erroring, or produces output that fails validation, Que SHALL return deterministic help for the same question and context.
+- REQ-F13.7.2: Fallback SHALL be visible to the user with a plain reason (e.g. "AI explanation unavailable — showing built-in help").
+- REQ-F13.7.3: Core queue operations SHALL never depend on Que or on inference availability.
+- REQ-F13.7.4: All essential Que navigation and explanations SHALL be available through deterministic help with AI disabled and with no network access (from cached content). AI SHALL NOT be a dependency for completing any QueueBridge workflow.
+
+### REQ-F13.8 Accessibility and disclosure
+
+- REQ-F13.8.1: Que SHALL be mobile-first, operable by keyboard alone, and announce results through an ARIA live region; opening and closing SHALL manage focus correctly.
+- REQ-F13.8.2: Every AI-generated answer SHALL be labelled as AI-generated, list its source articles, and advise verifying with staff for operational decisions.
+- REQ-F13.8.3: Que SHALL meet the same WCAG 2.1 A/AA checks applied to other screens, at 320px, 375px and desktop widths.
+
+### REQ-F13.9 Truthfulness — no fabricated capabilities
+
+- REQ-F13.9.1: Que SHALL describe only capabilities whose manifest status is `live`, and SHALL label `preview`, `sandbox` and `planned` capabilities as such.
+- REQ-F13.9.2: Que SHALL NOT promise service times, queue positions, delivery of notifications, or outcomes; wait information SHALL defer to F6 estimates and their stated uncertainty.
+- REQ-F13.9.3: AI output that cites no authorized article, cites an unauthorized article, links an unauthorized route, or references a non-live capability as available SHALL be rejected and replaced by deterministic help.
+
+### REQ-F13.10 Verification
+
+- REQ-F13.10.1: Automated tests SHALL cover role restrictions, tenant isolation, offline fallback, navigation accuracy, KB/capability consistency, accessibility, prompt-injection resistance, inference failures and the zero-cost guard (testing steering Group 13).
+
+### F13 requirement traceability
+
+| Requirement | Design (`design.md`)                                          | Architecture addendum | Tasks (`tasks.md`) | Tests (Group 13)                                                   |
+| ----------- | ------------------------------------------------------------- | --------------------- | ------------------ | ------------------------------------------------------------------ |
+| REQ-F13.1   | §11.3 route registry                                          | A.2, A.3              | MQ.1               | 13.4 navigation accuracy, 13.1 roles                               |
+| REQ-F13.2   | §11.2 KB model, §11.4 search                                  | A.2                   | MQ.1, MQ.5         | 13.4, 13.5 KB consistency                                          |
+| REQ-F13.3   | §11.5 offline delivery, §11.5.1–§11.5.3 offline authorization | A.4                   | MQ.2               | 13.3 offline fallback, 13.12 offline authorization                 |
+| REQ-F13.4   | §11.7 AI layer, §11.8 provider research                       | A.5                   | MQ.4               | 13.1 roles (visitor AI denied), 13.7, 13.8 zero-cost, 13.9 privacy |
+| REQ-F13.5   | §11.6 authorization                                           | A.3                   | MQ.1, MQ.2         | 13.1 roles, 13.2 tenant isolation                                  |
+| REQ-F13.6   | §11.1, §11.7                                                  | A.1                   | MQ.1, MQ.4         | 13.10 read-only                                                    |
+| REQ-F13.7   | §11.4 deterministic coverage, §11.7 fallback ladder           | A.5                   | MQ.1, MQ.4, MQ.5   | 13.3, 13.7, 13.13 AI independence                                  |
+| REQ-F13.8   | §11.9 UI                                                      | A.6                   | MQ.3               | 13.6 accessibility                                                 |
+| REQ-F13.9   | §11.2 capability manifest, §11.7 output guard                 | A.2, A.5              | MQ.1, MQ.4, MQ.5   | 13.5, 13.11 prompt injection                                       |
+| REQ-F13.10  | §11.10                                                        | A.7                   | MQ exit            | Group 13                                                           |

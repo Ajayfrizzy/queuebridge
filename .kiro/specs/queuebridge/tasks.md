@@ -1,7 +1,7 @@
 # QueueBridge — Spec Tasks
 
 **Spec version:** 1.0  
-**Status:** M0 complete; M1 implemented (pending CI + human review); M2–M7 planned  
+**Status:** M0 complete; M1 complete (merged into `staging`, CI passing); M2–M7 planned; MQ (Ask Que, F13) planned between M5 and M6  
 **Each task:** implement → test → validate → mark done
 
 ---
@@ -274,6 +274,71 @@ Deferred to M2 (not implemented here): routing-engine eligibility tests, visitor
 
 ---
 
+## MQ — Ask Que Anything (F13, planned; scheduled after M5, before M6)
+
+> Added 2026-11-07 (PRD Addendum A, ADR-011, REQ-F13, design §11). Inserted without renumbering
+> M0–M7. **Entry gate:** M5 exit criteria met (visitor join/status/recovery, sync states,
+> accessibility baseline and device health exist, so help can describe real behaviour).
+> The AI layer (MQ.4) is optional: MQ is complete with the AI layer disabled if no approved
+> free-tier or sponsored provider is available. No subscription or paid inference may be activated.
+
+### MQ.1 Contracts and deterministic core (`packages/assist`)
+
+- [ ] ADR-011 formally accepted (it remains Proposed until this task); `packages/assist` added to package-boundary tables (imports `contracts` only)
+- [ ] `KbArticle`, `CapabilityManifest`, `RouteId`, `QueAnswer` schemas in `packages/contracts`
+- [ ] Shared permission map moved to `packages/contracts` and used by both API and Que route registry
+- [ ] Route/screen registry with required permissions and default articles per screen
+- [ ] Deterministic search and answer builder (no I/O)
+- [ ] Capability manifest generated from server flags; `GET /api/v1/que/capabilities`
+
+### MQ.2 Knowledge-base delivery and offline
+
+- [ ] Build step compiling Markdown articles to versioned per-audience bundles
+- [ ] `GET /api/v1/que/kb/public` (precached) and authenticated `GET /api/v1/que/kb` (role-filtered)
+- [ ] Service-worker precache for public bundle; per-user cache for restricted bundles
+- [ ] Offline staff-help authorization expiry (`authorizedUntil`), role-digest binding and invalidation triggers per design §11.5.2–§11.5.3
+- [ ] Build check: restricted bundles contain no tenant-sensitive content (design §11.5.1)
+- [ ] Incremental update by bundle/article version
+
+### MQ.3 Que UI (accessible, mobile-first)
+
+- [ ] "Ask Que" trigger in the page shell for every role including visitors
+- [ ] Panel/sheet with search, "On this screen", article view, permitted links only
+- [ ] Offline / built-in help / AI badges with text labels; live-region announcements; focus management
+- [ ] No operation buttons inside Que
+
+### MQ.4 Optional AI explanation layer (disabled by default)
+
+- [ ] `InferenceAdapter` interface; `DisabledInferenceAdapter` (default); `SandboxInferenceAdapter` (tests)
+- [ ] `POST /api/v1/que/ask` with strict validation, rate limits, PII redaction, daily cap, timeout
+- [ ] Output guard (citations, links, capability truthfulness, markup) with deterministic fallback
+- [ ] Facility opt-in setting (admin-only, audited) and AI disclosure in UI
+- [ ] AI endpoint requires a staff session; anonymous visitors get deterministic help only
+- [ ] Provider research recorded against design §11.8 (research only; no account requiring payment details; no selection or integration without a separate explicit decision)
+
+### MQ.5 Knowledge-base content (seed)
+
+- [ ] Articles for live M1–M5 behaviour per design §11.10 (visitor, reception, counter, supervisor, admin, auditor, connectivity)
+- [ ] Coverage check: every essential workflow step has a deterministic article and route (no AI-only answers)
+- [ ] Non-live capabilities (e.g. SMS/USSD before M6) documented only as `sandbox`/`planned`
+- [ ] Content review checklist: accurate, no promised times, no fabricated capabilities, plain language
+
+### MQ.6 Incremental KB maintenance rule (applies to M6, M7 and later)
+
+- [ ] Each later milestone updates affected articles and capability entries in the same PR
+- [ ] Group 13.5 KB consistency test in CI blocks merges when articles and manifest disagree
+
+### MQ exit criteria
+
+- [ ] Group 13 tests pass (role restrictions, tenant isolation, offline fallback, navigation accuracy, KB consistency, accessibility, inference failures, zero-cost guard, privacy, read-only, prompt injection)
+- [ ] Que fully usable offline and with AI disabled; no workflow depends on AI
+- [ ] Offline staff-help expiry and invalidation verified (Group 13.12)
+- [ ] No Que endpoint or UI path can modify tickets, priorities, staff, permissions or facility settings
+- [ ] Every AI answer (if enabled) is disclosed, cited and validated; failures fall back deterministically
+- [ ] Evidence recorded in `docs/testing/MQ-evidence.md`
+
+---
+
 ## M6 — SMS and USSD Channels (F11, F12)
 
 ### M6.1 SMS adapter and outbox
@@ -333,5 +398,7 @@ Deferred to M2 (not implemented here): routing-engine eligibility tests, visitor
 
 - [ ] All ten core feature groups demonstrated in integrated workflows
 - [ ] All test groups 1–12 passing
+- [ ] Group 13 (Ask Que) passing in the final regression, including runs with AI disabled and offline
 - [ ] Public repo, working app, demo video complete
 - [ ] Feature-to-requirement mapping table published
+- [ ] Ask Que acceptance (REQ-F13, MQ exit criteria) re-verified against the final capability manifest

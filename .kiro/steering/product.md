@@ -108,6 +108,23 @@ This is NOT a QR ticket generator, NOT an AI chatbot, and NOT a kiosk system. Th
 - Session expiration, invalid input recovery, short menus, replay defense.
 - Do not invent a USSD code or claim live access without an authorized network relationship.
 
+## F13 — Ask Que Anything (planned; milestone MQ, after M5 and before M6)
+
+Context-aware, role-aware, offline-capable self-service **navigation assistant** — not a
+general-purpose chatbot and not part of core queue operations. Spec: REQ-F13, design §11, ADR-011.
+
+- Deterministic first: versioned knowledge base, screen/route registry, offline search via the PWA.
+- Optional AI explanation layer: disabled by default; approved free-tier or sponsored provider only;
+  never paid; always falls back to deterministic help.
+- Read-only: never changes tickets, priorities, staff, permissions or facility settings.
+- Role- and tenant-scoped: never discloses unauthorized content, data or navigation targets.
+- Truthful: describes only `live` capabilities; labels `preview`/`sandbox`/`planned` honestly.
+- Accessible: keyboard, screen reader, mobile-first; AI answers are labelled and cite sources.
+- Essential navigation and explanations work without AI and without network; no workflow depends on AI.
+- AI inference is not offered to anonymous visitors; they keep public deterministic help.
+- No inference provider is selected; research only during MQ (no payment card, no spending).
+- Do not implement before milestone MQ.
+
 ## Non-goals (do not implement)
 
 - Hospital EMR/EHR, banking core, government identity, or enterprise connectors.
