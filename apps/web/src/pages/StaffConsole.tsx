@@ -52,6 +52,8 @@ export function StaffConsole(): ReactElement {
     retry: QueueCommandRequest | null;
   } | null>(null);
   const [walkIn, setWalkIn] = useState<{ code: string; link: string } | null>(null);
+  /** Operation id of a walk-in whose outcome is unknown (lost response). */
+  const [pendingWalkIn, setPendingWalkIn] = useState<string | null>(null);
   const [transferTarget, setTransferTarget] = useState('');
   const [transferReason, setTransferReason] = useState<string>('needs_other_service');
   const [confirmCancel, setConfirmCancel] = useState<string | null>(null);
@@ -135,7 +137,10 @@ export function StaffConsole(): ReactElement {
   async function issueWalkIn(): Promise<void> {
     setBusy(true);
     setLastError(null);
-    const op = uuidv7();
+    // Reuse the operation id of a walk-in whose response was lost: the server returns the SAME
+    // ticket (with a fresh status link) instead of issuing a second one for the same visitor.
+    const op = pendingWalkIn ?? uuidv7();
+    setPendingWalkIn(op);
     try {
       const res = await api.walkIn(queueId, op);
       const link = new URL(
@@ -143,9 +148,20 @@ export function StaffConsole(): ReactElement {
         window.location.origin,
       ).toString();
       setWalkIn({ code: res.ticket.public_code, link });
+      setPendingWalkIn(null);
       announce(`Walk-in ticket ${res.ticket.public_code} issued.`);
     } catch (e) {
-      const msg = e instanceof ApiRequestError ? e.message : 'Could not issue the ticket.';
+      const err =
+        e instanceof ApiRequestError
+          ? e
+          : new ApiRequestError(0, null, 'Could not issue the ticket.');
+      const uncertain = err.status === 0 || err.status >= 500;
+      // A definite refusal (paused/closed/forbidden) ends this attempt; an uncertain one keeps
+      // the operation id so "Finish issuing" can recover the ticket that may already exist.
+      if (!uncertain) setPendingWalkIn(null);
+      const msg = uncertain
+        ? `${err.message} The ticket may already have been issued — use “Finish issuing walk-in ticket” to get it without creating a second one.`
+        : err.message;
       setLastError({ message: msg, retry: null });
       announce(msg);
     } finally {
@@ -544,10 +560,10 @@ export function StaffConsole(): ReactElement {
               <button
                 type="button"
                 className="btn btn-primary"
-                disabled={busy || q.state !== 'open'}
+                disabled={busy || (q.state !== 'open' && !pendingWalkIn)}
                 onClick={() => void issueWalkIn()}
               >
-                Issue walk-in ticket
+                {pendingWalkIn && !busy ? 'Finish issuing walk-in ticket' : 'Issue walk-in ticket'}
               </button>
               {walkIn && walkInQr ? (
                 <div className="alert alert-success qr-panel" data-testid="walkin-result">

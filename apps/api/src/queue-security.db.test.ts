@@ -497,6 +497,43 @@ describe('SSE live updates carry change signals only', () => {
     expect(changes(await reading)).toHaveLength(1);
   });
 
+  it('streams keep CORS and security headers for cross-origin web deployments', async () => {
+    const s = await setupQueue(live.app, { counters: 1 });
+    const j = await visitorJoin(live.app, s.queueId);
+    const code = j.body.ticket!.public_code;
+    const urls: [string, Record<string, string>][] = [
+      [`${base}/api/v1/public/facilities/${s.org.slug}/${s.facilitySlug}/stream`, {}],
+      [
+        `${base}/api/v1/tickets/${code}/stream`,
+        { 'x-qb-ticket-token': j.body.ticket!.status_token },
+      ],
+      [`${base}/api/v1/queues/${s.queueId}/stream`, { cookie: s.org.admin.cookie ?? '' }],
+    ];
+    for (const [url, headers] of urls) {
+      const ctrl = new AbortController();
+      const res = await fetch(url, {
+        headers: { ...headers, origin: TEST_ORIGIN },
+        signal: ctrl.signal,
+      });
+      expect(res.status, url).toBe(200);
+      expect(res.headers.get('access-control-allow-origin'), url).toBe(TEST_ORIGIN);
+      expect(res.headers.get('access-control-allow-credentials'), url).toBe('true');
+      expect(res.headers.get('x-frame-options'), url).toBe('DENY');
+      expect(res.headers.get('referrer-policy'), url).toBe('no-referrer');
+      expect(res.headers.get('content-type'), url).toContain('text/event-stream');
+      expect(res.headers.get('cache-control'), url).toBe('no-store');
+      ctrl.abort();
+    }
+    // A foreign origin is still not granted access
+    const ctrl = new AbortController();
+    const foreign = await fetch(urls[0]![0], {
+      headers: { origin: 'https://evil.example' },
+      signal: ctrl.signal,
+    });
+    expect(foreign.headers.get('access-control-allow-origin')).toBeNull();
+    ctrl.abort();
+  });
+
   it('staff stream requires a session with a role at the facility', async () => {
     const s = await setupQueue(live.app, { counters: 1 });
     expect((await fetch(`${base}/api/v1/queues/${s.queueId}/stream`)).status).toBe(401);

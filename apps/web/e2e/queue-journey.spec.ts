@@ -48,7 +48,7 @@ test.describe('M2 exit journey: online join → call → serve → complete (web
     await visitor.page.goto(s.joinPath);
     await expect(visitor.page.getByRole('heading', { level: 1 })).toHaveText('Queue Clinic');
     await visitor.page.getByRole('button', { name: /Get a ticket/ }).click();
-    await expect(visitor.page).toHaveURL(/\/ticket\/G001$/);
+    await expect(visitor.page).toHaveURL(/\/ticket\/G001\?k=[^&#]+$/);
     await expect(visitor.page.getByTestId('ticket-code')).toHaveText('G001');
     await expect(visitor.page.getByTestId('ticket-state')).toHaveText('Waiting');
     await expect(visitor.page.getByTestId('status-message')).toHaveText(
@@ -145,7 +145,7 @@ test.describe('visitor resilience and privacy', () => {
     await visitor.page.getByRole('button', { name: /Get a ticket/ }).click();
     await expect(visitor.page.getByTestId('join-error')).toContainText('Retrying is safe');
     await visitor.page.getByRole('button', { name: /Finish getting your ticket/ }).click();
-    await expect(visitor.page).toHaveURL(/\/ticket\/G001$/);
+    await expect(visitor.page).toHaveURL(/\/ticket\/G001\?k=[^&#]+$/);
     await expect(visitor.page.getByTestId('ticket-code')).toHaveText('G001');
 
     const staffView = await page.request.get(`/api/v1/queues/${s.queueId}`);
@@ -176,7 +176,7 @@ test.describe('visitor resilience and privacy', () => {
     await expect(tab.getByTestId('join-error')).toContainText('for another person');
     await tab.getByLabel(/for someone else/).check();
     await tab.getByRole('button', { name: /Get a ticket/ }).click();
-    await expect(tab).toHaveURL(/\/ticket\/G002$/);
+    await expect(tab).toHaveURL(/\/ticket\/G002\?k=[^&#]+$/);
     await expect(tab.getByTestId('ticket-position')).toContainText('2 in line');
 
     await tab.getByRole('button', { name: 'Forget this ticket on this device' }).click();
@@ -331,6 +331,118 @@ test.describe('@responsive M2 screens: accessibility and layout at 320/375/deskt
       .getByRole('button', { name: 'Forget this ticket on this device' })
       .boundingBox();
     expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+    await visitor.ctx.close();
+  });
+});
+
+test.describe('PR #4 review regressions', () => {
+  async function ticketCount(page: Page, queueId: string | null): Promise<number> {
+    const res = await page.request.get(`/api/v1/queues/${queueId}`);
+    return ((await res.json()) as { queue: { tickets: unknown[] } }).queue.tickets.length;
+  }
+
+  test('the same public code at two facilities keeps both tickets on the device', async ({
+    page,
+    browser,
+  }) => {
+    const a = await apiQueueSetup(page.request, { serviceName: 'General Consultation' });
+    const b = await apiQueueSetup(page.request, { serviceName: 'General Surgery' });
+    const visitor = await freshContext(browser);
+    for (const s of [a, b]) {
+      await visitor.page.goto(s.joinPath);
+      await visitor.page.getByRole('button', { name: /Get a ticket/ }).click();
+      await expect(visitor.page.getByTestId('ticket-code')).toHaveText('G001');
+    }
+
+    await visitor.page.goto('/');
+    const mine = visitor.page.getByTestId('my-tickets').getByRole('link');
+    await expect(mine).toHaveCount(2);
+    for (const service of ['General Consultation', 'General Surgery']) {
+      await visitor.page.goto('/');
+      await visitor.page.getByRole('link', { name: new RegExp(`G001 — ${service}`) }).click();
+      await expect(visitor.page.getByTestId('ticket-code')).toHaveText('G001');
+      await expect(visitor.page.getByText(new RegExp(`${service} · Queue Clinic`))).toBeVisible();
+      await visitor.page.reload();
+      await expect(visitor.page.getByText(new RegExp(`${service} · Queue Clinic`))).toBeVisible();
+    }
+
+    // A bare code link is ambiguous on this device: the visitor chooses instead of guessing
+    await visitor.page.goto('/ticket/G001');
+    await expect(visitor.page.getByTestId('ticket-choices').getByRole('link')).toHaveCount(2);
+
+    // Forgetting one ticket keeps the other
+    await visitor.page.getByRole('link', { name: /General Surgery/ }).click();
+    await visitor.page.getByRole('button', { name: 'Forget this ticket on this device' }).click();
+    await expect(mine).toHaveCount(1);
+    await expect(mine).toContainText('General Consultation');
+    await visitor.ctx.close();
+  });
+
+  test('a walk-in whose response is lost is finished with the same operation, not reissued', async ({
+    page,
+    browser,
+  }) => {
+    const s = await apiQueueSetup(page.request);
+    let first = true;
+    await page.route('**/api/v1/queues/*/walk-ins', async (route) => {
+      if (first) {
+        first = false;
+        await route.fetch(); // the server COMMITS the walk-in…
+        await route.abort('connectionreset'); // …but the response never reaches the desk
+        return;
+      }
+      await route.continue();
+    });
+    await page.goto(`/staff/queues/${s.queueId}`);
+    await page.getByRole('button', { name: 'Issue walk-in ticket' }).click();
+    await expect(page.getByRole('alert').first()).toContainText('may already have been issued');
+    await page.getByRole('button', { name: 'Finish issuing walk-in ticket' }).click();
+    await expect(page.getByTestId('walkin-code')).toHaveText('G001');
+    await expect(page.getByRole('button', { name: 'Issue walk-in ticket' })).toBeVisible();
+    expect(await ticketCount(page, s.queueId)).toBe(1);
+
+    // The recovered status link (rotated token) works for the visitor
+    await page.getByText('Show status link').click();
+    const link = await page.getByTestId('walkin-link').innerText();
+    const visitor = await freshContext(browser);
+    await visitor.page.goto(link);
+    await expect(visitor.page.getByTestId('ticket-code')).toHaveText('G001');
+
+    // The next walk-in is a new visitor: a new operation, a new ticket
+    await page.getByRole('button', { name: 'Issue walk-in ticket' }).click();
+    await expect(page.getByTestId('walkin-code')).toHaveText('G002');
+    expect(await ticketCount(page, s.queueId)).toBe(2);
+    await visitor.ctx.close();
+  });
+
+  test('with browser storage unavailable, retrying a lost join still cannot duplicate', async ({
+    page,
+    browser,
+  }) => {
+    const s = await apiQueueSetup(page.request);
+    const visitor = await freshContext(browser);
+    await visitor.ctx.addInitScript(() => {
+      Storage.prototype.setItem = () => {
+        throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+      };
+    });
+    let first = true;
+    await visitor.page.route('**/api/v1/queues/*/join', async (route) => {
+      if (first) {
+        first = false;
+        await route.fetch();
+        await route.abort('connectionreset');
+        return;
+      }
+      await route.continue();
+    });
+    await visitor.page.goto(s.joinPath);
+    await visitor.page.getByRole('button', { name: /Get a ticket/ }).click();
+    await expect(visitor.page.getByTestId('join-error')).toContainText('keep this page open');
+    await visitor.page.getByRole('button', { name: /Finish getting your ticket/ }).click();
+    await expect(visitor.page.getByTestId('ticket-code')).toHaveText('G001');
+    await expect(visitor.page.getByTestId('storage-warning')).toBeVisible();
+    expect(await ticketCount(page, s.queueId)).toBe(1);
     await visitor.ctx.close();
   });
 });

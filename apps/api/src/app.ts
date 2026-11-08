@@ -1,4 +1,9 @@
-import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
+import Fastify, {
+  type FastifyError,
+  type FastifyInstance,
+  type FastifyReply,
+  type FastifyRequest,
+} from 'fastify';
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
@@ -89,7 +94,7 @@ export async function buildApp(
   // Security headers
   // ---------------------------------------------------------------------------
 
-  app.addHook('onSend', async (req, reply) => {
+  const applySecurityHeaders = (req: FastifyRequest, reply: FastifyReply): void => {
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('X-Frame-Options', 'DENY');
     reply.header('Referrer-Policy', 'no-referrer');
@@ -99,7 +104,11 @@ export async function buildApp(
     if (env.NODE_ENV === 'production') {
       reply.header('Strict-Transport-Security', 'max-age=63072000; includeSubDomains');
     }
-  });
+  };
+  // Set early so hijacked responses (SSE streams copy reply.getHeaders()) carry them too, and
+  // again on send so nothing set later in the lifecycle can drop them.
+  app.addHook('onRequest', async (req, reply) => applySecurityHeaders(req, reply));
+  app.addHook('onSend', async (req, reply) => applySecurityHeaders(req, reply));
 
   // ---------------------------------------------------------------------------
   // CSRF mitigation for cookie-authenticated requests.

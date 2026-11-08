@@ -1,23 +1,59 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, apiUrl, TICKET_TOKEN_HEADER } from '../lib/api.js';
 import { CONFIDENCE_LABEL, formatEstimate, formatTime, STATE_LABEL } from '../lib/format.js';
 import { useLiveUpdates } from '../lib/live.js';
-import { findTicket, forgetTicket, saveTicket, takeTokenFromHash } from '../lib/tickets.js';
+import {
+  findTicketById,
+  findTicketByToken,
+  forgetTicket,
+  saveTicket,
+  takeTokenFromHash,
+  ticketPath,
+  ticketsWithCode,
+  type StoredTicket,
+} from '../lib/tickets.js';
 import { useLoad } from '../lib/useLoad.js';
 import { Loading } from '../components/Form.js';
 
-/** Live, token-protected ticket status for the visitor (F3 transparency, F6 estimates). */
+/**
+ * Which saved ticket this URL refers to. Public codes repeat across queues, so the device-local
+ * id (`?k=`) decides; a bare `/ticket/:code` is only unambiguous if one saved ticket has the code.
+ */
+function resolveSaved(code: string, localId: string | null): StoredTicket | 'ambiguous' | null {
+  if (localId) return findTicketById(localId) ?? null;
+  const matches = ticketsWithCode(code);
+  if (matches.length > 1) return 'ambiguous';
+  return matches[0] ?? null;
+}
+
+/**
+ * Live, token-protected ticket status for the visitor (F3 transparency, F6 estimates).
+ * Keyed by code + local id: moving between two saved tickets (e.g. from the chooser, or two
+ * tickets sharing a code) must re-resolve the token instead of reusing the previous ticket's state.
+ */
 export function TicketPage(): ReactElement {
   const { code = '' } = useParams();
+  const [search] = useSearchParams();
+  return <TicketView key={`${code}?${search.get('k') ?? ''}`} />;
+}
+
+function TicketView(): ReactElement {
+  const { code = '' } = useParams();
+  const [search] = useSearchParams();
+  const localId = search.get('k');
   const navigate = useNavigate();
   const location = useLocation();
   const navState = location.state as { token?: string; unsaved?: boolean } | null;
 
-  const [token] = useState<string | null>(() => {
-    const fromHash = takeTokenFromHash();
-    return fromHash ?? navState?.token ?? findTicket(code)?.token ?? null;
+  const [initial] = useState(() => {
+    const explicit = takeTokenFromHash() ?? navState?.token ?? null;
+    if (explicit) return { token: explicit, ambiguous: [] as StoredTicket[] };
+    const saved = resolveSaved(code, localId);
+    if (saved === 'ambiguous') return { token: null, ambiguous: ticketsWithCode(code) };
+    return { token: saved?.token ?? null, ambiguous: [] as StoredTicket[] };
   });
+  const token = initial.token;
   const [storageWarning, setStorageWarning] = useState(Boolean(navState?.unsaved));
 
   const status = useLoad(
@@ -33,26 +69,38 @@ export function TicketPage(): ReactElement {
   );
 
   const s = status.data?.status;
+  const [savedId, setSavedId] = useState<string | null>(localId);
 
-  // Remember tickets opened from a staff walk-in link; follow transfers to the new code
+  // Remember tickets opened from a staff walk-in link (or update the saved entry: a replayed
+  // walk-in rotates the token, a transfer changes the code) and keep the URL on its local id.
   useEffect(() => {
     if (!s || !token) return;
-    if (!findTicket(s.public_code)) {
-      const ok = saveTicket({
+    const existing = (savedId ? findTicketById(savedId) : undefined) ?? findTicketByToken(token);
+    let entry: StoredTicket | null | undefined = existing;
+    if (!existing || existing.code !== s.public_code || existing.token !== token) {
+      entry = saveTicket({
+        id: existing?.id,
         code: s.public_code,
         token,
         facilityName: s.facility_name,
         serviceName: s.service_name,
-        joinPath: findTicket(code)?.joinPath ?? null,
-        savedAt: new Date().toISOString(),
+        joinPath: existing?.joinPath ?? null,
+        savedAt: existing?.savedAt ?? new Date().toISOString(),
       });
-      if (!ok) setStorageWarning(true);
+      if (!entry) setStorageWarning(true);
     }
-    if (s.public_code !== code) {
-      forgetTicket(code);
-      void navigate(`/ticket/${s.public_code}`, { replace: true });
+    if (entry) {
+      if (entry.id !== savedId) setSavedId(entry.id);
+      if (entry.code !== code || entry.id !== localId) {
+        void navigate(ticketPath(entry), { replace: true });
+      }
+    } else if (s.public_code !== code) {
+      void navigate(`/ticket/${encodeURIComponent(s.public_code)}`, {
+        replace: true,
+        state: { token, unsaved: true },
+      });
     }
-  }, [s, token, code, navigate]);
+  }, [s, token, code, localId, savedId, navigate]);
 
   // Assertive announcement when it is the visitor's turn (in addition to the polite status region)
   const lastState = useRef<string | null>(null);
@@ -66,6 +114,23 @@ export function TicketPage(): ReactElement {
     lastState.current = s.state;
   }, [s]);
 
+  if (!token && initial.ambiguous.length > 1) {
+    return (
+      <>
+        <h1>Ticket {code}</h1>
+        <p>This device has more than one ticket {code}. Choose the one you want to see:</p>
+        <ul data-testid="ticket-choices">
+          {initial.ambiguous.map((t) => (
+            <li key={t.id}>
+              <Link to={ticketPath(t)}>
+                {t.code} — {t.serviceName} · {t.facilityName}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </>
+    );
+  }
   if (!token || (status.error && !s)) {
     return (
       <>
@@ -188,7 +253,8 @@ export function TicketPage(): ReactElement {
             type="button"
             className="btn btn-secondary"
             onClick={() => {
-              forgetTicket(s.public_code);
+              const id = savedId ?? findTicketByToken(token)?.id;
+              if (id) forgetTicket(id);
               void navigate('/');
             }}
           >

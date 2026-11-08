@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth.js';
-import { storedTickets } from '../lib/tickets.js';
+import { storedTickets, ticketPath } from '../lib/tickets.js';
 
 export function Home(): ReactElement {
   const { user } = useAuth();
@@ -15,8 +15,8 @@ export function Home(): ReactElement {
           </h2>
           <ul>
             {tickets.map((t) => (
-              <li key={t.code}>
-                <Link to={`/ticket/${t.code}`}>
+              <li key={t.id}>
+                <Link to={ticketPath(t)}>
                   {t.code} — {t.serviceName}, {t.facilityName}
                 </Link>
               </li>

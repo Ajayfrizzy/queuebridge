@@ -48,12 +48,20 @@ export async function openSse(
   perIp.set(ip, (perIp.get(ip) ?? 0) + 1);
   reply.hijack();
   const raw = reply.raw;
+  // Hijacking bypasses Fastify's header serialization: copy what hooks already set on the reply
+  // (CORS Access-Control-* for cross-origin web deployments, Vary, security headers), then the
+  // stream-specific headers, which win.
+  const inherited: Record<string, string | number | string[]> = {};
+  for (const [name, value] of Object.entries(reply.getHeaders())) {
+    if (value !== undefined) inherited[name.toLowerCase()] = value;
+  }
   raw.writeHead(200, {
-    'Content-Type': 'text/event-stream; charset=utf-8',
-    'Cache-Control': 'no-store',
-    Connection: 'keep-alive',
-    'X-Content-Type-Options': 'nosniff',
-    'X-Accel-Buffering': 'no',
+    ...inherited,
+    'content-type': 'text/event-stream; charset=utf-8',
+    'cache-control': 'no-store',
+    connection: 'keep-alive',
+    'x-content-type-options': 'nosniff',
+    'x-accel-buffering': 'no',
   });
   raw.write(
     `retry: 5000\n\nevent: ready\ndata: ${JSON.stringify({ revision: opts.initialRevision })}\n\n`,

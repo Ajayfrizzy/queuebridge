@@ -6,7 +6,15 @@ import { Loading } from '../components/Form.js';
 import { api, apiUrl, ApiRequestError } from '../lib/api.js';
 import { formatEstimate } from '../lib/format.js';
 import { useLiveUpdates } from '../lib/live.js';
-import { beginJoin, finishJoin, pendingJoins, saveTicket, storedTickets } from '../lib/tickets.js';
+import {
+  beginJoin,
+  finishJoin,
+  isPendingVolatile,
+  pendingJoins,
+  saveTicket,
+  storedTickets,
+  ticketPath,
+} from '../lib/tickets.js';
 import { useLoad } from '../lib/useLoad.js';
 
 /** Visitor join: QR / link → choose service → confirmed ticket. No account required (REQ-F2.1). */
@@ -78,9 +86,10 @@ export function JoinPage(): ReactElement {
       });
       finishJoin(q.queue_id);
       announce(`Your ticket is ${res.ticket.public_code}.`);
-      void navigate(`/ticket/${res.ticket.public_code}`, {
-        state: saved ? undefined : { token: res.ticket.status_token, unsaved: true },
-      });
+      void navigate(
+        saved ? ticketPath(saved) : `/ticket/${encodeURIComponent(res.ticket.public_code)}`,
+        { state: saved ? undefined : { token: res.ticket.status_token, unsaved: true } },
+      );
     } catch (e) {
       const err =
         e instanceof ApiRequestError ? e : new ApiRequestError(0, null, 'Unexpected error');
@@ -114,8 +123,8 @@ export function JoinPage(): ReactElement {
           <h2 className="alert-title">Your tickets on this device</h2>
           <ul>
             {mine.map((t) => (
-              <li key={t.code}>
-                <Link to={`/ticket/${t.code}`}>
+              <li key={t.id}>
+                <Link to={ticketPath(t)}>
                   {t.code} — {t.serviceName}
                 </Link>
               </li>
@@ -178,6 +187,13 @@ export function JoinPage(): ReactElement {
                     <p>
                       Your request may still have reached us. Retrying is safe and will not create a
                       second ticket.
+                      {isPendingVolatile(q.queue_id) ? (
+                        <>
+                          {' '}
+                          This browser cannot save data, so keep this page open and retry from here
+                          — reloading or closing it loses that protection.
+                        </>
+                      ) : null}
                     </p>
                   ) : null}
                 </div>
