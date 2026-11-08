@@ -130,3 +130,28 @@ Rules:
 - Visitor consent required before storing phone number or sending notifications.
 - Define data retention and deletion policy before production visitor data is collected.
 - Comply with applicable Nigerian and local privacy obligations before live SMS/USSD activation.
+
+## Ask Que (F13) security (planned; applies from milestone MQ)
+
+- Que is read-only: no endpoint or tool may change tickets, priorities, queue state, staff, roles,
+  permissions or facility settings.
+- Authorize content: role-restricted KB articles are returned only by an authenticated endpoint
+  filtered by session roles; visitors receive the public bundle only. Tenant scoping as for any API.
+- Treat user questions, KB text and model output as untrusted data. The output guard (citations,
+  permitted links, capability truthfulness, safe markup) is authoritative; failure → deterministic help.
+- Never send tenant operational data, phone numbers, emails, ticket codes or recovery secrets to an
+  inference provider; redact likely PII from questions. Do not log question or answer text by default.
+- Sending questions to a third-party provider requires facility-admin opt-in (audited) and visible
+  disclosure in the UI.
+- Inference provider credentials are server-side environment variables only; the AI layer is off
+  unless `QUE_AI_COST_MODE` is `free_tier` or `sponsored`, with a hard daily cap. No paid inference,
+  no subscriptions, no automatic overage.
+- Rate-limit `POST /api/v1/que/ask` per user and per IP.
+- AI inference is unavailable to `visitor_anonymous`; the AI endpoint requires a staff session.
+- Offline staff help caches only generic role-level procedures, never tenant-sensitive content.
+  Cached bundles are bound to user ID and role digest, expire by elapsed time (with clock-rollback
+  detection) no later than the session, and are purged on confirmed sign-out, 401, role change,
+  user switch or expiry (design §11.5). Offline expiry is a best-effort display bound, not a
+  confidentiality control — which is why tenant-sensitive content is never cached.
+- No inference provider may be selected or integrated without a separate explicit decision; no
+  payment card, personal spending or automatic paid overage.

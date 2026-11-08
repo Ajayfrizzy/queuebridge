@@ -405,3 +405,268 @@ GitHub Actions workflows:
 CI matrix: Node 24, PostgreSQL 16.
 
 No deployment workflow at M0 — deployment decisions are deferred per architecture §15.
+
+---
+
+## 11. Ask Que Anything (F13) — design (planned, milestone MQ)
+
+> Added 2026-11-07. Specification only — nothing in this section is implemented yet. Governing
+> decision: ADR-011. Requirements: REQ-F13. This section is additive and does not modify §1–§10.
+
+### 11.1 Principles
+
+1. **Deterministic first, AI optional.** All behaviour works with the AI layer disabled.
+2. **Read-only.** No mutation endpoints, no tool calls, no writes to tenant tables.
+3. **Authorize content, not just screens.** Restricted articles are filtered server-side.
+4. **Truthful.** Content is gated by a capability manifest; non-live features are labelled.
+5. **Offline and low-bandwidth.** Text-only articles, small bundles, cached in the PWA.
+
+### 11.2 Knowledge base model (`packages/assist`)
+
+Source articles live as Markdown with front-matter in `packages/assist/knowledge/<audience>/`,
+compiled at build time into versioned JSON bundles per audience.
+
+```typescript
+interface KbArticle {
+  id: string; // stable, e.g. 'visitor.join.qr'
+  title: string;
+  audiences: Audience[]; // 'visitor' | 'reception' | 'counter' | 'supervisor' | 'facility_admin' | 'org_admin' | 'auditor'
+  topics: KbTopic[]; // 'registration' | 'ticket_status' | 'recovery' | 'staff_operations' | 'facility_configuration' | 'connectivity'
+  requiresCapabilities: CapabilityId[]; // every listed capability must be at least 'preview' to show
+  relatedRoutes: RouteId[];
+  availableSince: MilestoneId; // 'M1' | 'M2' | ... | 'MQ'
+  version: number; // per-article, increments on content change
+  lastReviewed: string; // ISO date
+  keywords: string[]; // search synonyms
+  body: SafeMarkdown; // restricted subset: headings, lists, emphasis, links to RouteIds only
+}
+
+type CapabilityStatus = 'live' | 'preview' | 'sandbox' | 'planned';
+interface CapabilityManifest {
+  version: number;
+  capabilities: Record<
+    CapabilityId,
+    { status: CapabilityStatus; since?: MilestoneId; note?: string }
+  >;
+}
+```
+
+- Audience → role mapping: `visitor` = `visitor_anonymous`; `reception` = `staff_reception`;
+  `counter` = `staff_counter`; others map 1:1. `org_admin` inherits facility-admin articles.
+- The capability manifest is generated from authoritative server flags (e.g. M1's
+  `VISITOR_JOIN_OPERATIONAL`, channel `mode: sandbox|live`) and served at
+  `GET /api/v1/que/capabilities` (public subset) so content cannot drift from reality.
+- Articles whose capabilities are `planned` are never shown as instructions; Que instead states
+  "not available yet" using the manifest note.
+
+### 11.3 Route / screen registry
+
+`packages/assist/routes.ts` maps each `RouteId` → path pattern, required permission (from the same
+`Permission` map as `apps/api/src/auth/rbac.ts`, to be moved to `packages/contracts` when MQ
+starts), and default articles for that screen.
+
+- Navigation suggestions are filtered by the user's roles at the current facility.
+- Contract test: every registered route exists in `apps/web` router; every permission name exists
+  in the API permission map; every article's `relatedRoutes` are registered.
+
+### 11.4 Deterministic answering and search
+
+Deterministic help is the complete product: every essential navigation step and explanation must
+be answerable from KB articles and the route registry with AI disabled and no network access. The
+AI layer may only rephrase what deterministic help already provides; it never adds steps that are
+unavailable otherwise, and no QueueBridge workflow requires it.
+
+- In-browser tokenized keyword index (title, keywords, headings) with simple TF-IDF-style ranking;
+  no external search service, no network.
+- Inputs: query text + context (`RouteId`, audience set, capability manifest).
+- Output: `QueAnswer` with `mode: 'deterministic'`, ranked articles, context-relevant next steps
+  and permitted links. Empty results return the screen's default articles plus "ask staff".
+
+```typescript
+interface QueAnswer {
+  mode: 'deterministic' | 'ai';
+  text: string; // plain text or SafeMarkdown
+  citations: string[]; // KbArticle ids, all authorized for the user
+  links: RouteId[]; // all permitted for the user
+  fallbackReason?:
+    | 'ai_disabled'
+    | 'offline'
+    | 'timeout'
+    | 'quota'
+    | 'provider_error'
+    | 'validation_failed';
+  kbVersion: number;
+}
+```
+
+### 11.5 Offline delivery
+
+- Public (`visitor`) bundle + capability manifest snapshot: precached by the service worker
+  (`vite-plugin-pwa`), stale-while-revalidate on `GET /api/v1/que/kb/public`.
+- Restricted bundles: `GET /api/v1/que/kb` (authenticated) returns only articles for the session's
+  audiences; stored in a per-user IndexedDB store keyed by user ID.
+- No phone numbers, ticket recovery secrets or other PII are ever stored in KB caches.
+
+#### 11.5.1 What may be cached for offline staff help
+
+- **Allowed:** generic, role-level procedural articles from `packages/assist/knowledge/` (identical
+  for every organization), the public capability manifest, and the route registry.
+- **Never cached:** anything tenant-sensitive — organization, facility, service or counter names or
+  configuration; staff names or emails; invitation data; visitors; tickets; ticket codes; recovery
+  secrets; queue state; audit data; internal IDs; or any API response other than the KB bundle and
+  manifest. Facility-specific explanations are shown online only, from endpoints the user can
+  already read, and are never written to the Que cache.
+- A KB build check rejects articles containing tenant placeholders or data-like patterns (emails,
+  phone numbers, UUIDs).
+
+#### 11.5.2 Offline authorization expiry
+
+```typescript
+interface CachedRestrictedBundle {
+  userId: string;
+  roleDigest: string; // SHA-256 of sorted role grants (role + facility_id) at issue time
+  audiences: Audience[];
+  kbVersion: number;
+  issuedAt: string; // server time (diagnostic; never compared with the device clock)
+  authorizedUntil: string; // server-set: min(session expires_at, issuedAt + QUE_OFFLINE_HELP_TTL)
+  validForMs: number; // server-computed: authorizedUntil - issuedAt (a duration, not a timestamp)
+  articles: KbArticle[];
+}
+
+interface OfflineHelpClock {
+  receivedAtLocalMs: number; // device Date.now() when the bundle was received
+  highWaterLocalMs: number; // largest Date.now() ever observed for this bundle (persisted)
+}
+```
+
+Expiry is evaluated as **elapsed time since receipt**, never by comparing the device clock with a
+server timestamp, so a device clock that is simply wrong (ahead or behind) has no effect:
+
+- The server sends `validForMs` (default TTL equals the session lifetime, 12 h; never longer). The
+  client stores `receivedAtLocalMs` and `highWaterLocalMs` with the bundle.
+- Before every display: `elapsed = Date.now() - receivedAtLocalMs`. Restricted articles are shown
+  only if `0 <= elapsed < validForMs - SAFETY_MARGIN_MS` (margin covers network latency and
+  rounding; default 5 min).
+- **Clock rollback:** if `Date.now() < highWaterLocalMs - ROLLBACK_TOLERANCE_MS` (default 2 min), the
+  device clock has moved backwards. The bundle is marked _unverifiable_: restricted articles are
+  hidden until a fresh authorized fetch succeeds. Otherwise `highWaterLocalMs` is advanced and
+  persisted.
+- **Within one page session:** the client also tracks `performance.now()` (monotonic, unaffected by
+  wall-clock changes) from load; if wall-clock elapsed and monotonic elapsed disagree by more than
+  the tolerance, the bundle is treated as unverifiable.
+- **Restart / reload while offline:** the persisted `receivedAtLocalMs` and `highWaterLocalMs`
+  continue to apply; monotonic tracking restarts. A restart combined with a clock moved backwards
+  _before_ the restart is still caught by the high-water mark.
+- **Missing or corrupt clock metadata:** treated as expired.
+
+**Qualified guarantee (honest limit).** These checks enforce expiry against wrong, drifting or
+accidentally reset clocks. They cannot defeat a person who fully controls the device (for example,
+freezing or carefully manipulating the clock, or reading IndexedDB directly) — cached data on a
+device is ultimately readable by that device's owner. The offline expiry is therefore a
+best-effort bound on **display**, not a confidentiality control. Confidentiality comes from
+§11.5.1: restricted bundles contain only generic, non-tenant-sensitive procedures, so extended
+access reveals nothing an unauthorized person could not learn from public documentation of the
+product. Server-side authorization (every online request) remains authoritative, and revocation
+always takes effect at the first online contact.
+
+#### 11.5.3 Role-change handling and cache invalidation
+
+| Trigger                                                              | Action                                                                                                    |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Confirmed sign-out                                                   | Delete all restricted Que caches for the user                                                             |
+| Sign-out failed (server not confirmed)                               | Keep cache; the user is still signed in (M1 behaviour)                                                    |
+| Any 401 on an authenticated request                                  | Delete restricted caches; show public help                                                                |
+| `/auth/me` or Que response with a different `userId` or `roleDigest` | Delete, then refetch for current roles                                                                    |
+| A different user signs in on the device                              | Delete every other user's restricted cache                                                                |
+| `authorizedUntil` passed                                             | Hide restricted articles; delete at next online check                                                     |
+| KB bundle version changed                                            | Replace bundle atomically                                                                                 |
+| Role revoked or account deactivated while device offline             | Takes effect at first online contact (401 or digest mismatch) or at `authorizedUntil`, whichever is first |
+
+Server-side authorization remains authoritative: the restricted endpoint re-evaluates roles on
+every request, like the rest of the API.
+
+- Bundle `version` lets clients refresh incrementally; unchanged articles are not re-downloaded.
+
+### 11.6 Authorization and tenant isolation
+
+- `GET /api/v1/que/kb` and `POST /api/v1/que/ask` run the standard pipeline: authenticate →
+  authorize (role/audience) → validate (Zod, strict) → respond. Visitors use only public endpoints.
+- Que holds no tenant data of its own. Facility-specific context (e.g. "this service is single
+  queue FIFO") is read in the browser from endpoints the user already has access to, never sent to
+  an inference provider, and never fetched for another tenant.
+- Cross-tenant and cross-facility probes against Que endpoints must return the same 404 / filtered
+  results as the rest of the API.
+
+### 11.7 Optional AI explanation layer (`apps/api`)
+
+```typescript
+interface InferenceAdapter {
+  readonly id: string; // 'disabled' | 'sandbox' | provider id
+  readonly costMode: 'free_tier' | 'sponsored' | 'none';
+  explain(params: {
+    question: string; // already redacted
+    articles: { id: string; title: string; body: string }[]; // authorized subset only
+    capabilitySummary: string; // live/preview/sandbox/planned list
+    locale: 'en';
+  }): Promise<{ text: string; citations: string[] }>;
+}
+```
+
+- Default adapter: `DisabledInferenceAdapter`. Test double: `SandboxInferenceAdapter`
+  (deterministic, scripted, labelled `[SANDBOX]`, never networked).
+- Anonymous visitors never reach the AI layer: `POST /api/v1/que/ask` requires an authenticated
+  staff session; the visitor UI shows deterministic help only and no AI affordance.
+- Request flow for `POST /api/v1/que/ask`:
+  1. Authenticate (staff session required); resolve audiences; check facility opt-in and
+     `QUE_AI_ENABLED`.
+  2. Validate input (length ≤ 500 chars, strict schema); per-user and per-IP rate limit.
+  3. Redact PII patterns; run deterministic retrieval to select ≤ N authorized articles.
+  4. Check daily cap; call adapter with timeout (e.g. 8 s).
+  5. **Output guard:** citations ⊆ supplied articles; links ⊆ permitted routes; length limit;
+     strip unsafe markup; reject mentions of non-live capabilities as available, instructions to
+     perform actions Que cannot verify, or text that does not cite any article.
+  6. Return `mode: 'ai'` on success, otherwise the deterministic answer with `fallbackReason`.
+- Prompt-injection posture: user text and KB text are passed as delimited data, never as
+  instructions; the system prompt contains no secrets or tenant data; there are no tools to abuse;
+  the output guard is the final authority. Success is measured by tests, not by prompt wording.
+- Logging: no question or answer text by default; log `trace_id`, mode, fallback reason, latency,
+  adapter id. Aggregate counters only.
+
+### 11.8 Provider research (no provider selected)
+
+No inference provider is selected or integrated. During MQ, candidates are **researched only**;
+selecting or integrating one requires a separate, explicit project decision. Eligibility (all
+required): no personal spending; no payment card or billing details required; no automatic paid
+overage (hard stop at the free/sponsored allowance). Also record: quota and rate limits,
+data-retention and training-use terms, region, terms permitting this use, latency from target
+regions, and an exit path. Research must not involve creating accounts that require payment
+details. If none qualifies, the AI layer stays disabled and MQ is still complete.
+
+### 11.9 UI (`apps/web` + `packages/ui`)
+
+- Entry: a persistent, labelled "Ask Que" button in the page shell (all roles, including visitors),
+  opening a non-modal panel on desktop and a full-height sheet on mobile; Escape closes and returns
+  focus to the trigger.
+- Panel: search field (labelled), context section "On this screen", results list, article view
+  with numbered steps and permitted links, connectivity/source badge ("Built-in help — offline",
+  "AI explanation"), and a live region announcing result counts and fallbacks.
+- AI answers show an "AI-generated" label (text, not colour only), the cited articles, and
+  "Check with staff before acting on queue decisions."
+- No answer UI ever contains buttons that perform operations.
+
+### 11.10 Knowledge-base content inventory and incremental updates
+
+| Milestone | KB content added or updated (when that milestone's capability becomes live)                                                                                                 |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| M1 (done) | Org signup, sign-in, facility creation, services and ordering policy, counters and assignments, readiness, staff invitations, roles, deactivation, join link "not live yet" |
+| M2        | Joining via QR/link, staff-assisted walk-in, ticket status, wait estimates, public board, counter call/serve/complete                                                       |
+| M3        | Sync states (`local_only` … `rejected`), coordinator role, outage procedures, conflict review                                                                               |
+| M4        | Priority overrides and reasons, transfers/routing, audit view                                                                                                               |
+| M5        | Ticket recovery, missed-turn/grace rules, accessibility options, device health                                                                                              |
+| M6        | SMS consent/opt-out, USSD menus — labelled `sandbox` until live                                                                                                             |
+| M7        | Final review of every article against the capability manifest                                                                                                               |
+
+Because the KB package is built in MQ, articles for M1–M5 are authored in MQ.5 against the
+behaviour that is live at that point. From MQ onward, every milestone that changes user-visible
+behaviour (M6, M7 and later) also updates the affected articles and capability entries in the same
+change; the KB consistency test (Group 13.5) enforces it.

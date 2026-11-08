@@ -122,6 +122,22 @@ real state machine transitions, real SQL against a real (test) database, real re
 - Journey E: counter unavailable, routing reassigns waiting tickets, transfer chain preserved.
 - Journey F (sandbox): SMS confirmation sent, delivery receipt processed, USSD menu navigated.
 
+### Group 13 — Ask Que (F13; planned, required from milestone MQ)
+
+- 13.1 Role restrictions: each role (visitor, reception, counter, supervisor, facility_admin, org_admin, auditor) receives only its permitted articles and links; restricted bundle endpoint rejects or filters other audiences; anonymous visitors are refused by the AI endpoint and see no AI affordance.
+- 13.2 Tenant isolation: Que endpoints return no data from another organization or facility; cross-tenant probes match the rest of the API (404 / filtered).
+- 13.3 Offline fallback: with the network disabled (browser test), built-in help is searchable and navigable; restricted caches are purged on sign-out and role change.
+- 13.4 Navigation accuracy: every registered route exists in the web router; every link Que offers opens a screen the role can access; each screen's default articles are relevant (fixture assertions).
+- 13.5 KB consistency: every article's capabilities exist in the manifest; no article presents a non-live capability as available; article metadata (IDs unique, versions, routes) validates.
+- 13.6 Accessibility: axe WCAG 2.1 A/AA on the Que panel at 320/375/desktop, keyboard-only open/search/read/close, focus return, live-region announcements, AI label as text.
+- 13.7 Inference failures: disabled, timeout, 429/quota, 5xx, malformed output, empty citations → deterministic answer with the correct `fallbackReason`, within the timeout budget.
+- 13.8 Zero-cost guard: AI layer cannot start unless cost mode is `free_tier` or `sponsored`; daily cap enforced; no paid configuration path exists.
+- 13.9 Privacy: the sandbox inference adapter asserts outbound payloads contain no phone numbers, emails, ticket codes, recovery secrets or tenant operational data; logs contain no question text.
+- 13.10 Read-only: Que endpoints perform no writes to tenant tables (DB assertion) and the UI contains no operation controls.
+- 13.11 Prompt-injection resistance: adversarial corpus (ignore-instructions, role escalation, other-tenant data requests, system-prompt extraction, malicious links, requests to perform actions) never yields restricted content, unauthorized links, secrets or claimed actions.
+- 13.12 Offline authorization: restricted bundles carry `validForMs` ≤ remaining session lifetime; expiry uses elapsed time since receipt, so device clocks set ahead or behind server time neither shorten nor extend it; a clock moved backwards (live, or before a reload/restart) and missing clock metadata hide restricted help; wall-clock vs monotonic disagreement is detected within a page session; role-digest mismatch, 401, confirmed sign-out and user switch purge the cache, failed sign-out does not; cached bundles contain no tenant-sensitive data (build check plus fixture assertion).
+- 13.13 AI independence: every essential navigation path and explanation is reachable with AI disabled and the network offline; the full Group 13 suite also runs with AI disabled.
+
 ## Core invariants every test suite must enforce
 
 1. No two final authoritative events share a `(queue_session_id, sequence)`.

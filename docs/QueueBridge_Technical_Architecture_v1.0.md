@@ -324,3 +324,57 @@ Before implementing offline advancement, a reviewer must be able to answer:
 - How will a real reconnect demo prove the above behavior?
 
 **Until these are answered in both code and tests, QueueBridge must not describe its offline behavior as conflict-free or globally final.**
+
+---
+
+## Addendum A — Ask Que Anything (F13) architecture notes (planned; added 2026-11-07)
+
+> Additive to §1–§16; none of the existing decisions, gates or milestone rows change.
+> Decision record: ADR-011. Detailed design: `.kiro/specs/queuebridge/design.md` §11.
+
+### A.1 Placement and trust boundaries
+
+```text
+apps/web ──(Ask Que panel, offline search, route registry)──> packages/assist (pure, no I/O)
+   │  public KB bundle (service-worker precache)
+   │  restricted KB bundle (per-user cache)  <── GET /api/v1/que/kb  (auth + role filter)
+   └─ POST /api/v1/que/ask ──> apps/api ──> InferenceAdapter (disabled | sandbox | approved provider)
+                                     └─ output guard ──> deterministic fallback
+```
+
+- `packages/assist` imports `contracts` only (same rules as `domain`).
+- Inference runs server-side only; credentials stay in `apps/api` environment variables.
+- Que has no write path to tenant tables; it is outside the authoritative sequence (ADR-004).
+
+### A.2 Content and truthfulness
+
+- Versioned Markdown knowledge base compiled to per-audience JSON bundles.
+- Capability manifest (`live | preview | sandbox | planned`) generated from server flags gates what
+  Que may describe as available.
+
+### A.3 Authorization
+
+- Navigation and content are filtered by the same permission map the API enforces.
+- Restricted articles are filtered server-side; caches are per user and purged on sign-out or role
+  change. Visitors receive the public bundle only.
+
+### A.4 Offline
+
+- Deterministic search and navigation run entirely in the browser from cached bundles.
+
+### A.5 AI layer and fallback ladder
+
+`ai_disabled → offline → quota/cap → timeout → provider_error → validation_failed` each resolve to
+deterministic help with a visible reason. Questions are redacted of likely PII; only authorized
+KB excerpts are sent; no tools are exposed; output is validated before display.
+
+### A.6 Accessibility
+
+Shell-level trigger, focus-managed panel/sheet, live-region announcements, text labels for
+offline/AI states, WCAG 2.1 A/AA at 320/375/desktop.
+
+### A.7 Milestone row (additive to §13)
+
+| Milestone                | Scope                                                                                                | Exit criteria                                                                |
+| ------------------------ | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| MQ (after M5, before M6) | Ask Que: deterministic KB + navigation, offline delivery, accessible UI, optional zero-cost AI layer | Group 13 tests pass; usable offline and with AI disabled; read-only verified |

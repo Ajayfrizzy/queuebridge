@@ -287,3 +287,72 @@ QueueBridge is ready for hackathon submission when all ten core features are pre
 - Validated translations and specific second language.
 - SMS and USSD providers, actual tariffs, registration/approval timelines, and available credits.
 - Final repository name, brand assets, and public demo dataset.
+
+---
+
+## Addendum A — F13 Ask Que Anything (planned; added 2026-11-07)
+
+> This addendum adds a planned feature. It does **not** modify §1–§16: the ten core feature groups,
+> F11/F12, the non-goals, the definition of done and all earlier decisions stand as written.
+> Specification: `.kiro/specs/queuebridge/requirements.md` (REQ-F13), `design.md` §11, ADR-011.
+
+### A.1 Statement
+
+**Ask Que** is QueueBridge's context-aware, role-aware, offline-capable self-service navigation
+assistant. It helps people find the right screen and the right instructions for what they are
+doing now. It is **not** a general-purpose chatbot and it does not run queue operations.
+
+### A.2 Consistency with existing scope
+
+- §1 / §2 non-goals: Que's primary behaviour is deterministic help that needs no AI. The optional
+  AI explanation layer is non-core, disabled by default, limited to approved free-tier or
+  sponsored inference, and never required by any queue operation. No paid AI model is introduced.
+- §13 decision rule applies to inference exactly as to telecom: no new out-of-pocket expense.
+- F7 accessibility and private-data rules apply to Que in full.
+
+### A.3 Capabilities
+
+1. Guided navigation from the current screen, role and permitted features.
+2. Searchable help for visitor registration, ticket status, recovery, staff operations, facility
+   configuration and connectivity.
+3. Offline knowledge base of essential instructions through the PWA.
+4. Optional AI explanations of natural-language questions (approved free-tier/sponsored provider only).
+5. Strict RBAC and tenant isolation; never discloses unauthorized information.
+6. Read-only: cannot change tickets, priorities, staff permissions or facility settings.
+7. Deterministic fallback whenever AI or connectivity is unavailable.
+8. Accessible, mobile-first UI with keyboard and screen-reader support and clear AI disclosure.
+9. No fabricated capabilities or operational promises (gated by a capability manifest).
+10. Dedicated automated tests (testing steering Group 13).
+
+### A.4 Acceptance
+
+- Visitor, reception, counter, supervisor, administrator and auditor each receive only their
+  permitted help and navigation, verified by automated role-matrix tests.
+- With the network disconnected, built-in help remains searchable and navigable.
+- With AI disabled, failing, slow, out of quota or returning invalid output, Que returns
+  deterministic help and states why.
+- Que cannot change any state; there is no path from Que to a mutation.
+- Que describes a non-live capability only as `preview`, `sandbox` or `planned`.
+- Keyboard-only and screen-reader use pass; AI answers are labelled and cite sources.
+- Prompt-injection corpus cannot make Que leak restricted content, other tenants' data or system
+  configuration, or present unauthorized links.
+
+### A.5 Schedule
+
+Milestone **MQ**, after M5 and before M6 (no renumbering of M0–M7). KB content grows with each
+later milestone.
+
+### A.6 Pending decisions
+
+- Inference provider: none selected. Research during MQ only; eligible only with no personal
+  spending, no payment card and no automatic paid overage. Otherwise the AI layer stays off.
+- Anonymous visitors: AI disabled initially (decided 2026-11-07); public deterministic help remains.
+- Second-language KB content only with validated translations.
+
+### A.7 Decided constraints (2026-11-07)
+
+- All essential Que navigation and explanations work without AI and without network access; AI is
+  never a dependency for completing a QueueBridge workflow.
+- Offline staff help caches only generic procedures, never tenant-sensitive content, and expires
+  with the session; role changes and sign-out invalidate it.
+- Group 13 (Ask Que) is part of the M7 final regression and acceptance checklist.

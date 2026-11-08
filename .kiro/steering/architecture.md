@@ -8,18 +8,19 @@ inclusion: always
 
 ## Architecture decisions (ADR summary)
 
-| ID      | Decision                                                 | Must not deviate without ADR |
-| ------- | -------------------------------------------------------- | ---------------------------- |
-| ADR-001 | Modular TypeScript monorepo (pnpm workspaces)            | Yes                          |
-| ADR-002 | React + TypeScript mobile-first PWA                      | Yes                          |
-| ADR-003 | Fastify API + PostgreSQL                                 | Yes                          |
-| ADR-004 | Server-authoritative final sequence                      | Yes — core invariant         |
-| ADR-005 | IndexedDB outbox + service worker                        | Yes                          |
-| ADR-006 | One designated coordinator per queue during outage       | Yes — core invariant         |
-| ADR-007 | Explicit recovery after partitions (no silent overwrite) | Yes — core invariant         |
-| ADR-008 | Relational outbox for channel dispatch                   | Yes                          |
-| ADR-009 | Provider-neutral SMS and USSD adapters                   | Yes                          |
-| ADR-010 | Audit hash chain with external checkpoint option         | Yes                          |
+| ID      | Decision                                                     | Must not deviate without ADR |
+| ------- | ------------------------------------------------------------ | ---------------------------- |
+| ADR-001 | Modular TypeScript monorepo (pnpm workspaces)                | Yes                          |
+| ADR-002 | React + TypeScript mobile-first PWA                          | Yes                          |
+| ADR-003 | Fastify API + PostgreSQL                                     | Yes                          |
+| ADR-004 | Server-authoritative final sequence                          | Yes — core invariant         |
+| ADR-005 | IndexedDB outbox + service worker                            | Yes                          |
+| ADR-006 | One designated coordinator per queue during outage           | Yes — core invariant         |
+| ADR-007 | Explicit recovery after partitions (no silent overwrite)     | Yes — core invariant         |
+| ADR-008 | Relational outbox for channel dispatch                       | Yes                          |
+| ADR-009 | Provider-neutral SMS and USSD adapters                       | Yes                          |
+| ADR-010 | Audit hash chain with external checkpoint option             | Yes                          |
+| ADR-011 | Ask Que: deterministic-first, read-only assistant (Proposed) | Yes — applies from MQ        |
 
 Full ADRs live in `docs/adr/`.
 
@@ -208,3 +209,16 @@ Before implementing offline queue advancement, code AND tests must answer:
 6. How can staff recognize and resolve a conflicted operation?
 
 **Until these are answered, QueueBridge must not describe offline behavior as conflict-free or globally final.**
+
+## Ask Que (F13) — planned architecture constraints (from MQ; ADR-011 Proposed)
+
+- New package `packages/assist` (planned): KB schema, search, route registry, capability gating,
+  answer guard. Imports `contracts` only; zero I/O. `apps/web` and `apps/api` may import it.
+- Inference only in `apps/api` behind a provider-neutral `InferenceAdapter`
+  (`disabled` default, `sandbox` test double, approved free-tier/sponsored provider). No paid mode.
+- Que has no mutation path and is outside the authoritative sequence; no tool calling.
+- Restricted KB content is filtered server-side by session roles; caches are per user and purged
+  on sign-out or role change.
+- Capability manifest (`live | preview | sandbox | planned`) is generated from server flags and gates
+  every description of platform capability.
+- Every inference failure or validation failure falls back to deterministic help.

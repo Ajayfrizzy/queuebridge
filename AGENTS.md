@@ -20,6 +20,10 @@ It keeps service moving through unreliable connectivity across web, staff-assist
 
 All ten core feature groups (F1–F10) plus SMS (F11) and USSD (F12) are **in scope**. Non-goals are listed in the PRD §2.
 
+**Planned addition:** F13 — Ask Que Anything (read-only, deterministic-first navigation assistant
+with an optional zero-cost AI layer), milestone MQ between M5 and M6. See PRD Addendum A, REQ-F13
+and ADR-011. Do not implement before MQ.
+
 ---
 
 ## 2. Repository structure
@@ -54,16 +58,17 @@ queuebridge/
 
 ### Package boundaries (enforced)
 
-| Package       | May import                                | Must NOT import                                     |
-| ------------- | ----------------------------------------- | --------------------------------------------------- |
-| `contracts`   | nothing internal                          | any app or package                                  |
-| `domain`      | `contracts`                               | `db`, `api`, any Node I/O                           |
-| `continuity`  | `contracts`, `domain`                     | `api`, direct DB calls                              |
-| `channels`    | `contracts`                               | `domain`, `continuity`, direct DB                   |
-| `ui`          | `contracts`, `ui` deps                    | `domain`, `continuity`, `channels`, any server code |
-| `apps/api`    | all packages                              | `ui` (server-only)                                  |
-| `apps/web`    | `contracts`, `domain`, `continuity`, `ui` | `channels` server internals                         |
-| `apps/worker` | `contracts`, `channels`, DB client        | `ui`, `continuity` IndexedDB                        |
+| Package                | May import                                | Must NOT import                                     |
+| ---------------------- | ----------------------------------------- | --------------------------------------------------- |
+| `contracts`            | nothing internal                          | any app or package                                  |
+| `domain`               | `contracts`                               | `db`, `api`, any Node I/O                           |
+| `continuity`           | `contracts`, `domain`                     | `api`, direct DB calls                              |
+| `channels`             | `contracts`                               | `domain`, `continuity`, direct DB                   |
+| `ui`                   | `contracts`, `ui` deps                    | `domain`, `continuity`, `channels`, any server code |
+| `assist` (planned, MQ) | `contracts`                               | any app, DB, network or Node I/O                    |
+| `apps/api`             | all packages                              | `ui` (server-only)                                  |
+| `apps/web`             | `contracts`, `domain`, `continuity`, `ui` | `channels` server internals                         |
+| `apps/worker`          | `contracts`, `channels`, DB client        | `ui`, `continuity` IndexedDB                        |
 
 ---
 
