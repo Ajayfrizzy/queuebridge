@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth.js';
 import { ApiRequestError } from '../lib/api.js';
+import { useOffline } from '../offline/OfflineProvider.js';
+import { ConnectivityBar } from './ConnectivityBar.js';
 
 /** Page shell: skip link, banner, navigation, and route-change focus management. */
 export function Layout(): ReactElement {
@@ -13,8 +15,16 @@ export function Layout(): ReactElement {
   const alertRef = useRef<HTMLDivElement>(null);
   const [signingOut, setSigningOut] = useState(false);
   const [logoutError, setLogoutError] = useState<string | null>(null);
+  const offline = useOffline();
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
 
-  async function signOut(): Promise<void> {
+  async function signOut(force = false): Promise<void> {
+    // Never silently destroy unsent work: make the person sync it or knowingly discard it
+    if (!force && offline.summary.unsynced > 0) {
+      setConfirmDiscard(true);
+      return;
+    }
+    setConfirmDiscard(false);
     setSigningOut(true);
     setLogoutError(null);
     try {
@@ -108,6 +118,38 @@ export function Layout(): ReactElement {
           ) : null}
         </div>
       </header>
+      <ConnectivityBar />
+      {confirmDiscard ? (
+        <div className="container">
+          <div role="alert" className="alert alert-error" data-testid="discard-warning">
+            <h2 className="alert-title">
+              {offline.summary.unsynced} unsent{' '}
+              {offline.summary.unsynced === 1 ? 'action' : 'actions'} on this device
+            </h2>
+            <p>Signing out erases them. Send them first, or sign out and discard them knowingly.</p>
+            <div className="btn-row">
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={!offline.reachable || offline.flushing}
+                onClick={() => void offline.flush().then(() => setConfirmDiscard(false))}
+              >
+                {offline.reachable ? 'Send now' : 'Send now (offline)'}
+              </button>
+              <button type="button" className="btn btn-danger" onClick={() => void signOut(true)}>
+                Sign out and discard
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setConfirmDiscard(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {logoutError ? (
         <div className="container">
           <div

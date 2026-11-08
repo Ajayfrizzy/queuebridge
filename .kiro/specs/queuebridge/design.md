@@ -317,6 +317,83 @@ Per command in batch (in `client_sequence` order):
 11. Commit.
 12. Return disposition: `committed | duplicate | rejected | needs_review`.
 
+### M3 implementation notes (2026-11-08)
+
+Additive to §4 and §5; these are the routes and rules M3 actually ships.
+
+```
+POST   /api/v1/devices                              # staff (WALK_IN roles): register this browser for a facility
+POST   /api/v1/devices/:id/heartbeat                # owner: self-reported pending count / failure (display only)
+POST   /api/v1/devices/:id/revoke                   # supervisor/facility_admin: revoke; strips coordinator authority
+POST   /api/v1/sync/batches                         # owner of the devices in the batch: offline commands
+GET    /api/v1/sync/queues/:id/snapshot             # QUEUE_VIEW: state + events after cursor + signed authority
+POST   /api/v1/queues/:id/coordinator               # QUEUE_MANAGE: assign (epoch+1)
+POST   /api/v1/queues/:id/coordinator/failover      # QUEUE_MANAGE: replace (epoch+1, reason required)
+POST   /api/v1/queues/:id/coordinator/renew         # QUEUE_MANAGE: extend expiry (same epoch)
+POST   /api/v1/queues/:id/coordinator/revoke        # QUEUE_MANAGE: end authority (epoch+1)
+GET    /api/v1/facilities/:id/operations/health     # supervisor/facility_admin/auditor
+GET    /api/v1/facilities/:id/sync/conflicts        # supervisor/facility_admin/auditor
+POST   /api/v1/sync/conflicts/:operationId/resolve  # QUEUE_MANAGE: apply (re-validated) | dismiss, reason required
+```
+
+- **Devices** carry no secret: every request is authenticated by the owner's session; the server checks
+  owner, tenant, facility and revocation on every batch. A revoked device gets `403 device-revoked`.
+- **Authority token:** `v1.<base64url(CoordinatorAuth)>.<HMAC-SHA256>` signed server-side
+  (`COORDINATOR_SIGNING_KEY`, else derived from `SESSION_SECRET`). Delivered only to the active coordinator
+  device via the snapshot, with a signed `delivered_at` (server clock at hand-over). The browser cannot
+  verify it; it uses the claims only to gate UI.
+- **Offline vocabulary:** capture `ticket.create` (any registered device of a WALK_IN role) and advancement
+  `ticket.call_next | serve | complete | miss` (coordinator only). Everything else is online-only.
+- **Per-command evaluation** (one transaction each, session row locked, in `client_sequence` order):
+  envelope identity must match the session (else rejected) → dedupe `(organization_id, operation_id)` →
+  for advancement: signed token for (queue, device, epoch) present (else `authority_token_missing`) →
+  `epoch < current` ⇒ **needs_review `stale_epoch`**; `epoch > current` ⇒ rejected; device ≠ coordinator ⇒
+  rejected; action outside grant ⇒ rejected; **timing** (below) not established ⇒ needs_review;
+  `base_revision > revision` ⇒
+  needs_review; any advancement event after `base_revision` not attributed to this epoch ⇒ needs_review
+  `concurrent_advancement` → shared M2 `applyCommand` (same state machine and roles) inside a savepoint;
+  business-rule failures ⇒ needs_review with the M2 reason. Capture into a closed/paused queue ⇒
+  needs_review (`queue_closed` / `queue_paused`), never silently placed elsewhere.
+- **Offline authority timing (device clocks are untrusted).** `created_at_client` is diagnostic only and
+  never authorizes anything. Every offline advancement carries `authority_timing`
+  `{delivered_at, elapsed_ms, floor_ms, source, rollback_detected}` measured on the device since it
+  RECEIVED that token: `performance.now()` within the page session; a persisted elapsed floor (advanced
+  every 5 s) across reloads/restarts; `elapsed = max(floor, wall delta)` (sleep counts); wall clock behind
+  the floor by > 2 s ⇒ rollback (sticky for that token; UI drops to capture-only). The server
+  (`apps/api/src/queue/timing.ts`) places the action at `delivered_at (signed) + elapsed` and holds as
+  needs_review: no evidence or evidence for an unpresented token (`authority_timing_unverifiable`);
+  rollback (`clock_rollback`); floor > elapsed or action later than server now + 5 s (unverifiable);
+  floor or estimate ≥ min(signed `expires_at`, stored session expiry) (`authority_expired`);
+  `source = restarted` and the server receives it at/after expiry (unverifiable — the closed-app gap is
+  wall-clock evidence only); elapsed decreasing vs the device's previous command under the same token
+  (unverifiable). A restarted device that syncs before expiry commits: server receipt proves the action
+  preceded expiry. Supervisors may still apply held actions explicitly.
+- **Limitation (not a guarantee):** a modified client can fabricate any evidence; an honest app whose
+  device clock is moved while the app is CLOSED, by an amount the persisted floor cannot reveal, is only
+  bounded by rule "restarted ⇒ must reach the server before expiry". Within one page session, the
+  monotonic clock bounds the device. Fencing (epoch), short TTLs and supervisor review are the controls.
+- **Offline capture status link:** the server returns a one-time `status_token` for a committed capture
+  (stored only as SHA-256). Replaying the same operation (same user AND same device) re-issues — rotating —
+  the credential, so at most one link is valid. The web app keeps it in memory only, shows the confirmed
+  code + QR + link once to the capturing user (`StatusHandoverPanel`), and never persists, logs or
+  broadcasts it; "New status link" replays the operation to rotate it.
+- `revision` and `last_sequence` advance together (one event per committed change), so `base_revision`
+  is compared against event sequences.
+- **Coordinator fence (online):** while a coordinator is designated (even if expired), online
+  advancement via `/queues/:id/commands` returns `409 coordinator-active`; joins, walk-ins and session
+  controls still work. Ends on revoke/failover.
+- **Audit:** `coordinator.assign|failover|renew|revoke`, `sync.conflict_detected`,
+  `sync.conflict_resolved` are hash-chained queue events (audit-only in replay). Synced events carry
+  `origin`, `device_id`, `coordinator_epoch` (and `temporary_ref` for captures). Device register/revoke
+  are `admin_events`.
+- **Resolution** never edits `queue_events`: apply re-runs the command against current state (supervisor
+  stands in for the offline authority) and appends new events; dismiss records `rejected`.
+- **Browser storage:** IndexedDB `operations` + `kv`. Cached snapshots/facility data and a minimal identity
+  (no email) are owned by the signed-in user and bounded by the server-reported session expiry. 401 erases
+  caches but keeps unsent operations (same user can sync after signing in again); confirmed sign-out
+  erases caches and — only after explicit confirmation — that user's unsent operations. Another user's
+  unsent operations are never sent under the current session and never deleted implicitly.
+
 ## 6. Audit hash chain design
 
 ```typescript

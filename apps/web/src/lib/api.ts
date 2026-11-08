@@ -21,12 +21,30 @@ import type {
   ServicePolicy,
   SessionUser,
   StaffMember,
+  Device,
+  OperationsHealth,
+  SyncBatchResponse,
+  SyncConflict,
+  SyncSnapshot,
+  CoordinatorStatus,
 } from '@queuebridge/contracts';
 
 const BASE: string =
   (import.meta.env['VITE_API_BASE_URL'] as string | undefined)?.replace(/\/$/, '') ?? '';
 
 let onUnauthenticated: (() => void) | null = null;
+let networkObserver: ((reachable: boolean) => void) | null = null;
+let sessionObserver: ((expiresAt: string) => void) | null = null;
+
+/** Observe API reachability: true after any HTTP response, false after a network failure. */
+export function setNetworkObserver(fn: ((reachable: boolean) => void) | null): void {
+  networkObserver = fn;
+}
+
+/** Observe the session expiry the server reports on login / sign-up / invite / me. */
+export function setSessionObserver(fn: ((expiresAt: string) => void) | null): void {
+  sessionObserver = fn;
+}
 
 /** Register a callback fired when an authenticated request is rejected with 401 (session ended). */
 export function setUnauthenticatedHandler(handler: (() => void) | null): void {
@@ -90,8 +108,10 @@ async function request<T>(
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
   } catch {
+    networkObserver?.(false);
     throw new ApiRequestError(0, null, 'Cannot reach the server. Check your connection and retry.');
   }
+  networkObserver?.(true);
 
   if (res.status === 204) return undefined as T;
   let parsed: unknown = null;
@@ -100,6 +120,9 @@ async function request<T>(
   } catch {
     parsed = null;
   }
+  const sessionExpiry = (parsed as { session?: { expires_at?: unknown } } | null)?.session
+    ?.expires_at;
+  if (res.ok && typeof sessionExpiry === 'string') sessionObserver?.(sessionExpiry);
   if (res.status === 401 && !PUBLIC_401.some((p) => path.startsWith(p))) {
     onUnauthenticated?.();
   }
@@ -135,15 +158,26 @@ export function apiUrl(path: string): string {
   return `${BASE}/api/v1${path}`;
 }
 
+export interface SessionInfo {
+  expires_at: string;
+}
+
+export interface CoordinatorResult {
+  disposition: 'committed' | 'duplicate';
+  coordinator: CoordinatorStatus;
+  server_revision: number;
+  server_sequence: number;
+}
+
 export const TICKET_TOKEN_HEADER = 'X-QB-Ticket-Token';
 
 export const api = {
   signupOrganization: (body: CreateOrganizationRequest): Promise<{ user: SessionUser }> =>
     request('POST', '/organizations', body),
-  login: (body: LoginRequest): Promise<{ user: SessionUser }> =>
+  login: (body: LoginRequest): Promise<{ user: SessionUser; session?: SessionInfo }> =>
     request('POST', '/auth/login', body),
   logout: (): Promise<void> => request('POST', '/auth/logout', {}),
-  me: (): Promise<{ user: SessionUser }> => request('GET', '/auth/me'),
+  me: (): Promise<{ user: SessionUser; session?: SessionInfo }> => request('GET', '/auth/me'),
 
   previewInvitation: (token: string): Promise<{ invitation: InvitationPreview }> =>
     request('POST', '/invitations/preview', { token }),
@@ -240,4 +274,56 @@ export const api = {
     request('GET', `/tickets/${encodeURIComponent(code)}/status`, undefined, {
       [TICKET_TOKEN_HEADER]: token,
     }),
+
+  // ---- M3: continuity engine ----
+  registerDevice: (facilityId: string, label?: string): Promise<{ device: Device }> =>
+    request('POST', '/devices', { facility_id: facilityId, ...(label ? { label } : {}) }),
+  heartbeat: (
+    deviceId: string,
+    body: { pending_count: number; failure_code?: 'storage_unavailable' | 'sync_failed' | null },
+  ): Promise<void> => request('POST', `/devices/${deviceId}/heartbeat`, body),
+  revokeDevice: (deviceId: string, reason: string): Promise<{ device: Device }> =>
+    request('POST', `/devices/${deviceId}/revoke`, { reason_code: reason }),
+  syncBatch: (body: {
+    commands: unknown[];
+    authorities?: string[];
+    device_report?: { pending_count: number };
+  }): Promise<SyncBatchResponse> => request('POST', '/sync/batches', body),
+  syncSnapshot: (
+    queueId: string,
+    deviceId: string | null,
+    since?: number,
+  ): Promise<{ snapshot: SyncSnapshot }> => {
+    const qs = new URLSearchParams();
+    if (deviceId) qs.set('device_id', deviceId);
+    if (since !== undefined) qs.set('since_sequence', String(since));
+    const q = qs.toString();
+    return request('GET', `/sync/queues/${queueId}/snapshot${q ? `?${q}` : ''}`);
+  },
+  coordinator: (
+    queueId: string,
+    kind: 'assign' | 'failover' | 'renew' | 'revoke',
+    body: Record<string, unknown>,
+  ): Promise<CoordinatorResult> =>
+    request('POST', `/queues/${queueId}/coordinator${kind === 'assign' ? '' : `/${kind}`}`, body),
+  operationsHealth: (fid: string): Promise<{ health: OperationsHealth }> =>
+    request('GET', `/facilities/${fid}/operations/health`),
+  conflicts: (fid: string, includeResolved = false): Promise<{ conflicts: SyncConflict[] }> =>
+    request('GET', `/facilities/${fid}/sync/conflicts${includeResolved ? '?include=all' : ''}`),
+  resolveConflict: (
+    operationId: string,
+    body: { resolution: 'apply' | 'dismiss'; reason_code: string },
+  ): Promise<{ result: { resolution: string; already_resolved: boolean } }> =>
+    request('POST', `/sync/conflicts/${operationId}/resolve`, body),
+  /** Lightweight reachability probe: separates "server reachable" from navigator.onLine. */
+  ping: async (): Promise<boolean> => {
+    try {
+      const res = await fetch(`${BASE}/health`, { cache: 'no-store' });
+      networkObserver?.(res.ok);
+      return res.ok;
+    } catch {
+      networkObserver?.(false);
+      return false;
+    }
+  },
 };

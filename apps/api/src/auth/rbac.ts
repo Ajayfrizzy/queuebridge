@@ -6,6 +6,8 @@ import { problems } from '../errors.js';
 /** The authenticated principal, derived entirely server-side from the session cookie. */
 export interface AuthContext {
   sessionId: string;
+  /** Absolute end of this server-side session (offline caches must not outlive it). */
+  sessionExpiresAt: Date;
   staffUserId: string;
   organizationId: string;
   organizationName: string;
@@ -42,6 +44,11 @@ export const Permission = {
   ],
   /** Open, pause, close and reopen queue sessions. */
   QUEUE_MANAGE: [Role.SUPERVISOR, Role.FACILITY_ADMIN],
+  /**
+   * Connectivity and recovery dashboard, device health and the conflict-review list (F9).
+   * Auditors may inspect; they can never act (acting requires QUEUE_MANAGE).
+   */
+  OPERATIONS_VIEW: [Role.SUPERVISOR, Role.FACILITY_ADMIN, Role.AUDITOR],
   /** Staff-assisted walk-in registration. */
   WALK_IN: [Role.STAFF_RECEPTION, Role.STAFF_COUNTER, Role.SUPERVISOR, Role.FACILITY_ADMIN],
 } as const satisfies Record<string, readonly Role[]>;

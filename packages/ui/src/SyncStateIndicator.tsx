@@ -13,13 +13,13 @@ const STATE_CONFIG: Record<
 > = {
   [SyncStatus.LOCAL_ONLY]: {
     label: 'Local',
-    description: 'Saved locally — not yet sent to server',
+    description: 'Saved on this device only — not confirmed by the server',
     colorClass: 'qb-sync-local',
     symbol: '⬤',
   },
   [SyncStatus.PENDING_SYNC]: {
     label: 'Pending sync',
-    description: 'Waiting to send to server',
+    description: 'Sent or waiting to send — not confirmed by the server yet',
     colorClass: 'qb-sync-pending',
     symbol: '↑',
   },
@@ -30,8 +30,9 @@ const STATE_CONFIG: Record<
     symbol: '✓',
   },
   [SyncStatus.DUPLICATE]: {
-    label: 'Duplicate',
-    description: 'Already processed — no change needed',
+    // A repeat send of an action the server had already confirmed: it IS synced
+    label: 'Synced',
+    description: 'Confirmed by server (already received earlier — not applied twice)',
     colorClass: 'qb-sync-duplicate',
     symbol: '=',
   },

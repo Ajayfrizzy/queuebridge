@@ -12,7 +12,7 @@ const STATE_CONFIG: Record<SyncStatus, { label: string; symbol: string }> = {
   [SyncStatus.LOCAL_ONLY]: { label: 'Local', symbol: '⬤' },
   [SyncStatus.PENDING_SYNC]: { label: 'Pending sync', symbol: '↑' },
   [SyncStatus.COMMITTED]: { label: 'Synced', symbol: '✓' },
-  [SyncStatus.DUPLICATE]: { label: 'Duplicate', symbol: '=' },
+  [SyncStatus.DUPLICATE]: { label: 'Synced', symbol: '=' },
   [SyncStatus.NEEDS_REVIEW]: { label: 'Needs review', symbol: '!' },
   [SyncStatus.REJECTED]: { label: 'Rejected', symbol: '✕' },
 };

@@ -31,6 +31,39 @@ export const IsoDateTimeSchema = z.string().datetime({ offset: true });
 // ---------------------------------------------------------------------------
 
 /**
+ * Timing evidence for an offline ADVANCEMENT command (M3).
+ *
+ * Device wall clocks are untrusted. The device measures how long after it RECEIVED a specific
+ * signed authority (identified by its server-signed `delivered_at`) the action happened, using a
+ * monotonic clock within a page session and a persisted floor across restarts. The server adds the
+ * elapsed time to ITS OWN `delivered_at` — so the device's clock offset never matters — and holds
+ * anything it cannot establish safely for supervisor review.
+ */
+export const AuthorityTimingSchema = z
+  .object({
+    /** Server-signed delivery time of the authority token this measurement is relative to */
+    delivered_at: IsoDateTimeSchema,
+    /** Best estimate of time since receipt: max(monotonic lower bound, wall-clock delta) */
+    elapsed_ms: z
+      .number()
+      .int()
+      .min(0)
+      .max(31 * 24 * 3600 * 1000),
+    /** Provable lower bound of time since receipt (monotonic; persisted across restarts) */
+    floor_ms: z
+      .number()
+      .int()
+      .min(0)
+      .max(31 * 24 * 3600 * 1000),
+    /** monotonic: same page session as receipt · restarted: the app restarted since receipt */
+    source: z.enum(['monotonic', 'restarted']),
+    /** The wall clock ran behind the monotonic lower bound at some point since receipt */
+    rollback_detected: z.boolean(),
+  })
+  .strict();
+export type AuthorityTiming = z.infer<typeof AuthorityTimingSchema>;
+
+/**
  * Offline/online command envelope.
  * Client timestamps are diagnostic only — server never uses them for ordering.
  * Authorization identity is derived from the authenticated session, not the payload.
@@ -52,8 +85,10 @@ export const CommandEnvelopeSchema = z.object({
   client_sequence: z.number().int().nonnegative(),
   action: z.nativeEnum(QueueAction),
   payload: z.record(z.string(), z.unknown()),
-  /** Diagnostic only — never used for global ordering */
+  /** Diagnostic only — never used for ordering or authorization */
   created_at_client: IsoDateTimeSchema,
+  /** Required for offline advancement (see AuthorityTimingSchema) */
+  authority_timing: AuthorityTimingSchema.optional(),
   schema_version: z.literal(1),
 });
 
@@ -69,7 +104,10 @@ export const SyncBatchRequestSchema = z.object({
 export type SyncBatchRequest = z.infer<typeof SyncBatchRequestSchema>;
 
 export const CommandResultSchema = z.object({
-  operation_id: UuidSchema,
+  /** Null only when the submitted command was too malformed to carry a usable id */
+  operation_id: z.string().uuid().nullable(),
+  /** Position of the command in the submitted batch (results are returned in this order) */
+  index: z.number().int().nonnegative().optional(),
   client_sequence: z.number().int().nonnegative(),
   disposition: z.nativeEnum(CommandDisposition),
   /** Server revision after this command was applied (only set for committed) */
@@ -81,15 +119,28 @@ export const CommandResultSchema = z.object({
     .object({
       temporary_ref: z.string(),
       public_code: z.string(),
+      ticket_id: UuidSchema.optional(),
     })
     .optional(),
+  /** Machine-readable reason for rejected / needs_review results */
+  reason_code: z.string().optional(),
+  /** Human-readable explanation for rejected / needs_review results */
   rejection_reason: z.string().optional(),
+  /** Confirmed ticket affected by a committed command (staff only) */
+  ticket_id: UuidSchema.optional(),
+  public_code: z.string().optional(),
+  /**
+   * One-time visitor status link secret for a freshly confirmed offline-captured ticket.
+   * Returned to the capturing staff device only; never stored in the outbox or in result_json.
+   */
+  status_token: z.string().optional(),
 });
 export type CommandResult = z.infer<typeof CommandResultSchema>;
 
 export const SyncBatchResponseSchema = z.object({
   results: z.array(CommandResultSchema),
-  queue_session_revision: z.number().int().nonnegative(),
+  /** Session revision after processing, per queue session touched by the batch */
+  queue_revisions: z.record(z.string(), z.number().int().nonnegative()),
   processed_at: IsoDateTimeSchema,
 });
 export type SyncBatchResponse = z.infer<typeof SyncBatchResponseSchema>;
@@ -280,6 +331,11 @@ export const CoordinatorAuthSchema = z.object({
   allowed_actions: z.array(z.nativeEnum(QueueAction)),
   issued_at: IsoDateTimeSchema,
   expires_at: IsoDateTimeSchema,
+  /**
+   * When the server handed THIS token to the device (server clock). Offline actions are timed
+   * as `delivered_at + elapsed-since-receipt`, so the device's own clock offset is irrelevant.
+   */
+  delivered_at: IsoDateTimeSchema.optional(),
   /** Role that issued this authorization */
   issued_by_role: z.enum([Role.SUPERVISOR, Role.FACILITY_ADMIN]),
   issued_by_actor_id: UuidSchema,

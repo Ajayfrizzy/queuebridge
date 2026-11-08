@@ -64,6 +64,17 @@ export const problems = {
     }),
   notFound: (): ApiProblem => new ApiProblem(404, 'not-found', 'Not found'),
   conflict: (detail: string): ApiProblem => new ApiProblem(409, 'conflict', 'Conflict', { detail }),
+  /** A revoked device's sync attempts are refused with an explicit, actionable error. */
+  deviceRevoked: (): ApiProblem =>
+    new ApiProblem(403, 'device-revoked', 'Device revoked', {
+      detail:
+        'This device has been revoked by a supervisor. Its unsent actions cannot be synced. Clear local data and register the device again.',
+    }),
+  /** Unknown, foreign or cross-tenant device: deliberately indistinguishable. */
+  deviceNotAuthorized: (): ApiProblem =>
+    new ApiProblem(403, 'device-not-authorized', 'Device not authorized', {
+      detail: 'This device is not registered to your account.',
+    }),
   invalidInvitation: (): ApiProblem =>
     new ApiProblem(410, 'invitation-unavailable', 'Invitation unavailable', {
       detail: 'This invitation is invalid, expired, or already used.',

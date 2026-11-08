@@ -2,7 +2,13 @@ import type { FastifyInstance } from 'fastify';
 import { CreateOrganizationRequestSchema, Role } from '@queuebridge/contracts';
 import { recordAdminEvent } from '../admin-events.js';
 import { hashPassword } from '../auth/password.js';
-import { createSession, resolveSession, setSessionCookie, toSessionUser } from '../auth/session.js';
+import {
+  createSession,
+  resolveSession,
+  setSessionCookie,
+  toSessionInfo,
+  toSessionUser,
+} from '../auth/session.js';
 import { isUniqueViolation, parseInput, problems } from '../errors.js';
 import type { RouteDeps } from './deps.js';
 
@@ -63,7 +69,7 @@ export async function organizationRoutes(app: FastifyInstance, deps: RouteDeps):
       const auth = await resolveSession(db, created.token);
       if (!auth) throw new Error('session not resolvable immediately after creation');
       setSessionCookie(reply, env, created.token, created.expiresAt);
-      return reply.status(201).send({ user: toSessionUser(auth) });
+      return reply.status(201).send({ user: toSessionUser(auth), session: toSessionInfo(auth) });
     },
   );
 }

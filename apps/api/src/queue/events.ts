@@ -18,6 +18,17 @@ export interface LockedSession {
   ticket_prefix: string | null;
   policy: ServicePolicy;
   facility_status: string;
+  /** Coordinator authority (ADR-006); epoch 0 = never assigned */
+  coordinator_epoch: number;
+  coordinator_device_id: string | null;
+  coordinator_granted_at: Date | null;
+  coordinator_expires_at: Date | null;
+  coordinator_allowed_actions: string[];
+  /**
+   * Extra, non-personal context merged into the payload of every event appended while set
+   * (e.g. the coordinator epoch and device of an offline-synced command). In-memory only.
+   */
+  eventExtra?: Record<string, unknown>;
 }
 
 /**
@@ -37,6 +48,8 @@ export async function lockSessions(
       SELECT qs.id, qs.organization_id, qs.facility_id, qs.service_id,
              to_char(qs.operational_date, 'YYYY-MM-DD') AS operational_date,
              qs.state, qs.revision, qs.last_sequence,
+             qs.coordinator_epoch, qs.coordinator_device_id, qs.coordinator_granted_at,
+             qs.coordinator_expires_at, qs.coordinator_allowed_actions,
              s.name AS service_name, s.status AS service_status, s.ticket_prefix, s.policy,
              f.status AS facility_status
         FROM queue_sessions qs
@@ -71,6 +84,9 @@ export async function appendEvent(
   input: AppendEventInput,
 ): Promise<{ eventId: string; sequence: number; revision: number }> {
   const sequence = session.last_sequence + 1;
+  const eventPayload = session.eventExtra
+    ? { ...input.payload, ...session.eventExtra }
+    : input.payload;
   const prev = await tx<{ event_hash: string }[]>`
     SELECT event_hash FROM queue_events
      WHERE queue_session_id = ${session.id}
@@ -84,7 +100,7 @@ export async function appendEvent(
     event_type: input.eventType,
     actor_id: input.actorId,
     operation_id: input.operationId,
-    payload: input.payload,
+    payload: eventPayload,
     committed_at: committedAt,
   };
   const eventHash = computeEventHash(prevHash, body);
@@ -94,7 +110,7 @@ export async function appendEvent(
       (organization_id, queue_session_id, sequence, actor_id, operation_id, event_type,
        payload, prev_hash, event_hash, committed_at)
     VALUES (${session.organization_id}, ${session.id}, ${sequence}, ${input.actorId},
-            ${input.operationId}, ${input.eventType}, ${tx.json(input.payload as never)},
+            ${input.operationId}, ${input.eventType}, ${tx.json(eventPayload as never)},
             ${prevHash}, ${eventHash}, ${committedAt})
     RETURNING id`;
   const eventId = inserted[0]?.id;

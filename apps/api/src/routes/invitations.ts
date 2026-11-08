@@ -6,7 +6,13 @@ import {
 } from '@queuebridge/contracts';
 import { recordAdminEvent } from '../admin-events.js';
 import { hashPassword, verifyAgainstDummy, verifyPassword } from '../auth/password.js';
-import { createSession, resolveSession, setSessionCookie, toSessionUser } from '../auth/session.js';
+import {
+  createSession,
+  resolveSession,
+  setSessionCookie,
+  toSessionInfo,
+  toSessionUser,
+} from '../auth/session.js';
 import { hashToken } from '../auth/tokens.js';
 import { parseInput, problems } from '../errors.js';
 import type { RouteDeps } from './deps.js';
@@ -122,6 +128,6 @@ export async function invitationRoutes(app: FastifyInstance, deps: RouteDeps): P
     const auth = await resolveSession(db, result.token);
     if (!auth) throw problems.invalidInvitation();
     setSessionCookie(reply, env, result.token, result.expiresAt);
-    return reply.status(201).send({ user: toSessionUser(auth) });
+    return reply.status(201).send({ user: toSessionUser(auth), session: toSessionInfo(auth) });
   });
 }

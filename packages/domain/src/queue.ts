@@ -150,6 +150,9 @@ export interface QueueProjection {
   tickets: Record<string, ProjectedTicket>;
 }
 
+/** Event families that are audit-only: coordinator authority changes and sync conflict records. */
+const NON_STATE_EVENT_PREFIXES = ['coordinator.', 'sync.'] as const;
+
 export class ReplayError extends Error {
   public constructor(message: string) {
     super(message);
@@ -177,6 +180,9 @@ export function applyQueueEvent(p: QueueProjection, e: QueueEventForReplay): Que
     throw new ReplayError(`expected sequence ${p.last_sequence + 1}, got ${e.sequence}`);
   }
   const next: QueueProjection = { ...p, last_sequence: e.sequence, tickets: { ...p.tickets } };
+
+  // Authority and conflict-audit events occupy a sequence but never change ticket or session state
+  if (NON_STATE_EVENT_PREFIXES.some((prefix) => e.event_type.startsWith(prefix))) return next;
 
   if (
     e.event_type === 'queue.open' ||
