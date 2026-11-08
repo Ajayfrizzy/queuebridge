@@ -41,3 +41,22 @@ export function slugify(name: string): string {
     .replace(/^-+|-+$/g, '')
     .slice(0, 48);
 }
+
+/** UI hint only — the API authorizes every command. */
+export function hasFacilityRole(
+  user: SessionUser,
+  facilityId: string,
+  roles: readonly string[],
+): boolean {
+  if (isOrgAdmin(user)) return true;
+  return user.roles.some((r) => r.facility_id === facilityId && roles.includes(r.role));
+}
+
+export const QUEUE_MANAGER_ROLES = ['supervisor', 'facility_admin'] as const;
+export const COUNTER_ROLES = ['staff_counter', 'supervisor'] as const;
+export const WALK_IN_ROLES = [
+  'staff_reception',
+  'staff_counter',
+  'supervisor',
+  'facility_admin',
+] as const;

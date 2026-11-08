@@ -183,6 +183,8 @@ export const ServiceSchema = z.object({
   description: z.string().nullable(),
   status: z.enum(['active', 'inactive']),
   policy: ServicePolicySchema,
+  /** Short ticket-code prefix, assigned when the first queue session opens (M2) */
+  ticket_prefix: z.string().nullable(),
   created_at: z.string(),
 });
 export type Service = z.infer<typeof ServiceSchema>;

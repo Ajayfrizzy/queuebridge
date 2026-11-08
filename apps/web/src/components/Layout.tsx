@@ -67,26 +67,15 @@ export function Layout(): ReactElement {
           <Link to="/" className="brand">
             QueueBridge
           </Link>
-          <nav aria-label="Primary">
+          <nav aria-label="Primary" className="site-nav">
             <ul className="nav-list">
               {user ? (
                 <>
                   <li>
-                    <NavLink to="/admin">Administration</NavLink>
-                  </li>
-                  <li className="who" data-testid="whoami">
-                    <span className="visually-hidden">Signed in as </span>
-                    {user.display_name}
+                    <NavLink to="/staff">Staff console</NavLink>
                   </li>
                   <li>
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      disabled={signingOut}
-                      onClick={() => void signOut()}
-                    >
-                      {signingOut ? 'Signing out…' : 'Sign out'}
-                    </button>
+                    <NavLink to="/admin">Administration</NavLink>
                   </li>
                 </>
               ) : (
@@ -101,6 +90,22 @@ export function Layout(): ReactElement {
               )}
             </ul>
           </nav>
+          {user ? (
+            <div className="account" role="group" aria-label="Account">
+              <span className="who" data-testid="whoami">
+                <span className="visually-hidden">Signed in as </span>
+                {user.display_name}
+              </span>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={signingOut}
+                onClick={() => void signOut()}
+              >
+                {signingOut ? 'Signing out…' : 'Sign out'}
+              </button>
+            </div>
+          ) : null}
         </div>
       </header>
       {logoutError ? (

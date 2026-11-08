@@ -77,15 +77,17 @@ describe('computeWaitEstimate', () => {
     expect(fewer.high_seconds).toBeGreaterThan(more.high_seconds);
   });
 
-  it('position 0 gives very low estimate', () => {
+  it('position 0 gives a low but non-zero-width interval', () => {
     const result = computeWaitEstimate({
       position: 0,
       activeCompatibleCounters: 2,
       serviceSamples: [60, 80, 100, 70, 90, 85, 75, 95, 65, 110],
       calculatedAt: NOW,
     });
+    // REQ-F6.6: even for the next person the estimate is an interval, never an exact time
     expect(result.low_seconds).toBe(0);
-    expect(result.high_seconds).toBe(0);
+    expect(result.high_seconds).toBeGreaterThan(0);
+    expect(result.factors.some((f) => f.includes('You are next'))).toBe(true);
   });
 
   it('confidence is high with 20+ samples', () => {

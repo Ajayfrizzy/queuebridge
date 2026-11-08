@@ -1,6 +1,3 @@
-import { readFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   createFacility,
@@ -9,6 +6,7 @@ import {
   type TestApp,
   type TestOrg,
 } from './testing/harness.js';
+import { migrationFiles, readMigration, withIsolatedDatabase } from './testing/isolated-db.js';
 
 /** Database contract checks for migration 0003 (runs against a real PostgreSQL). */
 
@@ -31,20 +29,25 @@ afterAll(async () => {
 
 describe('migration 0003', () => {
   it('is idempotent: re-applying the file twice succeeds and preserves data', async () => {
-    const file = join(
-      dirname(fileURLToPath(import.meta.url)),
-      '..',
-      '..',
-      '..',
-      'infra',
-      'migrations',
-      '0003_tenancy_roles_invitations.sql',
-    );
-    const sqlText = await readFile(file, 'utf8');
-    await t.db.unsafe(sqlText);
-    await t.db.unsafe(sqlText);
-    const roles = await t.db`SELECT 1 FROM role_assignments WHERE staff_user_id = ${org.adminId}`;
-    expect(roles).toHaveLength(1);
+    // Runs in a throwaway database: re-executing DDL on the shared test DB while other test
+    // files are mid-transaction caused lock deadlocks (observed in the M2 test run).
+    await withIsolatedDatabase(async (sql) => {
+      for (const f of await migrationFiles()) await sql.unsafe(await readMigration(f));
+      const orgRows = await sql<{ id: string }[]>`
+        INSERT INTO organizations (name, slug) VALUES ('Iso', 'iso-org') RETURNING id`;
+      const orgId = orgRows[0]!.id;
+      const userRows = await sql<{ id: string }[]>`
+        INSERT INTO staff_users (organization_id, email, password_hash, display_name)
+        VALUES (${orgId}, 'iso@example.test', 'x', 'Iso') RETURNING id`;
+      await sql`INSERT INTO role_assignments (staff_user_id, organization_id, facility_id, role)
+                VALUES (${userRows[0]!.id}, ${orgId}, NULL, 'org_admin')`;
+      const sqlText = await readMigration('0003_tenancy_roles_invitations.sql');
+      await sql.unsafe(sqlText);
+      await sql.unsafe(sqlText);
+      const roles =
+        await sql`SELECT 1 FROM role_assignments WHERE staff_user_id = ${userRows[0]!.id}`;
+      expect(roles).toHaveLength(1);
+    });
   });
 
   it('is recorded by the migration runner after earlier migrations', async () => {

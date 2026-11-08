@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { computeReadiness, VISITOR_JOIN_OPERATIONAL, type ReadinessInput } from './readiness.js';
+import {
+  computeReadiness,
+  VISITOR_JOIN_OPERATIONAL,
+  VISITOR_JOIN_REASONS,
+  type ReadinessInput,
+} from './readiness.js';
 
 const svc = (
   id: string,
@@ -136,16 +141,36 @@ describe('computeReadiness — operational eligibility', () => {
     expect(r.configuration_ready).toBe(false);
   });
 
-  it('never reports the visitor join as operational before M2, even when fully configured', () => {
+  it('visitor join is live only when configured AND an eligible service has an open queue today', () => {
+    const configured = base({
+      services: [svc('s1'), svc('s2')],
+      counters: [ctr('c1')],
+      capabilities: [{ counter_id: 'c1', service_id: 's1' }],
+    });
+    expect(VISITOR_JOIN_OPERATIONAL).toBe(true);
+    // Configured but nothing open: not live
+    expect(computeReadiness(configured).visitor_join).toEqual({
+      operational: false,
+      reason: VISITOR_JOIN_REASONS.no_open_queue,
+    });
+    // Open queue for a service nobody can serve: still not live
+    expect(
+      computeReadiness({ ...configured, openQueueServiceIds: ['s2'] }).visitor_join.operational,
+    ).toBe(false);
+    // Open queue for an operational service: live
+    expect(computeReadiness({ ...configured, openQueueServiceIds: ['s1'] }).visitor_join).toEqual({
+      operational: true,
+      reason: VISITOR_JOIN_REASONS.live,
+    });
+  });
+
+  it('an open queue never makes an unconfigured facility look live', () => {
     const r = computeReadiness(
-      base({
-        services: [svc('s1')],
-        counters: [ctr('c1')],
-        capabilities: [{ counter_id: 'c1', service_id: 's1' }],
-      }),
+      base({ services: [svc('s1')], counters: [ctr('c1', false)], openQueueServiceIds: ['s1'] }),
     );
-    expect(VISITOR_JOIN_OPERATIONAL).toBe(false);
-    expect(r.visitor_join.operational).toBe(false);
-    expect(r.visitor_join.reason).toMatch(/not available yet/i);
+    expect(r.visitor_join).toEqual({
+      operational: false,
+      reason: VISITOR_JOIN_REASONS.configuration,
+    });
   });
 });

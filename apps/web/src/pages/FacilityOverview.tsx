@@ -135,11 +135,15 @@ export function FacilityOverview(): ReactElement {
           <div className="alert alert-info" role="note" data-testid="join-notice">
             <h3 className="alert-title">Not live yet</h3>
             <p>
-              {r.visitor_join.reason} Do not share or print this code for visitors until visitor
-              registration is released.
+              {r.visitor_join.reason} Do not share or print this code for visitors until it is live.
             </p>
           </div>
-        ) : null}
+        ) : (
+          <div className="alert alert-success" role="note" data-testid="join-live">
+            <h3 className="alert-title">Live</h3>
+            <p>{r.visitor_join.reason}</p>
+          </div>
+        )}
         <p>
           <span className="visually-hidden">Join link: </span>
           <a href={url} data-testid="join-url" className="mono wrap">
@@ -148,7 +152,11 @@ export function FacilityOverview(): ReactElement {
         </p>
         <svg
           role="img"
-          aria-label={`QR code for the join link ${url} (preview only: visitor registration is not available yet)`}
+          aria-label={
+            joinOperational
+              ? `QR code for the join link ${url}`
+              : `QR code for the join link ${url} (preview only: not live yet)`
+          }
           viewBox={`0 0 ${total} ${total}`}
           className="qr"
           data-testid="join-qr"
@@ -161,6 +169,15 @@ export function FacilityOverview(): ReactElement {
             d={qrPath(matrix)}
           />
         </svg>
+        <p className="no-print">
+          <a
+            href={new URL(url).pathname.replace(/^\/join\//, '/display/')}
+            data-testid="display-link"
+          >
+            Open the public display board
+          </a>{' '}
+          (for a screen in the waiting area; shows ticket codes only)
+        </p>
         <div className="btn-row no-print">
           <button type="button" className="btn btn-secondary" onClick={() => void copy()}>
             Copy link

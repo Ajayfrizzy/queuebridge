@@ -78,3 +78,59 @@ export async function hasHorizontalOverflow(page: Page): Promise<boolean> {
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
   );
 }
+
+// ---------------------------------------------------------------------------
+// M2 queue setup through the real API
+// ---------------------------------------------------------------------------
+
+export interface QueueSetup {
+  org: Org;
+  facility: { id: string; slug: string };
+  serviceId: string;
+  counterId: string;
+  joinPath: string;
+  displayPath: string;
+}
+
+/** Org + facility + service + counter (+ capability) via the API; optionally opens today's queue. */
+export async function apiQueueSetup(
+  request: APIRequestContext,
+  opts: { serviceName?: string; open?: boolean } = {},
+): Promise<QueueSetup & { queueId: string | null }> {
+  const org = await apiSignup(request, 'Queue Org');
+  const facility = await apiFacility(request, 'Queue Clinic');
+  const svc = await request.post(`/api/v1/facilities/${facility.id}/services`, {
+    headers: CSRF,
+    data: { name: opts.serviceName ?? 'General Consultation' },
+  });
+  const serviceId = ((await svc.json()) as { service: { id: string } }).service.id;
+  const ctr = await request.post(`/api/v1/facilities/${facility.id}/counters`, {
+    headers: CSRF,
+    data: { name: 'Counter 1' },
+  });
+  const counterId = ((await ctr.json()) as { counter: { id: string } }).counter.id;
+  await request.post('/api/v1/counter_service_capabilities', {
+    headers: CSRF,
+    data: { counter_id: counterId, service_id: serviceId },
+  });
+  let queueId: string | null = null;
+  if (opts.open !== false) {
+    const q = await request.post(`/api/v1/facilities/${facility.id}/queues`, {
+      headers: CSRF,
+      data: { service_id: serviceId },
+    });
+    expect(q.status()).toBe(201);
+    queueId = ((await q.json()) as { queue: { id: string } }).queue.id;
+  }
+  return {
+    org,
+    facility,
+    serviceId,
+    counterId,
+    queueId,
+    joinPath: `/join/${org.slug}/${facility.slug}`,
+    displayPath: `/display/${org.slug}/${facility.slug}`,
+  };
+}
+
+export const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;

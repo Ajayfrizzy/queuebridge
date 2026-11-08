@@ -14,6 +14,17 @@
   --info-bg: #eff6ff;
   --focus: #b45309;
   --radius: 0.5rem;
+  /* Spacing scale — use these instead of ad-hoc values */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  /* Minimum interactive size (WCAG 2.5.5 target size, 44 CSS px) */
+  --control-h: 2.75rem;
+  /* Chevron for custom-styled selects (stroke = --fg, light theme) */
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 6l4.5 4.5L12.5 6' fill='none' stroke='%23111827' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   font-family:
     system-ui,
     -apple-system,
@@ -41,6 +52,7 @@
     --ok-bg: #0f2a22;
     --info-bg: #14233f;
     --focus: #fbbf24;
+    --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 6l4.5 4.5L12.5 6' fill='none' stroke='%23f3f4f6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   }
 }
 
@@ -174,6 +186,37 @@ main:focus {
 .who {
   color: var(--muted);
   overflow-wrap: anywhere;
+  min-width: 0;
+}
+/* Header layout. Wide: brand | navigation | account on one row.
+   Narrow (< 40rem): a deliberate three-row layout — brand, then navigation links, then the
+   account row (name + Sign out) — so nothing wraps unpredictably or gets clipped. */
+.site-nav {
+  margin-left: auto;
+}
+.account {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  min-width: 0;
+}
+@media (max-width: 40rem) {
+  .header-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-1);
+  }
+  .site-nav {
+    margin-left: 0;
+  }
+  .site-nav .nav-list {
+    gap: 0 var(--space-4);
+  }
+  .account {
+    justify-content: space-between;
+    border-top: 1px solid var(--border);
+    padding-top: var(--space-2);
+  }
 }
 
 .lead {
@@ -219,7 +262,34 @@ main:focus {
 .btn-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* Toolbar: one aligned line of status items and small controls (wraps on mobile) */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  margin: 0 0 var(--space-4);
+}
+.toolbar > * {
+  margin: 0;
+}
+/* Page header block: title + meta lines with consistent rhythm */
+.page-head {
+  margin-bottom: var(--space-5);
+}
+.page-head > * {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.page-head > * + * {
+  margin-top: var(--space-2);
+}
+.toolbar-spread {
+  justify-content: space-between;
 }
 
 .card {
@@ -270,6 +340,30 @@ textarea {
   border: 2px solid var(--border);
   border-radius: var(--radius);
 }
+/* Selects: keep the native element (semantics, keyboard, OS picker) but draw a consistent
+   chevron with a reserved gutter so long option text never runs under the arrow. */
+select {
+  appearance: none;
+  padding-right: 2.75rem;
+  background-image: var(--select-arrow);
+  background-repeat: no-repeat;
+  background-position: right var(--space-3) center;
+  background-size: 1rem;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+/* Forced colors (Windows High Contrast) drop background images: restore the native arrow. */
+@media (forced-colors: active) {
+  select {
+    appearance: auto;
+    background-image: none;
+    padding-right: 0.65rem;
+  }
+}
 input[type='checkbox'] {
   width: 1.4rem;
   min-height: 1.4rem;
@@ -304,18 +398,42 @@ legend {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-2);
 }
 .inline-form select {
   width: auto;
-  flex: 1 1 10rem;
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+/* Responsive form grid: each .field is a label stacked over its control; fields flow into
+   columns when there is room and stack on narrow screens. Actions align with the controls. */
+.form-grid {
+  display: grid;
+  gap: var(--space-3) var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  align-items: end;
+  margin: 0;
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
+.form-grid > legend {
+  padding: 0 var(--space-1);
+}
+.form-grid .field label {
+  margin-bottom: var(--space-1);
+}
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: flex-end;
 }
 
 .alert {
   border: 2px solid var(--border);
   border-radius: var(--radius);
-  padding: 0.75rem 1rem;
-  margin: 0.75rem 0;
+  padding: var(--space-3) var(--space-4);
+  margin: var(--space-3) 0;
 }
 .alert-title {
   margin: 0 0 0.25rem;
@@ -381,7 +499,7 @@ legend {
   border: 1px solid var(--border);
   background: #fff;
   display: block;
-  margin: 0.5rem 0 1rem;
+  margin: var(--space-2) 0 var(--space-4);
 }
 
 .toast {
@@ -433,6 +551,37 @@ legend {
 .card-title {
   font-size: 1.1rem;
   margin: 0 0 0.25rem;
+}
+
+/* Flow spacing: inside cards and alerts, children have no outer margins and are separated by
+   one consistent gap, so headings, paragraphs, lists and forms line up on every screen. */
+.card > *,
+.alert > *,
+.stack > * {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.card > * + *,
+.alert > * + * {
+  margin-top: var(--space-3);
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.stack-sm {
+  gap: var(--space-2);
+}
+/* Separate panels in a column always have clear space between them */
+.split-main > *,
+.split-side > * {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.split-main > * + *,
+.split-side > * + * {
+  margin-top: var(--space-5);
 }
 
 /* Two-column workspace on desktop: content on the left, forms/side panels on the right.
@@ -493,4 +642,232 @@ legend {
   section:not(.printable) {
     display: none !important;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   M2 — visitor ticket, display board, staff console
+   Built only from the shared tokens and patterns above.
+   --------------------------------------------------------------------------- */
+
+.ticket-code {
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 2.5rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1.1;
+}
+.ticket-code-xl {
+  font-size: clamp(2.5rem, 12vw, 3.5rem);
+}
+
+/* Key figures (queue state, waiting count, live mode) shown as labelled stats */
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr));
+  max-width: 32rem;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-5);
+  padding: 0;
+}
+.stat {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  margin: 0;
+}
+.stat dt {
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+.stat dd {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+.stat dd.stat-value-lg {
+  font-size: 1.6rem;
+  line-height: 1.1;
+}
+
+/* Visitor status card */
+.status-card {
+  border-width: 2px;
+}
+.status-called {
+  border-color: var(--ok);
+  background: var(--ok-bg);
+}
+.status-message {
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+.meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  color: var(--muted);
+}
+
+/* Primary call-to-action */
+.btn-large {
+  font-size: 1.15rem;
+  min-height: 3.25rem;
+  width: 100%;
+}
+@media (min-width: 40rem) {
+  .btn-large {
+    width: auto;
+    min-width: 14rem;
+  }
+}
+
+/* Staff console: the ticket at this counter is the focal point */
+.current-ticket {
+  border: 2px solid var(--primary);
+  border-left-width: 0.5rem;
+  border-radius: var(--radius);
+  padding: var(--space-4);
+  background: var(--info-bg);
+}
+.current-ticket > * {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.current-ticket > * + * {
+  margin-top: var(--space-3);
+}
+.current-ticket-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+}
+.current-ticket-head > * {
+  margin: 0;
+}
+.current-ticket .form-grid {
+  margin-top: var(--space-4);
+  background: var(--bg);
+}
+/* Very narrow screens: less nested padding so controls keep usable width */
+@media (max-width: 24rem) {
+  .current-ticket,
+  .form-grid {
+    padding-left: var(--space-3);
+    padding-right: var(--space-3);
+  }
+}
+
+/* Ticket lists: code | details | action, action kept to the right when it fits */
+.ticket-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.ticket-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+}
+.ticket-row-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 700;
+  font-size: 1.1rem;
+  min-width: 4.5rem;
+}
+.ticket-row-meta {
+  min-width: 0;
+}
+.ticket-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+.check.inline {
+  display: inline-flex;
+  min-height: var(--control-h);
+}
+
+/* QR hand-off panel (walk-in status link) */
+.qr-panel {
+  text-align: center;
+}
+.qr-panel .qr {
+  max-width: 13rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+.qr-panel .btn-row {
+  justify-content: center;
+}
+.qr-panel details {
+  text-align: left;
+}
+
+/* Public display board */
+.board-grid {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 48rem) {
+  .board-grid {
+    grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  }
+}
+.board-calls {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.board-call {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+}
+.board-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 2rem;
+  font-weight: 800;
+}
+.board-counter {
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+.code-chips {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.code-chips li {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 700;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.code-chips li.muted {
+  border: 0;
+  padding-left: 0;
+  font-family: inherit;
+  font-weight: 400;
 }

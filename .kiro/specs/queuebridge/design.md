@@ -245,6 +245,37 @@ GET    /health                                   # liveness
 GET    /health/ready                            # readiness (checks DB connection)
 ```
 
+### M2 implementation notes (2026-11-08)
+
+Additive to the route list above; these are the routes M2 actually ships.
+
+```
+GET    /api/v1/facilities/:id/queues                # QUEUE_VIEW: today's queue per service
+POST   /api/v1/facilities/:id/queues                # supervisor/facility_admin: open today's session
+GET    /api/v1/queues/:id                           # QUEUE_VIEW: staff console projection
+POST   /api/v1/queues/:id/commands                  # staff: idempotent online command (role per state machine)
+POST   /api/v1/queues/:id/walk-ins                  # reception/counter/supervisor/admin: staff-assisted ticket
+GET    /api/v1/queues/:id/stream                    # staff SSE (change signals only)
+POST   /api/v1/queues/:id/join                      # anonymous visitor join (operation_id + join_proof)
+GET    /api/v1/tickets/:code/status                 # visitor; X-QB-Ticket-Token header required
+GET    /api/v1/tickets/:code/stream                 # visitor SSE; same header
+GET    /api/v1/public/facilities/:org/:facility     # public join catalog (no PII)
+GET    /api/v1/public/facilities/:org/:facility/board   # display board: codes + counter names only
+GET    /api/v1/public/facilities/:org/:facility/stream  # public SSE (change signals only)
+```
+
+- Walk-ins use a separate staff endpoint rather than sharing `/join`, so anonymous and staff
+  authority never mix in one handler.
+- Ticket status is addressed by public code and authorized by a per-ticket status token in a
+  header (never a URL parameter, so it is never logged). Tokens are stored as SHA-256 only.
+- SSE streams carry `{"revision": n}` change signals and no queue data; clients refetch through
+  the authorized endpoint. Fan-out uses PostgreSQL `LISTEN/NOTIFY` (delivered on commit, works
+  across API instances). Streams end after 15 min so reconnects re-run authorization.
+- Every state-changing `/api/*` request now requires the `X-QB-CSRF` header and an allowed
+  Origin, including anonymous visitor joins. Provider webhooks (M6) will need an explicit,
+  signature-verified exemption.
+- Transfer reasons are fixed codes, never free text, so `queue_events.payload` cannot carry PII.
+
 ## 5. Offline coordination design
 
 ### Browser-side (packages/continuity + apps/web)
@@ -343,6 +374,13 @@ Algorithm:
 4. `low = estimatedSeconds * 0.7`, `high = estimatedSeconds * 1.5`.
 5. `factors` = `["${position} tickets ahead", "${activeCompatibleCounters} counters active", "avg ${avgService}s per ticket based on ${sampleSize} samples"]`.
 6. Clamp to operating schedule end time if within current session.
+
+> **M2 amendment (2026-11-08):** step 4 is implemented as
+> `low = (position / counters) * avgService * 0.7` and
+> `high = ((position + 1) / counters) * avgService * 1.5`, so the interval also allows for the
+> service in progress and is never zero-width (the original formula produced `0–0` for the next
+> person, which would imply an exact time, contrary to REQ-F6.6). Step 6 is not applied in M2
+> because operating hours are not configurable yet; the estimate states this as a factor.
 
 ## 8. Notification template design
 

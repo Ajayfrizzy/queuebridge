@@ -3,12 +3,15 @@ import { z } from 'zod';
 import type { Db } from '../db.js';
 import type { Env } from '../env.js';
 import { problems } from '../errors.js';
+import type { QueueNotifier } from '../queue/notifier.js';
 
 export interface RouteDeps {
   db: Db;
   env: Env;
   /** preHandler: validates the session cookie and populates `req.auth`, or throws 401. */
   authenticate: (req: FastifyRequest, reply: FastifyReply) => Promise<void>;
+  /** Live change-signal fan-out for SSE streams. */
+  notifier: QueueNotifier;
 }
 
 const uuid = z.string().uuid();
