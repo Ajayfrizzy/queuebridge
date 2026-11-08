@@ -57,7 +57,7 @@ All local gates pass: format, strict lint, typecheck (8), build, unit tests (212
 
 ## Unresolved risks and explicit deferrals
 
-1. **CI not run.** Nothing is committed or pushed, so GitHub CI hasn't run.
+1. **CI on Linux only.** PR #4 runs all GitHub CI workflows (see "Pull request #4" below). Playwright runs Chromium only, so Firefox and WebKit are unverified.
 2. **Universal CSRF header requirement.** Every state-changing `/api/*` request now requires `X-QB-CSRF` and an allowed Origin, including anonymous joins. M6 webhooks will need an explicit, signature-verified exemption.
 3. **Transfers go to the back of the destination queue.** A transferred ticket gets a new issue number at the destination, while its original join time is preserved and shown. A fairness position policy for transfers belongs to M4 routing.
 4. **Priority classes are inert in M2.** All tickets are `normal`; the ordering already honours enabled classes. Overrides with reasons arrive in M4.
@@ -159,3 +159,16 @@ Remaining UI notes (not defects; for the later brand redesign):
 - **The 4 skipped Playwright cases** are one test, `ui-layout.spec.ts › @responsive visual capture › M2 screens`, run once per browser project. It is gated by `test.skip(!CAPTURE, 'capture only')` and only writes screenshots. Every flow it drives is asserted, without screenshots, by `queue-journey.spec.ts` and the `UI layout consistency` tests. No behavioural coverage is skipped.
 - **Final local results:** format PASS · lint PASS (0 warnings) · typecheck 8/8 · build PASS · unit 212 PASS · real PostgreSQL 312 PASS · **Playwright 84 passed, 4 skipped (capture-only), on 2 consecutive full runs** · audit: no high/critical (5 low/moderate, unchanged).
 - **Evidence:** 20 curated screenshots in `docs/testing/screenshots/m2-ui/` (1.6 MB).
+
+## Pull request #4 — CI and review
+
+- **PR:** https://github.com/Ajayfrizzy/queuebridge/pull/4 (base `staging`; not merged).
+- **First CI run failed twice; both fixed without weakening any check:**
+  - The workflow built only `contracts` before typecheck. It now builds all library packages.
+  - A font-dependent toolbar assertion failed on Linux at 320 px. It now checks both the same-row and the wrapped layout explicitly, with negative controls.
+- **Codex review: 4 P2 findings, all valid, all fixed with regression tests that fail on the previous code:**
+  - saved tickets are now scoped by a device-local id, not the public code;
+  - SSE streams keep CORS and security headers;
+  - a pending join survives unavailable storage for the life of the page;
+  - a walk-in with a lost response is replayed rather than reissued.
+- **Results:** CI is green on all 11 checks. Local: unit 218, PostgreSQL 313, Playwright 87 passed (4 capture-only skips). Details are in `docs/testing/M2-evidence.md`, final section.

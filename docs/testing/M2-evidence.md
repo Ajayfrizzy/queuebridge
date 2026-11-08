@@ -188,7 +188,7 @@ Geometry and computed-style assertions, no pixel snapshots:
 - **Visitor screens:**
   - Join card internal gaps are a uniform 12 px.
   - The ticket page stack has uniform 16 px gaps.
-  - Board toolbar items are vertically aligned (within 6 px).
+  - Board toolbar items are vertically centred against each other (within 6 px) when they share a row. When fonts make them wrap (Linux CI at 320 px), they must align to the row start (within 2 px), sit below the first row and stay inside the viewport. This was amended after PR #4 CI; see the end of this file.
   - There is no horizontal overflow.
 - **Negative controls:** removing the panel-gap rule fails the gap assertion, and removing the select gutter fails it at 10.4 px vs ≥ 40. Both were confirmed, then the styles were restored.
 
@@ -207,3 +207,38 @@ format PASS · lint PASS · typecheck 8/8 · build PASS · unit 212 PASS · real
 - **Final results:** **Playwright 84 passed, 4 skipped** on 2 consecutive full runs.
   - The 4 skips are the screenshot-only capture utility, gated by `CAPTURE`; its flows are asserted elsewhere.
   - Unit 212 · real PostgreSQL 312 · format, lint, typecheck and build PASS · audit no high/critical.
+
+# Pull request #4 (`feature/m2-queue-core` → `staging`): CI and review
+
+## First CI run (`4283d8e`): 2 of 6 jobs failed, both fixed without weakening checks
+
+- **Lint and typecheck: `TS2307 Cannot find module '@queuebridge/domain'`.**
+  - Cause: the workflow built only `contracts` before typecheck, but M2's API now imports `domain`, which resolves through its `dist`. Local runs passed only because `dist` already existed.
+  - Reproduced locally by deleting `packages/*/dist`: 15 errors with the old step, 0 after the fix.
+  - Fix: the step now builds every library package (`pnpm --filter "./packages/*" build`). Typecheck itself is unchanged.
+- **Tests with PostgreSQL: 1 Playwright failure (`[mobile-320] … aligned toolbars`).** On Linux fonts the board's Live badge and Spoken announcements toggle wrap onto two rows, so the "same-row centre within 6 px" check measured 43 px.
+  - The assertion now handles both layouts deliberately. On a shared row, centres must be within 6 px (unchanged). When wrapped, both items must start at the toolbar's row edge (within 2 px), the second must sit below the first, and both must stay inside the viewport. The tolerance was not loosened.
+  - Negative controls, by injected CSS:
+    - forced wrap: passes;
+    - wrapped and indented 24 px: fails ("wrapped toolbar item aligned to row start");
+    - same row offset 9 px: fails (17.9 px vs ≤ 6);
+    - offset 20 px: fails.
+- **Re-run (`2821134`):** all 11 checks passed (push and PR runs).
+
+## Codex review (4 × P2): all valid, all fixed with regression tests (`865b206`)
+
+| Finding                                                                                                                | Fix                                                                                                                                                                                                            | Regression test (shown to fail on the previous code)                                                                                                                                        |
+| ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Saved tickets keyed by public code, so `G001` from facility B replaced facility A's `G001`                             | A device-local id per saved ticket. Storage, links and navigation use `/ticket/:code?k=<id>`. Ambiguous bare-code links show a chooser; legacy entries get a stable id. The ticket view is keyed by code + id. | `tickets.test.ts` (4 tests); Playwright `the same public code at two facilities keeps both tickets on the device` (old code: 1 listed instead of 2)                                         |
+| SSE `writeHead` after `hijack()` dropped CORS headers, so cross-origin deployments got no live updates                 | Copy `reply.getHeaders()` into the stream response. Security headers are now also set in `onRequest`, so streams carry them; previously they were `onSend`-only and skipped by hijack.                         | `queue-security.db.test.ts › streams keep CORS and security headers…` (real HTTP; 3 stream types; foreign origin still denied). Fails without the fix (`access-control-allow-origin` null). |
+| Join with `localStorage` unavailable lost the pending operation id, so a retry after a lost response made a 2nd ticket | Pending join kept in page memory when storage fails. The UI tells the visitor to keep the page open.                                                                                                           | `tickets.test.ts` (setItem throws, retry reuses id + proof); Playwright `with browser storage unavailable, retrying a lost join still cannot duplicate` (old code: G002, 2 tickets)         |
+| Walk-in operation id discarded after an uncertain response, so reissuing created a 2nd ticket                          | Operation id kept after a network error or 5xx, with a **Finish issuing walk-in ticket** replay. It is cleared on success or a 4xx refusal.                                                                    | Playwright `a walk-in whose response is lost is finished with the same operation, not reissued` (old code: G002, 2 tickets)                                                                 |
+
+While verifying finding 1, the new test caught a second defect. Moving from the chooser to a specific ticket reused the mounted page with stale state. Keying the view by code + id fixed it.
+
+## Results at `865b206`
+
+- **Local:** format PASS · lint PASS (0 warnings) · typecheck 8/8 (from clean package `dist`) · build PASS · unit **218** · real PostgreSQL **313** · **Playwright 87 passed, 4 skipped** (capture-only) · audit: no high/critical (5 low/moderate, unchanged).
+- **GitHub CI:** all 11 checks pass on push and PR runs:
+  - lint + typecheck, tests without DB, tests with PostgreSQL (313 DB tests and 87 Playwright passed, 4 capture-only skipped);
+  - build, security audit, migration apply + constraint validation.
