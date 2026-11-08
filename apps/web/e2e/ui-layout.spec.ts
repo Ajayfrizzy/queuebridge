@@ -317,10 +317,37 @@ test.describe('@responsive UI layout consistency', () => {
     await expect(v.getByTestId('now-calling').first()).toContainText('G001');
     const live = await box(v, '[data-testid="live-mode"]');
     const toggle = await box(v, '.board .check.inline input');
-    expect(
-      Math.abs(live.y + live.height / 2 - (toggle.y + toggle.height / 2)),
-      'toolbar items aligned',
-    ).toBeLessThanOrEqual(6);
+    const label = await box(v, '.board .check.inline');
+    const bar = await box(v, '.board .toolbar-spread > .toolbar');
+    const vw = v.viewportSize()!.width;
+    // Whether the badge and the toggle share a row depends on font metrics
+    // (they wrap on narrow Linux viewports). Either outcome must be deliberate:
+    const sameRow = toggle.y < live.y + live.height && live.y < toggle.y + toggle.height;
+    if (sameRow) {
+      // one row: vertically centred against each other
+      expect(
+        Math.abs(live.y + live.height / 2 - (toggle.y + toggle.height / 2)),
+        'toolbar items aligned',
+      ).toBeLessThanOrEqual(6);
+    } else {
+      // wrapped: the toggle starts a new row flush with the toolbar's start edge,
+      // below the badge (no overlap), never indented or floating
+      expect(
+        Math.abs(label.x - bar.x),
+        'wrapped toolbar item aligned to row start',
+      ).toBeLessThanOrEqual(2);
+      expect(
+        Math.abs(live.x - bar.x),
+        'first toolbar item aligned to row start',
+      ).toBeLessThanOrEqual(2);
+      expect(label.y, 'wrapped toolbar item below first row').toBeGreaterThanOrEqual(
+        live.y + live.height,
+      );
+    }
+    for (const b of [live, label]) {
+      expect(b.x, 'toolbar item inside viewport').toBeGreaterThanOrEqual(0);
+      expect(b.x + b.width, 'toolbar item inside viewport').toBeLessThanOrEqual(vw + 0.5);
+    }
     expect(
       await v.evaluate(
         () => document.documentElement.scrollWidth > document.documentElement.clientWidth,

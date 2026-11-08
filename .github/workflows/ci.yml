@@ -48,7 +48,7 @@ jobs:
         run: pnpm lint
 
       - name: Build dependency packages for typecheck
-        run: pnpm --filter @queuebridge/contracts build
+        run: pnpm --filter "./packages/*" build
 
       - name: Typecheck
         run: pnpm typecheck
