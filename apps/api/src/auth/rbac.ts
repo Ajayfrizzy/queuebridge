@@ -32,6 +32,18 @@ export const Permission = {
   FACILITY_CONFIGURE: [Role.FACILITY_ADMIN],
   /** List staff, invite staff, assign/revoke facility roles. */
   STAFF_MANAGE: [Role.FACILITY_ADMIN],
+  /** View queue sessions and the staff queue console (read-only for auditors). */
+  QUEUE_VIEW: [
+    Role.STAFF_RECEPTION,
+    Role.STAFF_COUNTER,
+    Role.SUPERVISOR,
+    Role.FACILITY_ADMIN,
+    Role.AUDITOR,
+  ],
+  /** Open, pause, close and reopen queue sessions. */
+  QUEUE_MANAGE: [Role.SUPERVISOR, Role.FACILITY_ADMIN],
+  /** Staff-assisted walk-in registration. */
+  WALK_IN: [Role.STAFF_RECEPTION, Role.STAFF_COUNTER, Role.SUPERVISOR, Role.FACILITY_ADMIN],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type PermissionName = keyof typeof Permission;
@@ -88,4 +100,14 @@ export async function requireFacilityPermission(
 /** Organization-wide actions (create facility, deactivate staff). */
 export function requireOrgAdmin(auth: AuthContext): void {
   if (!isOrgAdmin(auth)) throw problems.forbidden();
+}
+
+/**
+ * Roles used to evaluate ticket state-machine rules at a facility.
+ * An organization administrator acts with supervisor authority for queue operations; every
+ * other principal uses exactly the roles granted at that facility. Never derived from input.
+ */
+export function queueActorRoles(auth: AuthContext, facilityId: string): Role[] {
+  const held = facilityRoles(auth, facilityId);
+  return isOrgAdmin(auth) ? [...new Set([...held, Role.SUPERVISOR, Role.FACILITY_ADMIN])] : held;
 }

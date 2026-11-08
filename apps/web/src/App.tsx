@@ -14,11 +14,16 @@ import { FacilityStaff } from './pages/FacilityStaff.js';
 import { Home } from './pages/Home.js';
 import { Login } from './pages/Login.js';
 import { Signup } from './pages/Signup.js';
+import { DisplayBoard } from './pages/DisplayBoard.js';
+import { JoinPage } from './pages/JoinPage.js';
+import { StaffConsole } from './pages/StaffConsole.js';
+import { StaffFacility, StaffHome } from './pages/StaffHome.js';
+import { TicketPage } from './pages/TicketPage.js';
 
 /**
  * Root application router.
- * M1 delivers identity and facility administration; visitor, staff-console and display
- * routes remain stubs until M2+.
+ * M1: identity and facility administration. M2: visitor join and ticket status, public
+ * display board and the staff queue console. Supervisor device-health tools arrive in M5.
  */
 export function App(): ReactElement {
   return (
@@ -42,21 +47,23 @@ export function App(): ReactElement {
                 </Route>
               </Route>
 
-              {/* Visitor routes — implemented in M2 */}
-              <Route
-                path="/join/:orgSlug/:facilitySlug"
-                element={<PlaceholderPage title="Join Queue" />}
-              />
-              <Route path="/ticket/:code" element={<PlaceholderPage title="Ticket Status" />} />
-              {/* Staff / supervisor consoles and public board — M2+ */}
-              <Route path="/staff/*" element={<PlaceholderPage title="Staff Console" />} />
+              {/* Visitor routes (M2) — no account needed */}
+              <Route path="/join/:orgSlug/:facilitySlug" element={<JoinPage />} />
+              <Route path="/ticket/:code" element={<TicketPage />} />
+              {/* Public display board (M2) */}
+              <Route path="/display/:orgSlug/:facilitySlug" element={<DisplayBoard />} />
+
+              <Route element={<RequireAuth />}>
+                {/* Staff console (M2) */}
+                <Route path="/staff" element={<StaffHome />} />
+                <Route path="/staff/facilities/:fid" element={<StaffFacility />} />
+                <Route path="/staff/queues/:queueId" element={<StaffConsole />} />
+              </Route>
+
+              {/* Supervisor dashboard (device health) — M5 */}
               <Route
                 path="/supervisor/*"
                 element={<PlaceholderPage title="Supervisor Dashboard" />}
-              />
-              <Route
-                path="/display/:facilityId"
-                element={<PlaceholderPage title="Queue Display" />}
               />
             </Route>
           </Routes>

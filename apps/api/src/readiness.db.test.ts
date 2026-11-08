@@ -154,7 +154,7 @@ describe('facility readiness and operational eligibility (M1)', () => {
     expect((await readiness(s.org.admin, s.fid)).configuration_ready).toBe(false);
   });
 
-  it('the join link is never reported as operational before M2, even when fully configured', async () => {
+  it('the join link becomes operational only once a queue is open today for a served service', async () => {
     const s = await setup();
     await s.org.admin.post('/api/v1/counter_service_capabilities', {
       counter_id: s.counterId,
@@ -167,6 +167,22 @@ describe('facility readiness and operational eligibility (M1)', () => {
       `/api/v1/facilities/${s.fid}/join-link`,
     );
     expect(link.body.join_link.operational).toBe(false);
+
+    expect(
+      (await s.org.admin.post(`/api/v1/facilities/${s.fid}/queues`, { service_id: s.serviceId }))
+        .status,
+    ).toBe(201);
+    expect((await readiness(s.org.admin, s.fid)).visitor_join.operational).toBe(true);
+    const live = await s.org.admin.get<{ join_link: { operational: boolean } }>(
+      `/api/v1/facilities/${s.fid}/join-link`,
+    );
+    expect(live.body.join_link.operational).toBe(true);
+
+    // Deactivating the only counter makes the link non-operational again
+    await s.org.admin.patch(`/api/v1/facilities/${s.fid}/counters/${s.counterId}`, {
+      active: false,
+    });
+    expect((await readiness(s.org.admin, s.fid)).visitor_join.operational).toBe(false);
   });
 
   it('is readable by every facility role, hidden from other facilities and organizations, and requires auth', async () => {

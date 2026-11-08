@@ -1,5 +1,13 @@
 import type {
   ApiError,
+  Board,
+  CommandOutcome,
+  FacilityQueueSummary,
+  JoinQueueResponse,
+  PublicFacility,
+  QueueCommandRequest,
+  StaffQueue,
+  TicketStatus,
   Counter,
   CreateFacilityRequest,
   CreateOrganizationRequest,
@@ -26,14 +34,25 @@ export function setUnauthenticatedHandler(handler: (() => void) | null): void {
 }
 
 /** Paths where a 401 is an expected answer (bad credentials / probing), not a lost session. */
-const PUBLIC_401 = ['/auth/login', '/auth/logout', '/auth/me', '/invitations/'];
+const PUBLIC_401 = [
+  '/auth/login',
+  '/auth/logout',
+  '/auth/me',
+  '/invitations/',
+  '/public/',
+  '/tickets/',
+];
 
 /** An RFC 9457 problem response from the API (or a network failure with status 0). */
 export class ApiRequestError extends Error {
   public readonly status: number;
-  public readonly problem: ApiError | null;
+  public readonly problem: (ApiError & { outcome?: CommandOutcome }) | null;
 
-  public constructor(status: number, problem: ApiError | null, message: string) {
+  public constructor(
+    status: number,
+    problem: (ApiError & { outcome?: CommandOutcome }) | null,
+    message: string,
+  ) {
     super(message);
     this.name = 'ApiRequestError';
     this.status = status;
@@ -50,7 +69,12 @@ export class ApiRequestError extends Error {
   }
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  extraHeaders: Record<string, string> = {},
+): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`${BASE}/api/v1${path}`, {
@@ -60,6 +84,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
         Accept: 'application/json, application/problem+json',
         // Cross-site request protection header required by the API for cookie-authenticated writes
         'X-QB-CSRF': '1',
+        ...extraHeaders,
         ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
       },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
@@ -104,6 +129,13 @@ export interface InvitationPreview {
   email: string;
   role: FacilityRole;
 }
+
+/** Absolute API URL (for streaming endpoints). */
+export function apiUrl(path: string): string {
+  return `${BASE}/api/v1${path}`;
+}
+
+export const TICKET_TOKEN_HEADER = 'X-QB-Ticket-Token';
 
 export const api = {
   signupOrganization: (body: CreateOrganizationRequest): Promise<{ user: SessionUser }> =>
@@ -179,4 +211,33 @@ export const api = {
     request('POST', `/facilities/${fid}/invitations`, body),
   revokeInvitation: (fid: string, id: string): Promise<void> =>
     request('DELETE', `/facilities/${fid}/invitations/${id}`),
+
+  // ---- M2: queues (staff) ----
+  facilityQueues: (fid: string): Promise<{ queues: FacilityQueueSummary[] }> =>
+    request('GET', `/facilities/${fid}/queues`),
+  openQueue: (fid: string, serviceId: string): Promise<{ queue: StaffQueue }> =>
+    request('POST', `/facilities/${fid}/queues`, { service_id: serviceId }),
+  staffQueue: (queueId: string): Promise<{ queue: StaffQueue }> =>
+    request('GET', `/queues/${queueId}`),
+  command: (queueId: string, body: QueueCommandRequest): Promise<{ outcome: CommandOutcome }> =>
+    request('POST', `/queues/${queueId}/commands`, body),
+  walkIn: (queueId: string, operationId: string): Promise<{ ticket: JoinQueueResponse }> =>
+    request('POST', `/queues/${queueId}/walk-ins`, { operation_id: operationId }),
+
+  // ---- M2: public / visitor ----
+  publicFacility: (org: string, fac: string): Promise<{ facility: PublicFacility }> =>
+    request('GET', `/public/facilities/${encodeURIComponent(org)}/${encodeURIComponent(fac)}`),
+  board: (org: string, fac: string): Promise<{ board: Board }> =>
+    request(
+      'GET',
+      `/public/facilities/${encodeURIComponent(org)}/${encodeURIComponent(fac)}/board`,
+    ),
+  join: (
+    queueId: string,
+    body: { operation_id: string; join_proof: string },
+  ): Promise<{ ticket: JoinQueueResponse }> => request('POST', `/queues/${queueId}/join`, body),
+  ticketStatus: (code: string, token: string): Promise<{ status: TicketStatus }> =>
+    request('GET', `/tickets/${encodeURIComponent(code)}/status`, undefined, {
+      [TICKET_TOKEN_HEADER]: token,
+    }),
 };

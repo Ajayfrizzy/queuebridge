@@ -12,3 +12,4 @@
 export * from './state-machine.js';
 export * from './routing.js';
 export * from './wait-estimate.js';
+export * from './queue.js';

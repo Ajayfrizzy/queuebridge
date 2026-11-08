@@ -94,9 +94,10 @@ test('new organization configures a facility end to end and onboards a staff mem
   await expect(page.getByTestId('join-qr')).toHaveAttribute('aria-label', new RegExp(joinUrl));
   const download = page.getByRole('link', { name: 'Download QR (SVG)' });
   expect(await download.getAttribute('href')).toContain('data:image/svg+xml');
-  // The link actually resolves to a (placeholder) visitor page in the app
+  // The link resolves to the real visitor join page (M2); no queue is open yet, and it says so
   await page.goto(new URL(joinUrl).pathname);
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Join Queue');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Central Clinic');
+  await expect(page.getByTestId('no-open-queues')).toBeVisible();
 
   // --- Staff invitation ----------------------------------------------------------------
   await page.goBack();

@@ -2,19 +2,26 @@ import type { FacilityReadiness, ReadinessIssueCode } from '@queuebridge/contrac
 import type { Db } from './db.js';
 
 /**
- * Visitor registration is delivered in M2. Until then a join link/QR must never be presented
- * as operational, regardless of how complete the configuration is. M2 flips this constant
- * when `POST /queues/:id/join` exists.
+ * Visitor registration exists since M2 (`POST /queues/:id/join`). The join link is operational
+ * only when configuration is ready AND at least one service with an eligible counter has an OPEN
+ * queue session today. The platform capability flag stays explicit so the capability manifest
+ * (MQ) can read it.
  */
-export const VISITOR_JOIN_OPERATIONAL = false;
-export const VISITOR_JOIN_REASON =
-  'Visitor registration is not available yet. The link and QR code are for preparation only.';
+export const VISITOR_JOIN_OPERATIONAL = true;
+export const VISITOR_JOIN_REASONS = {
+  live: 'Visitors can join now using this link or QR code.',
+  configuration: 'Finish setup first: an active counter must serve an active service.',
+  no_open_queue:
+    'No queue is open today. Open a queue from the staff console before sharing this link.',
+} as const;
 
 export interface ReadinessInput {
   facilityActive: boolean;
   services: { id: string; name: string; status: 'active' | 'inactive' }[];
   counters: { id: string; name: string; active: boolean }[];
   capabilities: { counter_id: string; service_id: string }[];
+  /** Services that have an OPEN queue session today (facility time zone). */
+  openQueueServiceIds?: string[];
 }
 
 /**
@@ -96,8 +103,23 @@ export function computeReadiness(input: ReadinessInput): FacilityReadiness {
     services,
     counters,
     issues,
-    visitor_join: { operational: VISITOR_JOIN_OPERATIONAL, reason: VISITOR_JOIN_REASON },
+    visitor_join: visitorJoin(configurationReady, services, input.openQueueServiceIds ?? []),
   };
+}
+
+function visitorJoin(
+  configurationReady: boolean,
+  services: { id: string; operational: boolean }[],
+  openQueueServiceIds: string[],
+): FacilityReadiness['visitor_join'] {
+  if (!VISITOR_JOIN_OPERATIONAL || !configurationReady) {
+    return { operational: false, reason: VISITOR_JOIN_REASONS.configuration };
+  }
+  const open = new Set(openQueueServiceIds);
+  const live = services.some((s) => s.operational && open.has(s.id));
+  return live
+    ? { operational: true, reason: VISITOR_JOIN_REASONS.live }
+    : { operational: false, reason: VISITOR_JOIN_REASONS.no_open_queue };
 }
 
 /** Load readiness strictly within one organization + facility (callers authorize first). */
@@ -107,7 +129,7 @@ export async function loadReadiness(
   facilityId: string,
   facilityStatus: string,
 ): Promise<FacilityReadiness> {
-  const [services, counters, capabilities] = await Promise.all([
+  const [services, counters, capabilities, openQueues] = await Promise.all([
     db<{ id: string; name: string; status: 'active' | 'inactive' }[]>`
       SELECT id, name, status FROM services
        WHERE facility_id = ${facilityId} AND organization_id = ${organizationId}
@@ -121,11 +143,16 @@ export async function loadReadiness(
         FROM counter_service_capabilities csc
         JOIN counters c ON c.id = csc.counter_id
        WHERE c.facility_id = ${facilityId} AND c.organization_id = ${organizationId}`,
+    db<{ service_id: string }[]>`
+      SELECT qs.service_id FROM queue_sessions qs JOIN facilities f ON f.id = qs.facility_id
+       WHERE qs.facility_id = ${facilityId} AND qs.organization_id = ${organizationId}
+         AND qs.state = 'open' AND qs.operational_date = (NOW() AT TIME ZONE f.timezone)::date`,
   ]);
   return computeReadiness({
     facilityActive: facilityStatus === 'active',
     services,
     counters,
     capabilities,
+    openQueueServiceIds: openQueues.map((q) => q.service_id),
   });
 }

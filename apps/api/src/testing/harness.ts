@@ -17,6 +17,9 @@ export function testEnv(overrides: Record<string, string> = {}): Env {
     WEB_BASE_URL: TEST_ORIGIN,
     LOG_LEVEL: 'silent',
     AUTH_RATE_LIMIT_MAX: '100000',
+    JOIN_RATE_LIMIT_MAX: '100000',
+    PUBLIC_READ_RATE_LIMIT_MAX: '100000',
+    COMMAND_RATE_LIMIT_MAX: '100000',
     ...overrides,
   });
 }
@@ -192,4 +195,141 @@ export async function createStaff(
   if (acc.status !== 201)
     throw new Error(`accept failed: ${acc.status} ${JSON.stringify(acc.body)}`);
   return { client, email, userId: acc.body.user.id };
+}
+
+// ---------------------------------------------------------------------------
+// M2 queue fixtures (real API calls; nothing mocked)
+// ---------------------------------------------------------------------------
+
+export interface QueueFixture {
+  org: TestOrg;
+  fid: string;
+  facilitySlug: string;
+  serviceId: string;
+  counterIds: string[];
+  queueId: string;
+}
+
+export async function setupQueue(
+  app: FastifyInstance,
+  opts: {
+    counters?: number;
+    serviceName?: string;
+    org?: TestOrg;
+    fid?: string;
+    facilitySlug?: string;
+  } = {},
+): Promise<QueueFixture> {
+  const org = opts.org ?? (await signupOrg(app));
+  let fid = opts.fid;
+  let facilitySlug = opts.facilitySlug ?? '';
+  if (!fid) {
+    const f = await createFacility(org);
+    fid = f.id;
+    facilitySlug = f.slug;
+  }
+  const svc = await org.admin.post<{ service: { id: string } }>(
+    `/api/v1/facilities/${fid}/services`,
+    {
+      name: opts.serviceName ?? `General ${uniqueSlug('s')}`,
+    },
+  );
+  if (svc.status !== 201)
+    throw new Error(`service failed ${svc.status} ${JSON.stringify(svc.body)}`);
+  const counterIds: string[] = [];
+  for (let i = 0; i < (opts.counters ?? 2); i++) {
+    const c = await org.admin.post<{ counter: { id: string } }>(
+      `/api/v1/facilities/${fid}/counters`,
+      {
+        name: `Counter ${uniqueSlug('c')}`,
+      },
+    );
+    counterIds.push(c.body.counter.id);
+    await org.admin.post('/api/v1/counter_service_capabilities', {
+      counter_id: c.body.counter.id,
+      service_id: svc.body.service.id,
+    });
+  }
+  const q = await org.admin.post<{ queue: { id: string } }>(`/api/v1/facilities/${fid}/queues`, {
+    service_id: svc.body.service.id,
+  });
+  if (q.status !== 201) throw new Error(`open queue failed ${q.status} ${JSON.stringify(q.body)}`);
+  return {
+    org,
+    fid,
+    facilitySlug,
+    serviceId: svc.body.service.id,
+    counterIds,
+    queueId: q.body.queue.id,
+  };
+}
+
+export interface JoinResult {
+  status: number;
+  body: {
+    ticket?: {
+      disposition: string;
+      public_code: string;
+      status_token: string;
+      status_path: string;
+    };
+    title?: string;
+  };
+  operationId: string;
+  proof: string;
+}
+
+/** Anonymous visitor join (no cookie), as the PWA would send it. */
+export async function visitorJoin(
+  app: FastifyInstance,
+  queueId: string,
+  ids: { operationId?: string; proof?: string } = {},
+): Promise<JoinResult> {
+  const { uuidv7, randomSecret } = await import('@queuebridge/contracts');
+  const operationId = ids.operationId ?? uuidv7();
+  const proof = ids.proof ?? randomSecret();
+  const res = await new TestClient(app).post<JoinResult['body']>(`/api/v1/queues/${queueId}/join`, {
+    operation_id: operationId,
+    join_proof: proof,
+  });
+  return { status: res.status, body: res.body, operationId, proof };
+}
+
+export interface CommandBody {
+  outcome?: {
+    disposition: string;
+    ticket_id: string | null;
+    public_code: string | null;
+    server_revision: number;
+    server_sequence: number | null;
+    reason_code: string | null;
+  };
+  title?: string;
+}
+
+export async function queueCommand(
+  client: TestClient,
+  queueId: string,
+  body: Record<string, unknown>,
+): Promise<ApiResult<CommandBody>> {
+  const { uuidv7 } = await import('@queuebridge/contracts');
+  return client.post<CommandBody>(`/api/v1/queues/${queueId}/commands`, {
+    operation_id: uuidv7(),
+    ...body,
+  });
+}
+
+export async function ticketStatus(
+  app: FastifyInstance,
+  code: string,
+  token: string | undefined,
+): Promise<
+  ApiResult<{ status?: Record<string, unknown> & { state: string; position: number | null } }>
+> {
+  return new TestClient(app).request(
+    'GET',
+    `/api/v1/tickets/${code}/status`,
+    undefined,
+    token ? { 'x-qb-ticket-token': token } : {},
+  );
 }

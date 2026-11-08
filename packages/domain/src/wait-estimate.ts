@@ -57,12 +57,18 @@ export function computeWaitEstimate(input: WaitEstimateInput): WaitEstimate {
   }
 
   const avgService = median(serviceSamples);
-  const estimatedSeconds = (position / activeCompatibleCounters) * avgService;
+  // Lower bound: the tickets ahead, served at the observed pace across active counters.
+  // Upper bound also allows for the service currently in progress (position + 1), so the interval
+  // is never zero-width — not even for the next person — and never implies an exact time
+  // (REQ-F6.6). M2 amendment to design §7.
+  const lowSeconds = Math.round((position / activeCompatibleCounters) * avgService * 0.7);
+  const highSeconds = Math.round(((position + 1) / activeCompatibleCounters) * avgService * 1.5);
 
-  const lowSeconds = Math.round(estimatedSeconds * 0.7);
-  const highSeconds = Math.round(estimatedSeconds * 1.5);
-
-  factors.push(`${position} ticket${position !== 1 ? 's' : ''} ahead`);
+  factors.push(
+    position === 0
+      ? 'You are next; the wait depends on when a counter becomes free'
+      : `${position} ticket${position !== 1 ? 's' : ''} ahead`,
+  );
   factors.push(
     `${activeCompatibleCounters} counter${activeCompatibleCounters > 1 ? 's' : ''} active`,
   );

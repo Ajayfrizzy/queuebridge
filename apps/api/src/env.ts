@@ -23,6 +23,12 @@ const EnvSchema = z.object({
   WEB_BASE_URL: z.string().url().default('http://localhost:5173'),
   /** Max requests per minute per client IP on unauthenticated auth endpoints. */
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(10),
+  /** Max visitor joins per minute per client IP (clinic Wi-Fi is shared: keep this generous). */
+  JOIN_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(30),
+  /** Max public reads (catalog, board, ticket status) per minute per client IP. */
+  PUBLIC_READ_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(240),
+  /** Max staff queue commands / walk-ins per minute per client IP. */
+  COMMAND_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(240),
   /** Set true only when running behind a trusted reverse proxy (honours X-Forwarded-For). */
   TRUST_PROXY: z
     .enum(['true', 'false'])

@@ -251,7 +251,10 @@ describe('last active organization administrator safeguard', () => {
       ]);
       const statuses = results.map((r) => r.status).sort();
       // exactly one succeeds; the other is refused (409 last-admin, or 401 because it was deactivated first)
-      expect(statuses.filter((s) => s === 200)).toHaveLength(1);
+      expect(
+        statuses.filter((s) => s === 200),
+        JSON.stringify(results.map((r) => [r.status, r.body['title'], r.body['detail']])),
+      ).toHaveLength(1);
       const active =
         await t.db`SELECT 1 FROM role_assignments ra JOIN staff_users u ON u.id = ra.staff_user_id
           WHERE ra.organization_id = ${o.organizationId} AND ra.role = 'org_admin' AND u.status = 'active'`;

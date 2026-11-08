@@ -1,7 +1,7 @@
 # QueueBridge — Spec Tasks
 
 **Spec version:** 1.0  
-**Status:** M0 complete; M1 complete (merged into `staging`, CI passing); M2–M7 planned; MQ (Ask Que, F13) planned between M5 and M6  
+**Status:** M0 complete; M1 complete (merged into `staging`, CI passing); M2 implemented on `feature/m2-queue-core` (PR to `staging` under review); M3–M7 planned; MQ (Ask Que, F13) planned between M5 and M6  
 **Each task:** implement → test → validate → mark done
 
 ---
@@ -142,37 +142,50 @@ Deferred to M2 (not implemented here): routing-engine eligibility tests, visitor
 
 ## M2 — Queue Core and Visitor Flows (F1 online, F2, F3, F6)
 
+> Implemented on `feature/m2-queue-core` (2026-11-08); in review via a PR to `staging`. Evidence:
+> `docs/testing/M2-evidence.md`. Report: `M2-completion.md`.
+
 ### M2.1 Online queue operations
 
-- [ ] `POST /queues/:id/join` — create confirmed ticket
-- [ ] `POST /queues/:id/commands` — call, serve, complete, pause, miss, cancel
-- [ ] Queue session management: create session, open/close
-- [ ] Routing engine: select next eligible ticket per deterministic policy
+- [x] `POST /queues/:id/join` — create confirmed ticket (anonymous, idempotent, lost-ACK recovery)
+- [x] `POST /queues/:id/commands` — call, serve, complete, pause, resume/recall, miss, cancel, transfer, queue open/pause/close
+- [x] Queue session management: create session (per service per day, facility time zone), open/pause/close/reopen
+- [x] Routing engine: select next eligible ticket per deterministic, versioned service policy
+- [x] Staff walk-in registration endpoint `POST /queues/:id/walk-ins`
+- [x] Hash-chained, append-only `queue_events` for every committed change; replay verified against tables
 
 ### M2.2 Visitor flows (apps/web)
 
-- [ ] Visitor join flow: QR scan → service selection → ticket issued
-- [ ] Live ticket status page with SSE updates
-- [ ] Queue status and position display with wait estimate
-- [ ] Public board display with ticket calling
+- [x] Visitor join flow: QR scan → service selection → ticket issued
+- [x] Live ticket status page with SSE updates (polling fallback)
+- [x] Queue status and position display with wait estimate
+- [x] Public board display with ticket calling (visual + optional spoken announcements)
 
 ### M2.3 Staff console (apps/web)
 
-- [ ] Staff dashboard: queue view, current ticket, call next button
-- [ ] Walk-in registration form (staff-assisted)
-- [ ] Counter controls: call, serve, complete, transfer, pause
+- [x] Staff dashboard: queue view, current ticket, call next button
+- [x] Walk-in registration form (staff-assisted) with status-link QR
+- [x] Counter controls: call, serve, complete, transfer, pause (plus missed, recall, cancel)
 
 ### M2.4 Wait-time estimates
 
-- [ ] Implement `computeWaitEstimate` in packages/domain
-- [ ] Wire to ticket status endpoint
-- [ ] Display in visitor UI with explanation
+- [x] Implement `computeWaitEstimate` in packages/domain (M2 amendment: non-zero-width interval, design §7)
+- [x] Wire to ticket status endpoint
+- [x] Display in visitor UI with explanation
 
 ### M2 exit criteria
 
-- [ ] Full online join-to-completion journey passes for web and staff channels
-- [ ] Group 1 (domain) and Group 4 (concurrent transactions) tests pass
-- [ ] Duplicate ticket prevention verified
+- [x] Full online join-to-completion journey passes for web and staff channels
+- [x] Group 1 (domain) and Group 4 (concurrent transactions) tests pass
+- [x] Duplicate ticket prevention verified
+
+### M2 deferrals (explicit)
+
+- Priority classes beyond `normal`, priority overrides and routing position policy for transfers → M4
+- Ticket recovery for lost status tokens, configurable grace/no-show automation → M5
+- Offline capture, coordinator authority and sync batches → M3
+- Operating hours (estimate clamp, design §7 step 6) → not yet scheduled; estimate states the limitation
+- Final UI redesign → out of scope for M2
 
 ---
 

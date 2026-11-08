@@ -18,6 +18,7 @@ interface ServiceRow {
   description: string | null;
   status: 'active' | 'inactive';
   policy: ServicePolicy;
+  ticket_prefix: string | null;
   created_at: Date;
 }
 
@@ -29,11 +30,12 @@ function toDto(row: ServiceRow): Service {
     description: row.description,
     status: row.status,
     policy: row.policy,
+    ticket_prefix: row.ticket_prefix,
     created_at: row.created_at.toISOString(),
   };
 }
 
-const COLUMNS = 'id, facility_id, name, description, status, policy, created_at';
+const COLUMNS = 'id, facility_id, name, description, status, policy, ticket_prefix, created_at';
 
 export async function serviceRoutes(app: FastifyInstance, deps: RouteDeps): Promise<void> {
   const { db, authenticate } = deps;

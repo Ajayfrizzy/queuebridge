@@ -1,9 +1,14 @@
-import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
+import Fastify, {
+  type FastifyError,
+  type FastifyInstance,
+  type FastifyReply,
+  type FastifyRequest,
+} from 'fastify';
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import type { ApiError } from '@queuebridge/contracts';
-import { makeAuthenticate, SESSION_COOKIE } from './auth/session.js';
+import { makeAuthenticate } from './auth/session.js';
 import { createDb, type Db } from './db.js';
 import { allowedOrigins, type Env } from './env.js';
 import { ApiProblem, problems } from './errors.js';
@@ -13,17 +18,14 @@ import { counterRoutes } from './routes/counters.js';
 import { facilityRoutes } from './routes/facilities.js';
 import { invitationRoutes } from './routes/invitations.js';
 import { organizationRoutes } from './routes/organizations.js';
+import { publicRoutes } from './routes/public.js';
+import { queueRoutes } from './routes/queues.js';
+import { QueueNotifier } from './queue/notifier.js';
 import { serviceRoutes } from './routes/services.js';
 import { staffRoutes } from './routes/staff.js';
 import type { RouteDeps } from './routes/deps.js';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
-/** Cookie-setting endpoints are CSRF-protected even before a session exists (login CSRF). */
-const COOKIE_SETTING_PATHS = new Set([
-  '/api/v1/organizations',
-  '/api/v1/auth/login',
-  '/api/v1/invitations/accept',
-]);
 
 const GENERIC_TITLES: Record<number, string> = {
   400: 'Bad request',
@@ -64,6 +66,11 @@ export async function buildApp(
 
   const ownsDb = options.db === undefined;
   const db = options.db ?? createDb(env);
+  // Live-update fan-out; closed before the pool so UNLISTEN can complete
+  const notifier = new QueueNotifier(db, app.log);
+  app.addHook('onClose', async () => {
+    await notifier.close();
+  });
   if (ownsDb) {
     app.addHook('onClose', async () => {
       await db.end({ timeout: 5 });
@@ -77,7 +84,7 @@ export async function buildApp(
     origin: origins,
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['content-type', 'x-qb-csrf'],
+    allowedHeaders: ['content-type', 'x-qb-csrf', 'x-qb-ticket-token'],
   });
   await app.register(rateLimit, { global: false });
 
@@ -87,7 +94,7 @@ export async function buildApp(
   // Security headers
   // ---------------------------------------------------------------------------
 
-  app.addHook('onSend', async (req, reply) => {
+  const applySecurityHeaders = (req: FastifyRequest, reply: FastifyReply): void => {
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('X-Frame-Options', 'DENY');
     reply.header('Referrer-Policy', 'no-referrer');
@@ -97,7 +104,11 @@ export async function buildApp(
     if (env.NODE_ENV === 'production') {
       reply.header('Strict-Transport-Security', 'max-age=63072000; includeSubDomains');
     }
-  });
+  };
+  // Set early so hijacked responses (SSE streams copy reply.getHeaders()) carry them too, and
+  // again on send so nothing set later in the lifecycle can drop them.
+  app.addHook('onRequest', async (req, reply) => applySecurityHeaders(req, reply));
+  app.addHook('onSend', async (req, reply) => applySecurityHeaders(req, reply));
 
   // ---------------------------------------------------------------------------
   // CSRF mitigation for cookie-authenticated requests.
@@ -108,9 +119,10 @@ export async function buildApp(
   app.addHook('onRequest', async (req) => {
     if (SAFE_METHODS.has(req.method)) return;
     const path = req.url.split('?')[0] ?? req.url;
-    const hasSession = typeof req.cookies[SESSION_COOKIE] === 'string';
-    if (!hasSession && !COOKIE_SETTING_PATHS.has(path)) return;
-
+    // Every state-changing API request needs the custom header (which cross-site forms cannot
+    // send and CORS only permits for our origins) — including anonymous ones such as visitor
+    // joins, so a third-party page cannot make browsers mass-join queues.
+    if (!path.startsWith('/api/')) return;
     const origin = req.headers.origin;
     if (typeof origin === 'string' && !origins.includes(origin.replace(/\/$/, ''))) {
       throw problems.csrf();
@@ -221,6 +233,7 @@ export async function buildApp(
     db,
     env,
     authenticate: makeAuthenticate(db),
+    notifier,
   };
 
   await app.register(
@@ -233,6 +246,8 @@ export async function buildApp(
       await api.register(counterRoutes, deps);
       await api.register(capabilityRoutes, deps);
       await api.register(staffRoutes, deps);
+      await api.register(queueRoutes, deps);
+      await api.register(publicRoutes, deps);
     },
     { prefix: '/api/v1' },
   );

@@ -13,7 +13,7 @@ import {
 } from '../auth/rbac.js';
 import { requireAuth } from '../auth/session.js';
 import { isUniqueViolation, parseInput, problems } from '../errors.js';
-import { loadReadiness, VISITOR_JOIN_OPERATIONAL } from '../readiness.js';
+import { loadReadiness } from '../readiness.js';
 import { uuidParam, type RouteDeps } from './deps.js';
 
 export function toFacilityDto(row: FacilityRow): Facility {
@@ -108,10 +108,11 @@ export async function facilityRoutes(app: FastifyInstance, deps: RouteDeps): Pro
         'FACILITY_READ',
       );
       const path = `/join/${auth.organizationSlug}/${facility.slug}`;
+      const readiness = await loadReadiness(db, auth.organizationId, facility.id, facility.status);
       const link: FacilityJoinLink = {
         path,
         url: new URL(path, env.WEB_BASE_URL).toString(),
-        operational: VISITOR_JOIN_OPERATIONAL,
+        operational: readiness.visitor_join.operational,
       };
       return reply.send({ join_link: link });
     },
