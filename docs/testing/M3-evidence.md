@@ -1,8 +1,26 @@
 # M3 Test Evidence — Continuity Engine (F1 offline, F9)
 
-**Branch:** `feature/m3-continuity-engine` (created from `staging` @ `25d3686`, M2 merged). Changes are uncommitted in the working tree.
+**Branch:** `feature/m3-continuity-engine` (created from `staging` @ `25d3686`, M2 merged). Committed and pushed; PR #5 → `staging` (not merged).
 **Date:** 2026-11-08 · **Node:** 24 · **pnpm:** 9 · **PostgreSQL:** 17 (disposable Docker container `queuebridge-pg`, port 55433)
-**Status:** all local gates pass. GitHub CI has not run on this work (nothing committed or pushed).
+**Status:** all local gates and all GitHub CI jobs pass (see "GitHub CI — PR #5").
+
+## GitHub CI — PR #5 (final)
+
+Head before this documentation commit: `071dfc73eff530c725f8e7b1a15edf72271e2b68`. Both workflow runs (push run 42540488564, pull-request run 42540493199) and the migration-validation run (42540493192) passed every job:
+
+| Job                                                                     | Result                                                                                                      |
+| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Lint and typecheck (format:check, eslint `--max-warnings 0`, typecheck) | PASS                                                                                                        |
+| Tests (without DB)                                                      | PASS                                                                                                        |
+| Build all packages and apps                                             | PASS                                                                                                        |
+| Tests with PostgreSQL — real PostgreSQL                                 | PASS: 21 files, **395** tests                                                                               |
+| Tests with PostgreSQL — Playwright (real API + PostgreSQL + built web)  | PASS: **108 passed**, 4 pre-existing capture-only skips                                                     |
+| Apply migrations and validate constraints (`db-validate.yml`)           | PASS: 0005 applied, idempotent re-run, append-only UPDATE/DELETE rejected, both unique constraints enforced |
+| Security audit (`pnpm audit --audit-level high`)                        | PASS: 0 high/critical (5 low/moderate, unchanged from M2)                                                   |
+
+History: on `1676de4` the pull-request run failed one boundary test (`sync-timing.db.test.ts`) — a test defect, fixed in `071dfc7` without relaxing any assertion (see completion report).
+
+**Codex review:** reviewed `1676de4` → 3 P2 findings, all fixed in `071dfc7` with regression tests. A re-review of `071dfc7` was requested (`@codex review`) and **did not run: the account has reached its Codex code-review usage limits** (connector message, 2026-11-09 00:38 UTC). No Codex review of the fixes exists; CI does not depend on it.
 
 ## Gate results (local)
 

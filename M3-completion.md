@@ -1,7 +1,7 @@
 # M3 Completion Report — Continuity Engine (F1 offline, F9)
 
 **Branch:** `feature/m3-continuity-engine`, created from `staging` @ `25d3686` (M2 merged).
-**State:** implemented and locally validated; **uncommitted** in the working tree. Not committed, pushed, reviewed or merged.
+**State:** committed and pushed; **PR #5 → `staging`** (https://github.com/Ajayfrizzy/queuebridge/pull/5), all CI jobs passing. Not merged or deployed.
 **Evidence:** `docs/testing/M3-evidence.md` · **Checklist:** `.kiro/specs/queuebridge/tasks.md` (M3) · **Design notes:** `.kiro/specs/queuebridge/design.md` "M3 implementation notes"
 
 ## Completed scope
@@ -64,6 +64,10 @@ All six architectural acceptance-gate questions have passing tests (`apps/api/sr
 2. _"Sign-in ended" block never cleared._ After a 401, signing in again inside the running app never resumed syncing. Fixed: the block is cleared when a session is established (not when it ends, to avoid racing the flush that reports it); unsent actions are untouched. Regression: "finding 2" (failed before the fix).
 3. _Authority token selection._ Codex was right: the code still presented the queue's stored tokens truncated to 20. My second-pass change to "only referenced tokens" had **not** been applied — a text replacement silently missed after reformatting — and my earlier report wrongly described it as done. Fixed properly: tokens are resolved **per batch at send time** from exactly the authorities its commands reference; batches are cut so none needs more than 20 distinct tokens; tokens no unsent command needs are pruned after each flush. Regressions: `flush.test.ts` "authority selection per batch" (45 commands × 45 tokens → batches 20/20/5, each with exactly its own tokens; failed before the fix) and "finding 3" browser test (online coordinator commits at once; only the current token remains stored). I audited every other unasserted edit from that pass; the only other misses were the results tables in these two documents (stale counts in `1676de4`), now corrected.
 
+**Final CI (`071dfc7`):** every job passes in both the push and pull-request runs — lint/format/typecheck, unit tests, build, real-PostgreSQL tests (395), Playwright (108 passed, 4 pre-existing skips), migration validation and security audit (0 high/critical).
+
+**Codex re-review of the fixes:** requested with `@codex review`; it **did not run because the account reached its Codex code-review usage limits**. The three fixes are covered by regression tests and CI, but have no second automated review.
+
 **Environment note:** QueueBridge's disposable test container `queuebridge-pg` stopped cleanly (exit 0, 23:32 UTC) during this session without any command from me; I restarted it. No other container or project (including Avroqen) was touched.
 
 ## Security assumptions
@@ -103,7 +107,7 @@ pnpm --filter @queuebridge/web build && pnpm --filter @queuebridge/web preview  
 
 ## Unresolved risks and limits
 
-1. **Not yet run in GitHub CI** (nothing committed). Playwright is Chromium only; Safari/WebKit IndexedDB and service-worker behaviour is unverified.
+1. **Browser coverage is Chromium only** (locally and in CI). Safari/WebKit IndexedDB and service-worker behaviour is unverified. The review fixes have no second Codex review (usage limit).
 2. **Single-device durability.** Unsent actions live only in that browser. If the device is lost or storage is cleared before sync, they are gone. The UI warns, but there is no second replica (architecture "Browser storage cleared").
 3. **Conservative fence costs throughput.** While a coordinator is designated (even expired), nobody can call online until a supervisor revokes or fails over. This follows the architecture's conservative default, but needs supervisor attention after every outage.
 4. **Offline vocabulary is limited** to capture, call next, serve, complete and missed. Hold, return, cancel, transfer and queue controls need the server.
