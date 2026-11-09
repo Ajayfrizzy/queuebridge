@@ -374,3 +374,72 @@ describe('status hand-over credentials', () => {
     expect(out.map((h) => h.operation_id)).toEqual(['d']);
   });
 });
+
+describe('authority selection per batch (review finding 3)', () => {
+  /** n advancement ops, each timed against a DIFFERENT authority (renewals / restarts) */
+  async function timedOps(
+    n: number,
+  ): Promise<{ store: MemoryOutboxStore; tokenOf: Map<string, string> }> {
+    const store = new MemoryOutboxStore();
+    const tokenOf = new Map<string, string>();
+    for (let i = 0; i < n; i++) {
+      const delivered = new Date(Date.UTC(2026, 10, 8, 10, 0, i)).toISOString();
+      const op = await recordLocalOperation(store, {
+        ...base,
+        coordinator_epoch: 1,
+        action: QueueAction.TICKET_SERVE,
+        payload: { ticket_id: '550e8400-e29b-41d4-a716-446655440099' },
+        authority_timing: {
+          delivered_at: delivered,
+          elapsed_ms: 1000,
+          floor_ms: 1000,
+          source: 'monotonic',
+          rollback_detected: false,
+        },
+      });
+      tokenOf.set(op.operation_id, `tok-${delivered}`);
+    }
+    return { store, tokenOf };
+  }
+
+  it('presents exactly the tokens each batch references, splitting so no batch needs more than 20', async () => {
+    const { store, tokenOf } = await timedOps(45);
+    const server = new FakeServer();
+    const seen: { ids: string[]; tokens: string[] }[] = [];
+    await flushOutbox('user-a', {
+      store,
+      authorities: (ops) => [...new Set(ops.map((o) => tokenOf.get(o.operation_id) ?? ''))],
+      send: (b, m) => {
+        seen.push({ ids: b.commands.map((c) => c.operation_id), tokens: m.authorities });
+        return server.handle(b);
+      },
+    });
+    expect(seen.map((s) => s.ids.length)).toEqual([20, 20, 5]);
+    for (const s of seen) {
+      // every command's own token is present, and nothing else
+      expect(new Set(s.tokens)).toEqual(new Set(s.ids.map((id) => tokenOf.get(id))));
+      expect(s.tokens.length).toBeLessThanOrEqual(20);
+    }
+    expect(server.committed.size).toBe(45);
+    // submission order is still client_sequence across the split
+    expect(seen.flatMap((s) => s.ids)).toEqual((await store.list()).map((o) => o.operation_id));
+  });
+
+  it('authority selection may be asynchronous (read from storage at send time)', async () => {
+    const { store, tokenOf } = await timedOps(3);
+    const server = new FakeServer();
+    let got: string[] = [];
+    await flushOutbox('user-a', {
+      store,
+      authorities: async (ops) => {
+        await Promise.resolve();
+        return ops.map((o) => tokenOf.get(o.operation_id) ?? '');
+      },
+      send: (b, m) => {
+        got = m.authorities;
+        return server.handle(b);
+      },
+    });
+    expect(got).toHaveLength(3);
+  });
+});

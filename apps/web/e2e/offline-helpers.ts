@@ -14,6 +14,7 @@ export interface Persona {
   ctx: BrowserContext;
   page: Page;
   userId: string;
+  email: string;
 }
 
 /** Invite a staff member through the real API and sign them in inside a fresh browser context. */
@@ -45,7 +46,7 @@ export async function makeStaff(
   });
   expect(acc.status()).toBe(201);
   const { user } = (await acc.json()) as { user: { id: string } };
-  return { ctx, page, userId: user.id };
+  return { ctx, page, userId: user.id, email };
 }
 
 /** The device id the app stored in IndexedDB, or null (never creates the database itself). */

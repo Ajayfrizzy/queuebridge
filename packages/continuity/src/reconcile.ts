@@ -90,6 +90,34 @@ export function orderForSubmission(ops: readonly OutboxOperation[]): OutboxOpera
 // ---------------------------------------------------------------------------
 
 export const MAX_BATCH = 100;
+/** The server accepts at most this many authority tokens per batch. */
+export const MAX_AUTHORITIES_PER_BATCH = 20;
+
+/** Identity of the signed authority an operation was timed against (null for capture). */
+export function authorityRef(op: OutboxOperation): string | null {
+  return op.authority_timing
+    ? `${op.queue_session_id}:${op.coordinator_epoch}:${op.authority_timing.delivered_at}`
+    : null;
+}
+
+/**
+ * Take the longest prefix (in submission order) of at most MAX_BATCH operations that needs at
+ * most MAX_AUTHORITIES_PER_BATCH distinct authorities. Prefix-only, so ordering is preserved.
+ */
+export function takeBatch(ops: readonly OutboxOperation[]): OutboxOperation[] {
+  const refs = new Set<string>();
+  const out: OutboxOperation[] = [];
+  for (const op of ops) {
+    if (out.length >= MAX_BATCH) break;
+    const ref = authorityRef(op);
+    if (ref && !refs.has(ref)) {
+      if (refs.size >= MAX_AUTHORITIES_PER_BATCH) break;
+      refs.add(ref);
+    }
+    out.push(op);
+  }
+  return out;
+}
 
 export type FlushErrorKind =
   /** no response: the outcome of the in-flight batch is UNKNOWN — keep pending, retry */
@@ -120,8 +148,12 @@ export interface FlushDeps {
     batch: SyncBatchRequest,
     meta: { pending_count: number; authorities: string[] },
   ) => Promise<SyncBatchResponse>;
-  /** Authority tokens to present (one per queue the device advances) */
-  authorities?: () => string[];
+  /**
+   * Authority tokens to present WITH THIS BATCH: exactly those its operations were timed
+   * against. Resolved at send time (may read storage), so a just-recorded operation never
+   * travels without its token.
+   */
+  authorities?: (batch: readonly OutboxOperation[]) => string[] | Promise<string[]>;
   nowMs?: () => number;
 }
 
@@ -212,7 +244,7 @@ export async function flushOutbox(ownerUserId: string, deps: FlushDeps): Promise
     const source = firstPass ? orderForSubmission(getPendingOperations(all)) : unsynced;
     firstPass = false;
     report.remaining = unsynced.length;
-    const batch = source.slice(0, MAX_BATCH);
+    const batch = takeBatch(source);
     if (batch.length === 0) return report;
 
     const attempting = batch.map((o) => ({
@@ -227,7 +259,10 @@ export async function flushOutbox(ownerUserId: string, deps: FlushDeps): Promise
     try {
       response = await deps.send(
         { commands: batch.map(toEnvelope) },
-        { pending_count: unsynced.length, authorities: deps.authorities?.() ?? [] },
+        {
+          pending_count: unsynced.length,
+          authorities: deps.authorities ? await deps.authorities(batch) : [],
+        },
       );
     } catch (e) {
       const err =

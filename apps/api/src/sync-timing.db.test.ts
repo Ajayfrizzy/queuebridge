@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { QueueAction } from '@queuebridge/contracts';
 import {
   assertEventLogIntact,
@@ -32,8 +32,19 @@ afterAll(async () => {
 });
 
 const MIN = 60_000;
-const ago = (m: number): Date => new Date(Date.now() - m * MIN);
-const ahead = (m: number): Date => new Date(Date.now() + m * MIN);
+/**
+ * One clock reading per test. Every minted delivery/expiry time is derived from it, so window
+ * lengths are EXACT (two separate Date.now() reads can differ by milliseconds on a slow runner,
+ * which would silently move a boundary case to the other side of the boundary). The server's own
+ * "now" is later than the anchor only by the test's runtime; every non-boundary case keeps at
+ * least a minute of margin from that.
+ */
+let anchor = Date.now();
+beforeEach(() => {
+  anchor = Date.now();
+});
+const ago = (m: number): Date => new Date(anchor - m * MIN);
+const ahead = (m: number): Date => new Date(anchor + m * MIN);
 
 interface World {
   f: ContinuityFixture;
@@ -173,6 +184,8 @@ describe('delayed synchronization (valid offline work is preserved)', () => {
   it('the action at the exact expiry instant, or after it, is held', async () => {
     const w = await world(2);
     const token = await mintAuthority(t, w.f.queueId, { deliveredAt: ago(60), expiresAt: ago(30) });
+    // exactly 30 min between delivery and expiry (same anchor), so +30 min IS the expiry instant
+    expect(ago(30).getTime() - ago(60).getTime()).toBe(30 * MIN);
     const r = await sync(
       w,
       [

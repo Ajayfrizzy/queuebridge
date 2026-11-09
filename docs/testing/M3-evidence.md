@@ -6,19 +6,19 @@
 
 ## Gate results (local)
 
-| Gate                                                                 | Result                                                                                                        |
-| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `pnpm format:check`                                                  | PASS                                                                                                          |
-| `pnpm lint` (`--max-warnings 0`)                                     | PASS (0 errors, 0 warnings)                                                                                   |
-| `pnpm typecheck`                                                     | PASS (8/8 workspaces, 0 errors)                                                                               |
-| `pnpm build`                                                         | PASS                                                                                                          |
-| `pnpm test` (no DB)                                                  | PASS: contracts 68, domain 67, channels 18, continuity 54, ui 6, worker 6, api 31, web 28 (= 278)             |
-| `pnpm test:db` (real PostgreSQL)                                     | PASS: 19 files, **369** tests (M2 baseline on this branch: 13 files, 313). **5 consecutive full runs passed** |
-| Playwright (`pnpm --filter @queuebridge/web test:e2e`)               | PASS: **100 passed**, 4 capture-only skips (pre-existing), at 1280, 1440, 375 and 320 px; 2 consecutive runs  |
-| DB validation (all 7 run-steps of `db-validate.yml`, fresh database) | PASS                                                                                                          |
-| `db:migrate` fresh DB, then again; `db:seed` twice                   | PASS: 5 applied (incl. `0005_continuity_engine.sql`), then no-op; seed idempotent                             |
-| Migration 0005 re-executed on an isolated DB                         | PASS (`schema-m3.db.test.ts`)                                                                                 |
-| `pnpm audit --audit-level high`                                      | No high/critical. 5 low/moderate — unchanged from M2 (no dependency was added or changed)                     |
+| Gate                                                                 | Result                                                                                                                         |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `pnpm format:check`                                                  | PASS                                                                                                                           |
+| `pnpm lint` (`--max-warnings 0`)                                     | PASS (0 errors, 0 warnings)                                                                                                    |
+| `pnpm typecheck`                                                     | PASS (8/8 workspaces, 0 errors)                                                                                                |
+| `pnpm build`                                                         | PASS                                                                                                                           |
+| `pnpm test` (no DB)                                                  | PASS: contracts 68, domain 67, channels 18, continuity 61, ui 6, worker 6, api 45, web 28 (= 299)                              |
+| `pnpm test:db` (real PostgreSQL)                                     | PASS: 21 files, **395** tests (M2 baseline on this branch: 13 files, 313); 5 consecutive runs before the review round, 3 after |
+| Playwright (`pnpm --filter @queuebridge/web test:e2e`)               | PASS: **108 passed**, 4 capture-only skips (pre-existing), at 1280, 1440, 375 and 320 px                                       |
+| DB validation (all 7 run-steps of `db-validate.yml`, fresh database) | PASS                                                                                                                           |
+| `db:migrate` fresh DB, then again; `db:seed` twice                   | PASS: 5 applied (incl. `0005_continuity_engine.sql`), then no-op; seed idempotent                                              |
+| Migration 0005 re-executed on an isolated DB                         | PASS (`schema-m3.db.test.ts`)                                                                                                  |
+| `pnpm audit --audit-level high`                                      | No high/critical. 5 low/moderate — unchanged from M2 (no dependency was added or changed)                                      |
 
 ## Architectural acceptance gate (architecture §16 / ADR-006)
 
@@ -98,6 +98,17 @@ Root cause of the reported issue: `sync.ts` compared `created_at_client` (device
 - `apps/api/src/sync-handover.db.test.ts` (real PostgreSQL, 6 cases, TRACE-level logs captured): the committed capture returns a 43-char credential that works for the confirmed code and not for the temporary reference; the credential appears nowhere else — `client_operations`, `queue_events`, `admin_events`, credential table (hash only), public board, staff queue view, conflicts list, **server logs**. Advancement results carry none. **Lost ACK:** retry → `duplicate` with a new credential; the unseen one stops working; one ticket. **6 concurrent retries:** one ticket, exactly one valid credential. Only the capturing user on the capturing device gets one (same user on another device, a supervisor, another tenant → no credential, visitor's link unaffected). A held capture returns no code and no credential; after supervisor apply (whose response contains none), the capturing device's replay gets one.
 - `packages/continuity/src/flush.test.ts`: credentials surface in the flush report but never in the store; never for rejected/needs_review, non-capture actions or missing codes.
 - Browser: offline capture → reconnect → "Confirmed: G001" (never the `P-` reference) with QR and link; the secret is not in IndexedDB; a visitor context opening the link sees the confirmed ticket and the fragment is scrubbed from the address bar; **Done** removes it (also gone after reload); **New status link** gives a different link and the old one shows no access; neither secret appears on the public board. **Lost ACK in the browser** (first `/sync/batches` processed by the server, response aborted): the retry hands over a working link, the operation is `duplicate` on its 2nd attempt, one ticket. Another staff member on the same queue sees the ticket but no hand-over.
+
+### PR #5 review regressions
+
+- `apps/web/e2e/offline-review-fixes.spec.ts` (identity changes happen inside the running SPA — sign-in form and in-app links, never a reload):
+  - **finding 1:** A signs out, B signs in on the same tab → B's offline capture is recorded under B's own device and syncs (`committed`, hand-over shown). Failed before the fix (recorded under A's device).
+  - **finding 2:** session ends while offline → reconnect shows "sign-in ended", action kept `pending_sync` → same person signs in again in-app → the action syncs and the notice clears. Failed before the fix.
+  - **finding 3:** an online coordinator's Call next goes through the outbox with its exact token and commits immediately; afterwards only the queue's current token remains stored.
+- `packages/continuity/src/flush.test.ts` "authority selection per batch": 45 commands timed against 45 different authorities → batches of 20/20/5, each presenting exactly its commands' tokens (≤ 20), order preserved, all 45 committed; asynchronous lookup supported. Failed before the fix.
+- `apps/web/e2e/offline.spec.ts` shared-device test: the 1.5 s sleep was replaced by a deterministic check (a real flush under the second user; no request contains the first user's operation id).
+- `apps/web/e2e/offline-timing-handover.spec.ts`: the replacement warning ("Replace the status link for G001? … stop working immediately"); "Keep current link" leaves the visitor's link valid; confirming replaces it and the old link loses access.
+- `apps/api/src/sync-timing.db.test.ts`: all instants derived from one per-test anchor; the exact-expiry window is asserted to be exactly 30 min (fixes the CI-only boundary failure without relaxing the assertion).
 
 ### Regression (M1, M2)
 

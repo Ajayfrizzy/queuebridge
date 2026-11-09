@@ -372,6 +372,12 @@ POST   /api/v1/sync/conflicts/:operationId/resolve  # QUEUE_MANAGE: apply (re-va
   device clock is moved while the app is CLOSED, by an amount the persisted floor cannot reveal, is only
   bounded by rule "restarted ⇒ must reach the server before expiry". Within one page session, the
   monotonic clock bounds the device. Fencing (epoch), short TTLs and supervisor review are the controls.
+- **Authorities per batch:** each batch presents exactly the tokens its commands were timed against
+  (looked up at send time), and a batch is cut so it never needs more than 20 distinct tokens
+  (server limit) — prefix-only, so `client_sequence` order holds. Tokens no unsent command needs and
+  that are not a queue's current authority are pruned after each flush. Device-id caches in the
+  browser are keyed by user AND facility; a newly established session clears the previous session's
+  sync block (e.g. "sign-in ended") without touching unsent actions.
 - **Offline capture status link:** the server returns a one-time `status_token` for a committed capture
   (stored only as SHA-256). Replaying the same operation (same user AND same device) re-issues — rotating —
   the credential, so at most one link is valid. The web app keeps it in memory only, shows the confirmed

@@ -42,13 +42,29 @@
 | Gate                           | Result                                                                                           |
 | ------------------------------ | ------------------------------------------------------------------------------------------------ |
 | format, lint, typecheck, build | PASS                                                                                             |
-| Unit (`pnpm test`)             | 278 passed (contracts 68, domain 67, channels 18, continuity 54, ui 6, worker 6, api 31, web 28) |
-| DB (`pnpm test:db`)            | 369 passed in 19 files, 5 consecutive runs (M2 baseline 313)                                     |
-| Playwright                     | 100 passed, 4 pre-existing capture-only skips, 2 consecutive runs                                |
+| Unit (`pnpm test`)             | 299 passed (contracts 68, domain 67, channels 18, continuity 61, ui 6, worker 6, api 45, web 28) |
+| DB (`pnpm test:db`)            | 395 passed in 21 files; 5 consecutive runs before the review round, 3 after (M2 baseline 313)    |
+| Playwright                     | 108 passed, 4 pre-existing capture-only skips                                                    |
 | DB-validation workflow steps   | 7/7 PASS on a fresh database; migrate ×2 and seed ×2 PASS                                        |
 | `pnpm audit`                   | 0 high/critical; 5 low/moderate unchanged from M2                                                |
 
 All six architectural acceptance-gate questions have passing tests (`apps/api/src/acceptance-gate.db.test.ts`, mapping in the evidence file).
+
+## Pull request #5 — review and CI
+
+**PR:** https://github.com/Ajayfrizzy/queuebridge/pull/5 (`feature/m3-continuity-engine` → `staging`, not merged). First commit `1676de4`; the follow-up commit addresses CI and review findings (final SHA and CI results in `docs/testing/M3-evidence.md`).
+
+**Pre-commit review:** full diff checked for secrets, temporary files, debug code and unintended changes. Found and fixed: a `waitForTimeout(1500)` used as a negative assertion in the shared-device browser test (replaced by a deterministic check: force a real flush under the second user and assert no request carried the first user's operation id). The status-link replacement now requires an explicit confirmation stating that the visitor's current link and QR code stop working immediately ("Keep current link" leaves it valid; both paths tested).
+
+**CI on `1676de4`:** the push run passed every job. The pull-request run failed one real-PostgreSQL test (`sync-timing.db.test.ts`, exact-expiry boundary). Cause: a **test** defect. Delivery and expiry came from two separate `Date.now()` reads, so on a slower runner the window was 30 min + δ ms and an action at exactly +30 min correctly fell inside it. Fixed by deriving every instant in that file from one per-test anchor and asserting the window is exactly 30 min. No assertion was relaxed; 8/8 local reruns pass.
+
+**Codex review of `1676de4` — 3 findings (all P2, all valid, all fixed with regression tests):**
+
+1. _Device caches keyed only by facility._ After A signed out and B signed in **without a reload**, B's captures were recorded with A's device id, which the server refuses. Fixed: keyed by user + facility, in-flight lookups cleared on identity change, heartbeats sent only for the current user's devices. Regression: `e2e/offline-review-fixes.spec.ts` "finding 1" (failed before the fix).
+2. _"Sign-in ended" block never cleared._ After a 401, signing in again inside the running app never resumed syncing. Fixed: the block is cleared when a session is established (not when it ends, to avoid racing the flush that reports it); unsent actions are untouched. Regression: "finding 2" (failed before the fix).
+3. _Authority token selection._ Codex was right: the code still presented the queue's stored tokens truncated to 20. My second-pass change to "only referenced tokens" had **not** been applied — a text replacement silently missed after reformatting — and my earlier report wrongly described it as done. Fixed properly: tokens are resolved **per batch at send time** from exactly the authorities its commands reference; batches are cut so none needs more than 20 distinct tokens; tokens no unsent command needs are pruned after each flush. Regressions: `flush.test.ts` "authority selection per batch" (45 commands × 45 tokens → batches 20/20/5, each with exactly its own tokens; failed before the fix) and "finding 3" browser test (online coordinator commits at once; only the current token remains stored). I audited every other unasserted edit from that pass; the only other misses were the results tables in these two documents (stale counts in `1676de4`), now corrected.
+
+**Environment note:** QueueBridge's disposable test container `queuebridge-pg` stopped cleanly (exit 0, 23:32 UTC) during this session without any command from me; I restarted it. No other container or project (including Avroqen) was touched.
 
 ## Security assumptions
 

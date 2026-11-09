@@ -123,6 +123,32 @@ function classify(e: unknown): SyncTransportError {
   return new SyncTransportError('network', 'Unexpected error');
 }
 
+/**
+ * Delete stored authority tokens that nothing still needs: not the current authority of a queue
+ * and not referenced by any of this user's unsent operations. (Replays of already-decided
+ * operations are answered from the server's stored disposition and need no token.)
+ */
+async function pruneAuthorities(userId: string): Promise<void> {
+  try {
+    const [held, current, ops] = await Promise.all([
+      offlineDb.kvList<LocalAuthority>('auth:', userId),
+      offlineDb.kvList<LocalAuthority>('auth-current:', userId),
+      offlineDb.list({ owner_user_id: userId }),
+    ]);
+    const keep = new Set<string>(current.map((c) => authKey(c.value)));
+    for (const o of ops) {
+      if ((o.status === 'local_only' || o.status === 'pending_sync') && o.authority_timing) {
+        keep.add(
+          `auth:${o.queue_session_id}:${o.coordinator_epoch}:${o.authority_timing.delivered_at}`,
+        );
+      }
+    }
+    for (const h of held) if (!keep.has(h.key)) await offlineDb.kvDelete(h.key);
+  } catch {
+    /* pruning is housekeeping; never block a flush on it */
+  }
+}
+
 export function OfflineProvider({ children }: { children: ReactNode }): ReactElement {
   const { user } = useAuth();
   const userId = user?.id ?? null;
@@ -144,16 +170,22 @@ export function OfflineProvider({ children }: { children: ReactNode }): ReactEle
       ...list,
     ]);
   }, []);
-  // Credentials belong to the person who captured the ticket: forget them on any user change
+  // A different (or re-established) identity starts clean: hand-over credentials belong to the
+  // person who captured the ticket, a block such as "sign-in ended" belonged to the old session,
+  // and in-flight device lookups belonged to the old user. Unsent actions are NOT touched — they
+  // stay owned by whoever recorded them.
   useEffect(() => {
     setHandovers([]);
+    deviceLookups.current.clear();
+    // Clear a session block only when a session is ESTABLISHED (not when the old one ends,
+    // which would race with the flush that is reporting "sign-in ended")
+    if (userId) setProblem(null);
   }, [userId]);
   const flushLock = useRef(false);
+  /** Device ids per `${userId}:${facilityId}` — a device belongs to ONE staff user */
   const deviceIds = useRef(new Map<string, string>());
   /** In-flight registrations, so concurrent callers share one request (never two devices) */
   const deviceLookups = useRef(new Map<string, Promise<string | null>>());
-  /** Authority tokens presented with each batch (every epoch with unsent work) */
-  const authTokens = useRef<string[]>([]);
 
   useEffect(() => {
     let alive = true;
@@ -318,16 +350,17 @@ export function OfflineProvider({ children }: { children: ReactNode }): ReactEle
   const ensureDevice = useCallback<OfflineApi['ensureDevice']>(
     (facilityId) => {
       if (!userId || storage !== 'ok') return Promise.resolve(null);
-      const memo = deviceIds.current.get(facilityId);
+      const memoKey = `${userId}:${facilityId}`;
+      const memo = deviceIds.current.get(memoKey);
       if (memo) return Promise.resolve(memo);
-      const inflight = deviceLookups.current.get(facilityId);
+      const inflight = deviceLookups.current.get(memoKey);
       if (inflight) return inflight;
       const key = `device:${userId}:${facilityId}`;
       const lookup = (async (): Promise<string | null> => {
         try {
           const stored = await offlineDb.kvGet<string>(key, userId);
           if (stored) {
-            deviceIds.current.set(facilityId, stored.value);
+            deviceIds.current.set(memoKey, stored.value);
             return stored.value;
           }
         } catch {
@@ -338,13 +371,13 @@ export function OfflineProvider({ children }: { children: ReactNode }): ReactEle
           const label = `${navigator.platform || 'Browser'} · ${new Date().toISOString().slice(0, 10)}`;
           const { device } = await api.registerDevice(facilityId, label);
           await offlineDb.kvPut(key, device.id, userId);
-          deviceIds.current.set(facilityId, device.id);
+          deviceIds.current.set(memoKey, device.id);
           return device.id;
         } catch {
           return null;
         }
-      })().finally(() => deviceLookups.current.delete(facilityId));
-      deviceLookups.current.set(facilityId, lookup);
+      })().finally(() => deviceLookups.current.delete(memoKey));
+      deviceLookups.current.set(memoKey, lookup);
       return lookup;
     },
     [reachable, storage, userId],
@@ -372,7 +405,24 @@ export function OfflineProvider({ children }: { children: ReactNode }): ReactEle
     try {
       const report = await flushOutbox(userId, {
         store: offlineDb,
-        authorities: () => authTokens.current,
+        // Exactly the tokens this batch's operations were timed against, read at send time
+        authorities: async (batch) => {
+          const refs = [
+            ...new Set(
+              batch.flatMap((o) =>
+                o.authority_timing
+                  ? [
+                      `auth:${o.queue_session_id}:${o.coordinator_epoch}:${o.authority_timing.delivered_at}`,
+                    ]
+                  : [],
+              ),
+            ),
+          ];
+          const found = await Promise.all(
+            refs.map((k) => offlineDb.kvGet<LocalAuthority>(k, userId).catch(() => undefined)),
+          );
+          return found.flatMap((f) => (f ? [f.value.token] : []));
+        },
         send: async (batch, meta) => {
           try {
             return await api.syncBatch({
@@ -389,6 +439,7 @@ export function OfflineProvider({ children }: { children: ReactNode }): ReactEle
       addHandovers(report.handovers);
       if (report.error?.kind === 'device_revoked') setProblem('device_revoked');
       if (report.error?.kind === 'auth') setProblem('session_ended');
+      await pruneAuthorities(userId);
       await reload();
       return report;
     } finally {
@@ -396,30 +447,6 @@ export function OfflineProvider({ children }: { children: ReactNode }): ReactEle
       setFlushing(false);
     }
   }, [addHandovers, problem, reload, storage, userId]);
-
-  // Tokens to present: every epoch's token for the queues that have unsent operations
-  useEffect(() => {
-    if (!userId || storage !== 'ok') return;
-    let alive = true;
-    void (async () => {
-      try {
-        const rows = await offlineDb.kvList<LocalAuthority>('auth:', userId);
-        const queues = new Set(
-          ops.filter((o) => o.status !== 'committed').map((o) => o.queue_session_id),
-        );
-        const tokens = rows
-          .filter((r) => queues.has(r.value.auth.queue_session_id))
-          .map((r) => r.value.token)
-          .slice(0, 20);
-        if (alive) authTokens.current = tokens;
-      } catch {
-        /* no tokens: advancement commands will be refused by the server, never applied */
-      }
-    })();
-    return (): void => {
-      alive = false;
-    };
-  }, [ops, storage, userId]);
 
   // Flush when the server becomes reachable, when new unsent work appears, and periodically
   useEffect(() => {
@@ -435,7 +462,10 @@ export function OfflineProvider({ children }: { children: ReactNode }): ReactEle
   useEffect(() => {
     if (!reachable || !userId) return undefined;
     const send = (): void => {
-      for (const id of deviceIds.current.values()) {
+      const mine = [...deviceIds.current.entries()]
+        .filter(([k]) => k.startsWith(`${userId}:`))
+        .map(([, id]) => id);
+      for (const id of mine) {
         void api
           .heartbeat(id, {
             pending_count: summary.unsynced,
@@ -488,7 +518,7 @@ export function OfflineProvider({ children }: { children: ReactNode }): ReactEle
   const wipeLocalData = useCallback(async (): Promise<void> => {
     await offlineDb.clearAll();
     deviceIds.current.clear();
-    authTokens.current = [];
+    deviceLookups.current.clear();
     setHandovers([]);
     setProblem(null);
     await reload();
