@@ -84,6 +84,11 @@ export const QueueAction = {
   COORDINATOR_ASSIGN: 'coordinator.assign',
   COORDINATOR_REVOKE: 'coordinator.revoke',
   COORDINATOR_FAILOVER: 'coordinator.failover',
+  COORDINATOR_RENEW: 'coordinator.renew',
+  /** M3: a synced offline command could not be applied and awaits supervisor review */
+  SYNC_CONFLICT_DETECTED: 'sync.conflict_detected',
+  /** M3: a supervisor resolved a conflicted offline command */
+  SYNC_CONFLICT_RESOLVED: 'sync.conflict_resolved',
 } as const;
 export type QueueAction = (typeof QueueAction)[keyof typeof QueueAction];
 

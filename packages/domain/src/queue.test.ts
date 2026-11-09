@@ -273,3 +273,38 @@ describe('property: replay determinism', () => {
     }
   });
 });
+
+describe('replay of M3 audit-only events', () => {
+  it('coordinator and sync-conflict events occupy a sequence but change no state', () => {
+    const p = replayQueueEvents([
+      {
+        sequence: 1,
+        event_type: 'queue.open',
+        payload: { from_state: 'closed', to_state: 'open' },
+      },
+      { sequence: 2, event_type: 'coordinator.assign', payload: { epoch: 1 } },
+      {
+        sequence: 3,
+        event_type: 'sync.conflict_detected',
+        payload: { reason_code: 'stale_epoch' },
+      },
+      { sequence: 4, event_type: 'coordinator.revoke', payload: { epoch: 2 } },
+    ]);
+    expect(p.last_sequence).toBe(4);
+    expect(p.state).toBe('open');
+    expect(p.tickets).toEqual({});
+  });
+
+  it('still refuses gaps around audit-only events', () => {
+    expect(() =>
+      replayQueueEvents([
+        {
+          sequence: 1,
+          event_type: 'queue.open',
+          payload: { from_state: 'closed', to_state: 'open' },
+        },
+        { sequence: 3, event_type: 'coordinator.assign', payload: {} },
+      ]),
+    ).toThrow();
+  });
+});

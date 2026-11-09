@@ -57,6 +57,7 @@ export function clearSessionCookie(reply: FastifyReply, env: Env): void {
 
 interface SessionRow {
   session_id: string;
+  expires_at: Date;
   last_used_at: Date;
   staff_user_id: string;
   organization_id: string;
@@ -69,7 +70,7 @@ interface SessionRow {
 /** Resolve a raw session token to an AuthContext, or null if invalid/expired/deactivated. */
 export async function resolveSession(db: Db, token: string): Promise<AuthContext | null> {
   const rows = await db<SessionRow[]>`
-    SELECT s.id AS session_id, s.last_used_at, u.id AS staff_user_id, u.organization_id,
+    SELECT s.id AS session_id, s.expires_at, s.last_used_at, u.id AS staff_user_id, u.organization_id,
            u.email, u.display_name, o.name AS org_name, o.slug AS org_slug
       FROM staff_sessions s
       JOIN staff_users u ON u.id = s.staff_user_id AND u.status = 'active'
@@ -86,6 +87,7 @@ export async function resolveSession(db: Db, token: string): Promise<AuthContext
 
   return {
     sessionId: row.session_id,
+    sessionExpiresAt: row.expires_at,
     staffUserId: row.staff_user_id,
     organizationId: row.organization_id,
     organizationName: row.org_name,
@@ -106,6 +108,11 @@ export async function loadRoles(
       FROM role_assignments
      WHERE staff_user_id = ${staffUserId} AND organization_id = ${organizationId}
      ORDER BY role, facility_id`;
+}
+
+/** Session metadata returned beside the user so the PWA can bound its offline identity cache. */
+export function toSessionInfo(auth: AuthContext): { expires_at: string } {
+  return { expires_at: auth.sessionExpiresAt.toISOString() };
 }
 
 export function toSessionUser(auth: AuthContext): SessionUser {

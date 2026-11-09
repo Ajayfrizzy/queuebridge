@@ -42,6 +42,7 @@ describe('tokens', () => {
 describe('rbac helpers', () => {
   const base: AuthContext = {
     sessionId: 's',
+    sessionExpiresAt: new Date('2030-01-01T00:00:00Z'),
     staffUserId: 'u',
     organizationId: 'o',
     organizationName: 'O',

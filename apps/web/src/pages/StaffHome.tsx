@@ -6,11 +6,11 @@ import { Loading, StatusBadge } from '../components/Form.js';
 import { api, ApiRequestError } from '../lib/api.js';
 import { STATE_LABEL } from '../lib/format.js';
 import { hasFacilityRole, QUEUE_MANAGER_ROLES } from '../lib/permissions.js';
-import { useLoad } from '../lib/useLoad.js';
+import { useCachedLoad } from '../offline/useCachedLoad.js';
 
 /** /staff — choose a facility. */
 export function StaffHome(): ReactElement {
-  const facilities = useLoad(() => api.listFacilities(), 'staff-facilities');
+  const facilities = useCachedLoad(() => api.listFacilities(), 'staff-facilities');
   if (facilities.loading) return <Loading what="facilities" />;
   const list = facilities.data?.facilities ?? [];
   return (
@@ -36,14 +36,22 @@ export function StaffFacility(): ReactElement {
   const { fid = '' } = useParams();
   const { user } = useAuth();
   const announce = useAnnounce();
-  const facility = useLoad(() => api.getFacility(fid), `f-${fid}`);
-  const queues = useLoad(() => api.facilityQueues(fid), `q-${fid}`);
+  const facility = useCachedLoad(() => api.getFacility(fid), `f-${fid}`);
+  const queues = useCachedLoad(() => api.facilityQueues(fid), `q-${fid}`);
   if (!user || facility.loading || queues.loading) return <Loading what="queues" />;
   if (facility.error || queues.error || !facility.data || !queues.data) {
     return (
       <>
-        <h1>Facility not found</h1>
-        <p role="alert">This facility does not exist or you do not have access to it.</p>
+        <h1>
+          {facility.error?.status === 0 || queues.error?.status === 0
+            ? 'Offline'
+            : 'Facility not found'}
+        </h1>
+        <p role="alert">
+          {facility.error?.status === 0 || queues.error?.status === 0
+            ? 'Cannot reach the server, and this page has no saved copy on this device yet.'
+            : 'This facility does not exist or you do not have access to it.'}
+        </p>
       </>
     );
   }
@@ -66,6 +74,16 @@ export function StaffFacility(): ReactElement {
         <Link to="/staff">← All facilities</Link>
       </p>
       <h1>{facility.data.facility.name}</h1>
+      {facility.fromCache || queues.fromCache ? (
+        <p role="status" className="alert alert-warn" data-testid="cached-notice">
+          Showing the last saved copy. It may be out of date until the server can be reached.
+        </p>
+      ) : null}
+      {hasFacilityRole(user, fid, ['supervisor', 'facility_admin', 'auditor']) ? (
+        <p>
+          <Link to={`/staff/facilities/${fid}/connectivity`}>Connectivity and recovery</Link>
+        </p>
+      ) : null}
       <p className="muted">Today{date ? ` (${date})` : ''}</p>
       {queues.data.queues.length === 0 ? <p>No services are configured yet.</p> : null}
       <ul className="card-list" aria-label="Today's queues">

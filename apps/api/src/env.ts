@@ -17,6 +17,13 @@ const EnvSchema = z.object({
     .optional(),
   AUDIT_SIGNING_KEY_ID: z.string().min(1).optional(),
   AUDIT_SIGNING_KEY: z.string().min(1).optional(),
+  /**
+   * HMAC key for signing offline coordinator authority. Optional: when unset, a key is derived
+   * from SESSION_SECRET with a fixed domain separator. Set it to rotate coordinator signing
+   * independently of sessions (existing tokens then stop verifying and are re-issued on next
+   * snapshot).
+   */
+  COORDINATOR_SIGNING_KEY: z.string().min(32).optional(),
   /** Comma-separated list of allowed browser origins (CORS + CSRF origin check). */
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
   /** Public origin of the web app; used to build join links. */

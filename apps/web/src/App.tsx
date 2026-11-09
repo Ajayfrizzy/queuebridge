@@ -1,6 +1,7 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import type { ReactElement } from 'react';
 import { AuthProvider } from './auth.js';
+import { OfflineProvider } from './offline/OfflineProvider.js';
 import { AnnouncerProvider } from './components/Announcer.js';
 import { Layout } from './components/Layout.js';
 import { RequireAuth } from './components/RequireAuth.js';
@@ -16,6 +17,7 @@ import { Login } from './pages/Login.js';
 import { Signup } from './pages/Signup.js';
 import { DisplayBoard } from './pages/DisplayBoard.js';
 import { JoinPage } from './pages/JoinPage.js';
+import { Connectivity } from './pages/Connectivity.js';
 import { StaffConsole } from './pages/StaffConsole.js';
 import { StaffFacility, StaffHome } from './pages/StaffHome.js';
 import { TicketPage } from './pages/TicketPage.js';
@@ -23,51 +25,55 @@ import { TicketPage } from './pages/TicketPage.js';
 /**
  * Root application router.
  * M1: identity and facility administration. M2: visitor join and ticket status, public
- * display board and the staff queue console. Supervisor device-health tools arrive in M5.
+ * display board and the staff queue console. The connectivity and recovery dashboard (M3) lives under /staff/facilities/:fid/connectivity.
  */
 export function App(): ReactElement {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AnnouncerProvider>
-          <Routes>
-            <Route element={<Layout />}>
-              <Route path="/" element={<Home />} />
-              <Route path="/signup" element={<Signup />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/accept-invite" element={<AcceptInvite />} />
+        <OfflineProvider>
+          <AnnouncerProvider>
+            <Routes>
+              <Route element={<Layout />}>
+                <Route path="/" element={<Home />} />
+                <Route path="/signup" element={<Signup />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/accept-invite" element={<AcceptInvite />} />
 
-              <Route element={<RequireAuth />}>
-                <Route path="/admin" element={<AdminDashboard />} />
-                <Route path="/admin/facilities/:id" element={<FacilityLayout />}>
-                  <Route index element={<FacilityOverview />} />
-                  <Route path="services" element={<FacilityServices />} />
-                  <Route path="counters" element={<FacilityCounters />} />
-                  <Route path="staff" element={<FacilityStaff />} />
+                <Route element={<RequireAuth />}>
+                  <Route path="/admin" element={<AdminDashboard />} />
+                  <Route path="/admin/facilities/:id" element={<FacilityLayout />}>
+                    <Route index element={<FacilityOverview />} />
+                    <Route path="services" element={<FacilityServices />} />
+                    <Route path="counters" element={<FacilityCounters />} />
+                    <Route path="staff" element={<FacilityStaff />} />
+                  </Route>
                 </Route>
+
+                {/* Visitor routes (M2) — no account needed */}
+                <Route path="/join/:orgSlug/:facilitySlug" element={<JoinPage />} />
+                <Route path="/ticket/:code" element={<TicketPage />} />
+                {/* Public display board (M2) */}
+                <Route path="/display/:orgSlug/:facilitySlug" element={<DisplayBoard />} />
+
+                <Route element={<RequireAuth />}>
+                  {/* Staff console (M2) */}
+                  <Route path="/staff" element={<StaffHome />} />
+                  <Route path="/staff/facilities/:fid" element={<StaffFacility />} />
+                  <Route path="/staff/queues/:queueId" element={<StaffConsole />} />
+                  {/* Connectivity and recovery dashboard (M3, F9) */}
+                  <Route path="/staff/facilities/:fid/connectivity" element={<Connectivity />} />
+                </Route>
+
+                {/* Supervisor dashboard (device health) — M5 */}
+                <Route
+                  path="/supervisor/*"
+                  element={<PlaceholderPage title="Supervisor Dashboard" />}
+                />
               </Route>
-
-              {/* Visitor routes (M2) — no account needed */}
-              <Route path="/join/:orgSlug/:facilitySlug" element={<JoinPage />} />
-              <Route path="/ticket/:code" element={<TicketPage />} />
-              {/* Public display board (M2) */}
-              <Route path="/display/:orgSlug/:facilitySlug" element={<DisplayBoard />} />
-
-              <Route element={<RequireAuth />}>
-                {/* Staff console (M2) */}
-                <Route path="/staff" element={<StaffHome />} />
-                <Route path="/staff/facilities/:fid" element={<StaffFacility />} />
-                <Route path="/staff/queues/:queueId" element={<StaffConsole />} />
-              </Route>
-
-              {/* Supervisor dashboard (device health) — M5 */}
-              <Route
-                path="/supervisor/*"
-                element={<PlaceholderPage title="Supervisor Dashboard" />}
-              />
-            </Route>
-          </Routes>
-        </AnnouncerProvider>
+            </Routes>
+          </AnnouncerProvider>
+        </OfflineProvider>
       </AuthProvider>
     </BrowserRouter>
   );

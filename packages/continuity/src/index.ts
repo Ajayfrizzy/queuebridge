@@ -10,4 +10,6 @@
  */
 
 export * from './authority.js';
+export * from './outbox.js';
 export * from './reconcile.js';
+export * from './projection.js';

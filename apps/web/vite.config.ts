@@ -32,7 +32,7 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         // API calls must never be answered with the cached app shell
-        navigateFallbackDenylist: [/^\/api\//],
+        navigateFallbackDenylist: [/^\/api\//, /^\/health/],
         runtimeCaching: [
           {
             urlPattern: /^https?:\/\/.*\/api\/v1\/facilities\/.+\/public/,
@@ -50,6 +50,11 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
+        target: process.env['API_PROXY_TARGET'] ?? 'http://localhost:3002',
+        changeOrigin: true,
+      },
+      // Reachability probe used by the offline layer (separate from navigator.onLine)
+      '/health': {
         target: process.env['API_PROXY_TARGET'] ?? 'http://localhost:3002',
         changeOrigin: true,
       },

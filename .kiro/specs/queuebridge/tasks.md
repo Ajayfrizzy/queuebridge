@@ -1,7 +1,7 @@
 # QueueBridge — Spec Tasks
 
 **Spec version:** 1.0  
-**Status:** M0 complete; M1 complete (merged into `staging`, CI passing); M2 implemented on `feature/m2-queue-core` (PR to `staging` under review); M3–M7 planned; MQ (Ask Que, F13) planned between M5 and M6  
+**Status:** M0–M2 complete (merged into `staging`); M3 implemented on `feature/m3-continuity-engine` (local gates pass; not yet committed / reviewed); M4–M7 planned; MQ (Ask Que, F13) planned between M5 and M6  
 **Each task:** implement → test → validate → mark done
 
 ---
@@ -193,37 +193,44 @@ Deferred to M2 (not implemented here): routing-engine eligibility tests, visitor
 
 ### M3.1 Offline command capture
 
-- [ ] IndexedDB outbox in apps/web
-- [ ] Service worker for offline shell and asset cache
-- [ ] Coordinator authority validation (client-side)
-- [ ] Offline ticket capture with `temporary_ticket_ref`
-- [ ] `SyncStateIndicator` displayed on all relevant UI states
+- [x] IndexedDB outbox in apps/web (`apps/web/src/offline/idb.ts`; logic in `packages/continuity/src/outbox.ts`)
+- [x] Service worker for offline shell and asset cache (vite-plugin-pwa precache; authorized data in IndexedDB, never in the SW cache)
+- [x] Coordinator authority validation (client-side, UI gating only — `evaluateOfflineAction`; the server re-verifies everything)
+- [x] Offline ticket capture with `temporary_ticket_ref` (`P-XXXXXX`, never a ticket code)
+- [x] `SyncStateIndicator` displayed on all relevant UI states (console tickets, outbox panel, connectivity bar)
 
 ### M3.2 Sync protocol
 
-- [ ] `POST /api/v1/sync/batches` endpoint with full server transaction
-- [ ] `GET /api/v1/sync/queues/:id/snapshot` endpoint
-- [ ] Epoch and revision checks in sync handler
-- [ ] Per-command dispositions: `committed | duplicate | rejected | needs_review`
+- [x] `POST /api/v1/sync/batches` endpoint with full server transaction (one transaction per command, session row lock)
+- [x] `GET /api/v1/sync/queues/:id/snapshot` endpoint (repeatable-read snapshot, events after cursor, signed authority)
+- [x] Epoch and revision checks in sync handler (stale epoch → needs_review; future epoch / wrong device / no token → rejected)
+- [x] Per-command dispositions: `committed | duplicate | rejected | needs_review`
 
 ### M3.3 Conflict and recovery UI
 
-- [ ] Connectivity and recovery dashboard (F9)
-- [ ] Device health view for supervisor
-- [ ] Conflict review queue: `needs_review` operations surfaced
-- [ ] Coordinator failover flow
+- [x] Connectivity and recovery dashboard (F9) — `/staff/facilities/:fid/connectivity`
+- [x] Device health view for supervisor (last contact, approx. pending, health, coordinator, failure code)
+- [x] Conflict review queue: `needs_review` operations surfaced; apply (re-validated) or dismiss, with reason
+- [x] Coordinator failover flow (assign / failover / renew / revoke; device revoke)
 
 ### M3.4 Offline acceptance tests
 
-- [ ] Architectural acceptance gate (architecture §16) answered in code and tests
-- [ ] Group 3, 5, 6 tests pass
-- [ ] Partition simulation test: two call-next → only one committed
+- [x] Architectural acceptance gate (architecture §16) answered in code and tests (`apps/api/src/acceptance-gate.db.test.ts`)
+- [x] Group 3, 5, 6 tests pass (continuity unit tests, `sync-*.db.test.ts`, `coordinator.db.test.ts`, `e2e/offline.spec.ts`)
+- [x] Partition simulation test: two call-next → only one committed (both arrival orders + simultaneous)
 
 ### M3 exit criteria
 
-- [ ] All six architectural acceptance gate questions answered with passing tests
-- [ ] `pnpm test` — Groups 3, 5, 6 all pass
-- [ ] Offline behavior NOT described as conflict-free until this passes
+- [x] All six architectural acceptance gate questions answered with passing tests
+- [x] `pnpm test` — Groups 3, 5, 6 all pass
+- [x] Offline behavior NOT described as conflict-free (conflicts are surfaced for review, never merged)
+
+### M3 deferrals (explicit)
+
+- Offline `ticket.pause`, `resume`, `cancel`, `transfer` and queue session actions are online-only (rejected `action_not_offline` if synced)
+- Server-side caps on device registration are per user/facility (20); no device attestation (devices are session-bound)
+- Supervisor UI for device health shows server knowledge; automatic alerting/notification → M5
+- Group 9 audit verification endpoint and checkpoints → M4 (M3 events are hash-chained like all others)
 
 ---
 

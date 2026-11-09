@@ -7,6 +7,7 @@ import {
   createSession,
   resolveSession,
   setSessionCookie,
+  toSessionInfo,
   toSessionUser,
 } from '../auth/session.js';
 import { parseInput, problems } from '../errors.js';
@@ -50,7 +51,7 @@ export async function authRoutes(app: FastifyInstance, deps: RouteDeps): Promise
       const auth = await resolveSession(db, session.token);
       if (!auth) throw problems.invalidCredentials();
       setSessionCookie(reply, env, session.token, session.expiresAt);
-      return reply.send({ user: toSessionUser(auth) });
+      return reply.send({ user: toSessionUser(auth), session: toSessionInfo(auth) });
     },
   );
 
@@ -64,6 +65,9 @@ export async function authRoutes(app: FastifyInstance, deps: RouteDeps): Promise
 
   /** GET /api/v1/auth/me — the current principal (roles are advisory for UI only). */
   app.get('/auth/me', { preHandler: authenticate }, async (req, reply) => {
-    return reply.send({ user: toSessionUser(requireAuth(req)) });
+    return reply.send({
+      user: toSessionUser(requireAuth(req)),
+      session: toSessionInfo(requireAuth(req)),
+    });
   });
 }

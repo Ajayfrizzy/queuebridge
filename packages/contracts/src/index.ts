@@ -14,3 +14,4 @@ export * from './schemas.js';
 export * from './admin.js';
 export * from './queue.js';
 export * from './ids.js';
+export * from './sync.js';

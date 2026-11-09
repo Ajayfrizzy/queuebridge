@@ -16,7 +16,7 @@ import {
 } from '@queuebridge/domain';
 import { Permission, queueActorRoles, type AuthContext } from '../auth/rbac.js';
 import type { Db } from '../db.js';
-import { isUniqueViolation, problems } from '../errors.js';
+import { ApiProblem, isUniqueViolation, problems } from '../errors.js';
 import { appendEvent, lockSessions, type LockedSession } from './events.js';
 import { issueTicket } from './tickets.js';
 
@@ -170,7 +170,7 @@ export async function executeCommand(db: Db, input: ExecuteCommandInput): Promis
 
       let outcome: CommandOutcome;
       try {
-        outcome = await apply(tx, session, locked, destinationQueueId, roles, auth, command);
+        outcome = await applyCommand(tx, session, locked, destinationQueueId, roles, auth, command);
       } catch (err) {
         if (!(err instanceof CommandRejected)) throw err;
         outcome = {
@@ -217,7 +217,21 @@ export async function executeCommand(db: Db, input: ExecuteCommandInput): Promis
   }
 }
 
-async function apply(
+export interface ApplyOptions {
+  /**
+   * Set only by the offline-sync path, which has already verified coordinator authority.
+   * Every other caller is blocked from advancing a queue while a coordinator is designated.
+   */
+  viaCoordinatorSync?: boolean;
+}
+
+/**
+ * Apply one command to a LOCKED session inside the caller's transaction. Shared by the online
+ * command endpoint and offline sync, so both obey exactly the same state machine, role rules
+ * and event-append path. Throws CommandRejected for business-rule failures and ApiProblem for
+ * authorization/lookup failures.
+ */
+export async function applyCommand(
   tx: Db,
   session: LockedSession,
   locked: Map<string, LockedSession>,
@@ -225,6 +239,7 @@ async function apply(
   roles: Role[],
   auth: AuthContext,
   command: QueueCommandRequest,
+  options: ApplyOptions = {},
 ): Promise<CommandOutcome> {
   if (command.expected_revision !== undefined && command.expected_revision !== session.revision) {
     reject('stale_revision', 'The queue changed since you loaded it. Refresh and try again.');
@@ -274,6 +289,17 @@ async function apply(
       ticket_id: null,
       public_code: null,
     };
+  }
+
+  // ---- Coordinator fence (ADR-006) ------------------------------------------------------------
+  // While a coordinator is designated, queue advancement happens only through that coordinator's
+  // synced commands. Online advancement by anyone else would race an offline decision the server
+  // cannot see yet, so it is refused (not recorded, so a retry after revocation works).
+  if (session.coordinator_device_id !== null && !options.viaCoordinatorSync) {
+    throw new ApiProblem(409, 'coordinator-active', 'Offline coordinator active', {
+      detail:
+        'A coordinator device holds authority over this queue. Calling and serving are paused here until it syncs or a supervisor revokes or replaces it.',
+    });
   }
 
   // ---- Call next ----------------------------------------------------------------------------
