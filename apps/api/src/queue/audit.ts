@@ -211,6 +211,20 @@ export async function verifyAudit(
   organizationId: string,
   queueId: string,
 ): Promise<AuditVerification | null> {
+  // ONE consistent snapshot for every read (session head, events, override records, policy
+  // snapshots, checkpoints, alerts): commands or checkpoints committing meanwhile must not make
+  // a healthy queue look broken (e.g. "records 8 events but 9 are present")
+  return db.begin('isolation level repeatable read read only', (tx) =>
+    verifyInSnapshot(tx, env, organizationId, queueId),
+  );
+}
+
+async function verifyInSnapshot(
+  db: Db,
+  env: Env,
+  organizationId: string,
+  queueId: string,
+): Promise<AuditVerification | null> {
   const s = await sessionInfo(db, organizationId, queueId);
   if (!s) return null;
   const problemsFound: string[] = [];

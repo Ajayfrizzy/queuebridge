@@ -82,9 +82,9 @@ so a policy committed while a command waited for the lock is the one applied and
 
 ## Test results (exact; details in the evidence document)
 
-- `pnpm test` (no DB): **380** passed (M3: 299).
-- `pnpm test:db`: api **462** (25 files; M3: 395 / 21) + worker **13**; 2 consecutive runs on the final tree.
-- Playwright: **126 passed**, 4 pre-existing opt-in capture tests skipped; `fairness.spec.ts` 13 and `counter-closure.spec.ts` 5 at 1280/1440/375/320 px with axe and overflow checks.
+- `pnpm test` (no DB): **385** passed (M3: 299).
+- `pnpm test:db`: api **463** (25 files; M3: 395 / 21) + worker **13**; 2 consecutive runs on the final tree.
+- Playwright: **127 passed**, 4 pre-existing opt-in capture tests skipped; `fairness.spec.ts` 13 and `counter-closure.spec.ts` 6 at 1280/1440/375/320 px with axe and overflow checks.
 - format, lint (0 warnings), typecheck, build, DB-validation workflow emulation (incl. new TRUNCATE step), migrate ×2, seed ×2: all pass.
 - `pnpm audit --audit-level high`: exit 0 (no high/critical; 2 low + 3 moderate pre-existing dev-tooling).
 
@@ -258,3 +258,35 @@ Remaining risks and accepted limitations:
 - Strict priority can starve lower classes (ADR-012). HMAC checkpoints need the key to verify
   signatures. The out-of-service invariant is enforced in code under locks, not by a database
   constraint.
+
+## GitHub — PR #6 and CI
+
+PR: https://github.com/Ajayfrizzy/queuebridge/pull/6 (`feature/m4-fairness-routing-audit` → `staging`).
+
+First CI round on `3c46343`: every job passed in the push-triggered run, including real
+PostgreSQL and Playwright. In the pull-request run, the "Tests with PostgreSQL" job failed two
+Playwright tests from earlier milestones; neither touches M4 code.
+
+1. `e2e/offline.spec.ts` "on a shared device, one person's unsent actions are never sent under
+   another person's sign-in" (M3). **Test defect, now fixed.** It recorded every sync request
+   from the moment of reconnect. In that window the still-loaded page of person A can flush A's
+   own action with no session at all (A's cookie was cleared), and the request is cut off by the
+   reload. Diagnosis over 15 local runs: the failing runs showed A's operation only in requests
+   without a session cookie and without a response; it never appeared under B's session. The
+   test now asserts the actual property, and asserts more: B's flush happened under B's session;
+   A's action never left under any session; the server never accepted a request carrying it.
+   Mutation check: removing the owner filter in `flushOutbox` makes the test fail. Stress: 25/25
+   under 6 workers (previously 4 failures in 15).
+2. `e2e/security-isolation.spec.ts` "sign out ends the server session; the back button does not
+   resurrect data" (M1). **Not reproduced.** After Sign out and Back, the URL stayed `/admin`
+   for 10 s. It passed in the push run on the same commit, 15/15 under local stress and in two
+   full local runs. The code paths involved (`auth.tsx`, `Layout.tsx`, `RequireAuth.tsx`) are
+   unchanged by M4. Recorded as an intermittent CI failure to investigate if it recurs; no code
+   was changed for it and the test was not weakened.
+
+### Codex review of `3c46343` (2 findings, both P2, both valid, both fixed)
+
+| Finding                                                                                                                                                                                               | Fix                                                                                                                                                                                                                                                                                                      | Regression evidence                                                                                                                                                                                                                    |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `verifyAudit` read the session head, events, checkpoints and alerts in separate snapshots, so a command or checkpoint committing in between made a healthy queue report `failed` (a false failure)    | All verification reads run in ONE `REPEATABLE READ READ ONLY` transaction                                                                                                                                                                                                                                | `audit.db.test.ts` "verifying while commands and checkpoints commit never reports a healthy queue as failed": **reproduced on the unfixed code** (false `failed`, "records 8 events but 9 are present", 2 of 3 runs); passes 5/5 after |
+| M4 forms renewed their `operation_id` only on success, so after a definitive refusal (e.g. `counter_busy`) a retry or changed command resubmitted the refused id and only replayed the stored refusal | `OperationIdTracker` (`apps/web/src/lib/operationIds.ts`): the same id only to retry the SAME command after an unknown outcome (no response, 429, 5xx); a new id after a commit, a definitive refusal, or a changed command. Used by the priority-override, call-out-of-order and counter-transfer forms | Unit `operationIds.test.ts` (5); Playwright `counter-closure.spec.ts` "a counter transfer refused because the target became busy succeeds when retried after it is free": **fails with the old renewal rule**, passes after            |

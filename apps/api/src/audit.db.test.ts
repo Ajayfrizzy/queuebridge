@@ -241,6 +241,56 @@ describe('audit view and redacted export', () => {
   });
 });
 
+/** Checkpoint the next contiguous range (exactly what the worker does), signed with KEY. */
+async function checkpointNext(db: TestApp['db'], queueId: string): Promise<void> {
+  const [cov] = await db<{ to: number }[]>`
+    SELECT COALESCE(MAX(to_sequence), 0)::int AS to FROM audit_checkpoints WHERE queue_session_id = ${queueId}`;
+  const from = (cov?.to ?? 0) + 1;
+  const evs = await db<{ event_hash: string; organization_id: string; sequence: number }[]>`
+    SELECT event_hash, organization_id, sequence FROM queue_events
+     WHERE queue_session_id = ${queueId} AND sequence >= ${from} ORDER BY sequence`;
+  const last = evs[evs.length - 1];
+  if (!last) return;
+  const root = checkpointRoot(
+    sha256Hex,
+    evs.map((e) => e.event_hash),
+  );
+  const msg = checkpointMessage({
+    queue_session_id: queueId,
+    from_sequence: from,
+    to_sequence: last.sequence,
+    root_hash: root,
+    head_hash: last.event_hash,
+  });
+  await db`INSERT INTO audit_checkpoints (queue_session_id, organization_id, from_sequence, to_sequence, root_hash, head_hash, key_id, signature)
+           VALUES (${queueId}, ${last.organization_id}, ${from}, ${last.sequence}, ${root}, ${last.event_hash}, ${KEY_ID}, ${signCheckpoint(KEY, msg)})`;
+}
+
+describe('verification under concurrent writes (no false failures)', () => {
+  it('verifying while commands and checkpoints commit never reports a healthy queue as failed', async () => {
+    const q = await setupQueue(t.app, { counters: 1 });
+    await visitorJoin(t.app, q.queueId);
+    const statuses: string[] = [];
+    let writing = true;
+    const writer = (async (): Promise<void> => {
+      // keep extending the log (and occasionally checkpointing) while verifications run
+      for (let i = 0; i < 40 && writing; i++) {
+        await visitorJoin(t.app, q.queueId);
+        if (i % 10 === 9) await checkpointNext(t.db, q.queueId);
+      }
+    })();
+    for (let i = 0; i < 25; i++) {
+      const { v } = await verify(q.org.admin, q.queueId);
+      statuses.push(v.status);
+      if (v.status !== 'verified') console.error(v.problems);
+    }
+    writing = false;
+    await writer;
+    expect(statuses.filter((s) => s !== 'verified')).toEqual([]);
+    expect((await verify(q.org.admin, q.queueId)).v.status).toBe('verified');
+  });
+});
+
 describe('verification outcomes (never a false success)', () => {
   it('a clean session verifies: chain, replayed decisions (across a policy change and an override), no checkpoints yet', async () => {
     const q = await busySession(t);

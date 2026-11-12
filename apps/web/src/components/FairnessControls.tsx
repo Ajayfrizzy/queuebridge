@@ -1,13 +1,13 @@
-import { useId, useState, type ReactElement } from 'react';
+import { useId, useRef, useState, type ReactElement } from 'react';
 import {
   COUNTER_CLOSE_REASONS,
   COUNTER_TRANSFER_REASONS,
-  uuidv7,
   type CounterAvailabilityResult,
   type PriorityClass,
   type StaffQueue,
 } from '@queuebridge/contracts';
 import { api } from '../lib/api.js';
+import { OperationIdTracker, type RunOutcome } from '../lib/operationIds.js';
 import { classLabel } from '../lib/policy.js';
 
 /**
@@ -18,7 +18,7 @@ import { classLabel } from '../lib/policy.js';
  * `run` executes one online action and returns true on success; the console owns busy state,
  * announcements, error display and the reload afterwards.
  */
-export type RunOnline = (action: () => Promise<string>) => Promise<boolean>;
+export type RunOnline = (action: () => Promise<string>) => Promise<RunOutcome>;
 
 const REASON_LABELS: Record<string, string> = {
   accessibility_need: 'Accessibility need',
@@ -89,10 +89,11 @@ export function TicketOverridePanel({
   const [text, setText] = useState('');
   const [confirming, setConfirming] = useState(false);
   // One operation id per attempt: a retry after a lost response cannot apply twice
-  const [opId, setOpId] = useState(() => uuidv7());
+  // One id per command; reused only to retry the same command after an unknown outcome
+  const overrideIds = useRef(new OperationIdTracker());
   const [callReason, setCallReason] = useState<string>(policy.override_reasons[0] ?? '');
   const [callText, setCallText] = useState('');
-  const [callOpId, setCallOpId] = useState(() => uuidv7());
+  const callIds = useRef(new OperationIdTracker());
   const textOk = text.trim().length >= 5;
   const callTextOk = callText.trim().length >= 5;
 
@@ -112,19 +113,21 @@ export function TicketOverridePanel({
               setConfirming(true);
               return;
             }
+            const text_ = text.trim();
+            const operationId = overrideIds.current.idFor(
+              JSON.stringify([ticket.id, toClass, reason, text_]),
+            );
             void run(async () => {
               await api.priorityOverride(ticket.id, {
-                operation_id: opId,
+                operation_id: operationId,
                 to_class: toClass as PriorityClass,
                 reason_code: reason,
-                reason_text: text.trim(),
+                reason_text: text_,
               });
               return `${ticket.public_code} moved to ${classLabel(toClass)}. The change is recorded in the audit trail.`;
-            }).then((ok) => {
-              if (ok) {
-                setOpId(uuidv7());
-                onClose();
-              }
+            }).then((outcome) => {
+              overrideIds.current.settle(outcome);
+              if (outcome === 'committed') onClose();
               setConfirming(false);
             });
           }}
@@ -220,19 +223,21 @@ export function TicketOverridePanel({
         onSubmit={(e) => {
           e.preventDefault();
           if (!counter) return;
+          const callText_ = callText.trim();
+          const operationId = callIds.current.idFor(
+            JSON.stringify([ticket.id, counter.id, callReason, callText_]),
+          );
           void run(async () => {
             await api.callOutOfOrder(ticket.id, {
-              operation_id: callOpId,
+              operation_id: operationId,
               counter_id: counter.id,
               reason_code: callReason,
-              reason_text: callText.trim(),
+              reason_text: callText_,
             });
             return `Called ${ticket.public_code} to ${counter.name} out of order. Recorded in the audit trail.`;
-          }).then((ok) => {
-            if (ok) {
-              setCallOpId(uuidv7());
-              onClose();
-            }
+          }).then((outcome) => {
+            callIds.current.settle(outcome);
+            if (outcome === 'committed') onClose();
           });
         }}
       >
@@ -397,7 +402,7 @@ export function CounterTransferForm({
   const uid = useId();
   const [to, setTo] = useState('');
   const [reason, setReason] = useState<string>(COUNTER_TRANSFER_REASONS[0]);
-  const [opId, setOpId] = useState(() => uuidv7());
+  const transferIds = useRef(new OperationIdTracker());
   if (targets.length === 0) {
     return (
       <p className="hint" data-testid="no-counter-transfer">
@@ -412,18 +417,19 @@ export function CounterTransferForm({
         e.preventDefault();
         const target = targets.find((t) => t.id === to);
         if (!target) return;
+        const operationId = transferIds.current.idFor(
+          JSON.stringify([ticket.id, target.id, reason]),
+        );
         void run(async () => {
           await api.counterTransfer(ticket.id, {
-            operation_id: opId,
+            operation_id: operationId,
             to_counter_id: target.id,
             reason_code: reason as (typeof COUNTER_TRANSFER_REASONS)[number],
           });
           return `${ticket.public_code} sent to ${target.name}.`;
-        }).then((ok) => {
-          if (ok) {
-            setOpId(uuidv7());
-            setTo('');
-          }
+        }).then((outcome) => {
+          transferIds.current.settle(outcome);
+          if (outcome === 'committed') setTo('');
         });
       }}
     >

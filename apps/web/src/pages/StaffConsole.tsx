@@ -36,6 +36,7 @@ import {
   WALK_IN_ROLES,
 } from '../lib/permissions.js';
 import { buildQr, qrPath, QUIET_ZONE } from '../lib/qr.js';
+import { outcomeOfStatus } from '../lib/operationIds.js';
 import { OutboxPanel } from '../components/OutboxPanel.js';
 import {
   CounterAvailabilityControl,
@@ -297,14 +298,17 @@ export function StaffConsole(): ReactElement {
     .filter((c) => c.id !== counterId && c.active && c.availability === 'open' && !c.busy_with)
     .map((c) => ({ id: c.id, name: c.name }));
 
-  /** Run one online-only M4 action: busy state, announcement, visible error, then reload. */
+  /**
+   * Run one online-only M4 action: busy state, announcement, visible error, then reload.
+   * Reports how it ended so the form can decide whether its operation id may be reused.
+   */
   const runOnline: RunOnline = async (action) => {
     setBusy(true);
     setLastError(null);
     setLocalNote(null);
     try {
       announce(await action());
-      return true;
+      return 'committed';
     } catch (e) {
       const err =
         e instanceof ApiRequestError ? e : new ApiRequestError(0, null, 'Unexpected error');
@@ -312,7 +316,7 @@ export function StaffConsole(): ReactElement {
       const message = fields.length > 0 ? `${err.message} ${fields.join(' ')}` : err.message;
       setLastError({ message, retry: null });
       announce(message);
-      return false;
+      return outcomeOfStatus(err.status);
     } finally {
       setBusy(false);
       await reload();

@@ -332,10 +332,25 @@ test.describe('safe handling of local data', () => {
     const aOperationId = ((await storedOperations(p)) as unknown as { operation_id: string }[])[0]
       ?.operation_id;
     expect(aOperationId).toBeTruthy();
-    // Record every sync request this browser sends from now on
-    const sent: string[] = [];
+    // Record every sync request this browser sends from now on — with the session it carried and
+    // whether the server accepted it. (Right after reconnecting, the still-loaded page of person
+    // A may try to flush A's own action WITHOUT any session — A's cookie is gone; that request is
+    // refused or cut off by the reload. What must never happen is A's action leaving under a
+    // signed-in session, i.e. under person B's.)
+    const sent: Promise<{ body: string; session: boolean; accepted: boolean }>[] = [];
     p.on('request', (r) => {
-      if (r.url().includes('/api/v1/sync/batches')) sent.push(r.postData() ?? '');
+      if (!r.url().includes('/api/v1/sync/batches')) return;
+      sent.push(
+        (async () => {
+          const headers = await r.allHeaders();
+          const res = await r.response().catch(() => null);
+          return {
+            body: r.postData() ?? '',
+            session: /(^|;\s*)qb_session=/.test(headers['cookie'] ?? ''),
+            accepted: res !== null && res.ok(),
+          };
+        })(),
+      );
     });
     await a.ctx.setOffline(false);
     await p.reload();
@@ -363,8 +378,17 @@ test.describe('safe handling of local data', () => {
     await expect(p.getByTestId('offline-capture-ref')).toBeVisible();
     await a.ctx.setOffline(false);
     await expect(p.getByTestId('handover')).toBeVisible({ timeout: 20_000 });
-    expect(sent.length).toBeGreaterThan(0);
-    expect(sent.some((body) => body.includes(aOperationId ?? '~'))).toBe(false);
+    const requests = await Promise.all(sent);
+    // B's own flush really happened under B's session...
+    expect(requests.some((x) => x.session && x.accepted)).toBe(true);
+    const withA = requests.filter((x) => x.body.includes(aOperationId ?? '~'));
+    // ...and A's action never left under any session, and the server never accepted it
+    expect(withA.filter((x) => x.session)).toEqual([]);
+    expect(withA.filter((x) => x.accepted)).toEqual([]);
+    // every flush made under a session (B's) excluded A's action
+    expect(
+      requests.filter((x) => x.session).every((x) => !x.body.includes(aOperationId ?? '~')),
+    ).toBe(true);
     // The server holds only B's ticket
     const q = await page.request.get(`/api/v1/queues/${s.queueId}`);
     expect(((await q.json()) as { queue: { tickets: unknown[] } }).queue.tickets).toHaveLength(1);

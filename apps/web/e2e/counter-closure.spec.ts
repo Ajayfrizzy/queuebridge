@@ -151,3 +151,57 @@ test.describe('policy configuration is for administrators only (manual test 1)',
     await sup.ctx.close();
   });
 });
+
+test.describe('operation ids after a definitive refusal (PR #6 review)', () => {
+  test('a counter transfer refused because the target became busy succeeds when retried after it is free', async ({
+    page,
+    browser,
+  }) => {
+    const s = await apiQueueSetup(page.request);
+    const queueId = s.queueId ?? '';
+    const counter2 = await addCounter(page.request, s.facility.id, s.serviceId);
+    const g1 = await walkIn(page.request, queueId);
+    await walkIn(page.request, queueId);
+
+    const op = await makeStaff(browser, page.request, s.facility.id, 'staff_counter');
+    // Live updates blocked: the console keeps a stale view and falls back to slow polling
+    await op.page.route('**/stream', (r) => r.abort());
+    await op.page.goto(`/staff/queues/${queueId}`);
+    await op.page.locator('#counter-select').selectOption(s.counterId);
+    await op.page.getByRole('button', { name: 'Call next' }).click();
+    await expect(op.page.getByTestId('current-code')).toHaveText(g1);
+    const transfer = op.page.getByRole('form', { name: `Send ${g1} to another counter` });
+    await transfer.getByLabel('Counter').selectOption(counter2);
+
+    // Meanwhile Counter 2 calls the next visitor (the operator's screen does not know yet)
+    const busy = await page.request.post(`/api/v1/queues/${queueId}/commands`, {
+      headers: CSRF,
+      data: { operation_id: uuidv7(), action: 'ticket.call_next', counter_id: counter2 },
+    });
+    const g2Id = ((await busy.json()) as { outcome: { ticket_id: string } }).outcome.ticket_id;
+    await transfer.getByRole('button', { name: 'Send to counter' }).click();
+    await expect(op.page.getByTestId('command-error')).toContainText('still handling');
+
+    // Counter 2 finishes; once the console sees it free again, the SAME transfer is retried
+    for (const action of ['ticket.serve', 'ticket.complete']) {
+      await page.request.post(`/api/v1/queues/${queueId}/commands`, {
+        headers: CSRF,
+        data: { operation_id: uuidv7(), action, ticket_id: g2Id },
+      });
+    }
+    await expect(transfer.getByRole('button', { name: 'Send to counter' })).toBeEnabled({
+      timeout: 25_000,
+    });
+    await transfer.getByRole('button', { name: 'Send to counter' }).click();
+    // A fresh operation id was used: the transfer EXECUTES (no replay of the stored refusal)
+    await expect(op.page.getByTestId('counter-free')).toContainText('Counter 1 is free');
+    const q = (await (await page.request.get(`/api/v1/queues/${queueId}`)).json()) as {
+      queue: { tickets: { public_code: string; counter_id: string | null; state: string }[] };
+    };
+    expect(q.queue.tickets.find((t) => t.public_code === g1)).toMatchObject({
+      state: 'called',
+      counter_id: counter2,
+    });
+    await op.ctx.close();
+  });
+});
