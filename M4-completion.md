@@ -303,10 +303,61 @@ data says so and refuses to pretend" (M3) failed once in seven full local runs. 
 going offline, before the app registers the loss of connectivity. Not changed; recorded as a
 follow-up.
 
+## Final routing invariant: capability removal (2026-11-12, commit `5bd18d5`)
+
+**Defect.** An administrator could remove a service capability from a counter (Administration →
+Counters, `DELETE /counter_service_capabilities/:counterId/:serviceId`) while that counter was
+calling or serving a visitor of that service. The route deleted the row with no locks and no check,
+so a counter could hold a called/serving ticket of a service it no longer served, and the console
+and routing rules disagreed about it.
+
+**Fix.** `removeCounterCapability` (`apps/api/src/queue/counters.ts`) runs inside the route's
+transaction under the same procedure as closing or deactivating a counter: `lockCounterScope`
+(queue sessions in id order, THEN the counter `FOR UPDATE`). After the locks, a fresh statement
+looks for a called/serving ticket at the counter whose session belongs to the removed service.
+If one exists the route answers **409** and nothing changes; otherwise the row is deleted, the
+admin event is recorded and today's consoles are signalled. Call Next, Start Serving and every
+other queue command already lock the session, then the counter, then read the capability, so they
+serialize with the removal: either the call/serve commits first (removal refused) or the removal
+commits first (the call is rejected `counter_not_capable`).
+
+- Only the affected service blocks: tickets of other services at the same counter do not.
+- A missing capability is still 404; permission checks (403) still come first.
+- UI: the refusal is shown in the counter's own alert (it was only announced before) and the
+  checkbox returns to the server state.
+- Not changed: coordinator fencing, routing, fairness, the audit chain, migrations, other modules.
+
+**Evidence.**
+
+- `apps/api/src/capability-removal.db.test.ts`: 13 tests on real PostgreSQL. Run against the
+  unfixed route: **7 failed**, 6 passed; with the fix: 13 pass. It covers called and serving
+  refusals with exact before/after state (capability, counter flags, ticket row incl. version,
+  queue revision, event log, admin events), other-service tickets, 403-before-409, 404, races
+  against Call Next, Start Serving and Complete (12 rounds each, invariant and event-log checked),
+  two racing removals, and a coordinator-held queue (epoch and device unchanged).
+- `apps/web/e2e/counter-closure.spec.ts`: new `@responsive` journey (called then serving refusal
+  with visible alert, unchanged server state, success after completion), run at 1280, 1440, 375 and
+  320 px with axe and overflow checks.
+- Full local gates on the fix: format check, ESLint `--max-warnings 0`, typecheck, build clean;
+  `pnpm test` 385 passed; `pnpm test:db` api 26 files / **478** tests + worker 13; Playwright
+  **130 passed**, 4 opt-in skips, 1 failure (below).
+- Pre-existing, unrelated Playwright failure seen locally: `review-fixes.spec.ts` "the notice can
+  be dismissed without signing out" (M1). The aborted logout request also raises the "You are
+  offline" toast, so `getByRole('button', { name: 'Dismiss' })` matches two buttons (strict mode).
+  It fails the same way with this change stashed and passed in CI. Not changed here (unrelated
+  module); recorded as a follow-up (use `exact: true`).
+
+- **CI on `5bd18d5`**, push and pull-request runs, 11/11 jobs passed (including Tests with PostgreSQL with Playwright and the migration validation).
+
+**Remaining risk.** While an offline coordinator holds the queue, an action the coordinator took
+offline is invisible to the server until it syncs. Removal checks only server-known tickets, like
+deactivation. A coordinator call made offline for a service removed meanwhile is rejected at sync
+(`counter_not_capable`) and held for review, never applied.
+
 ## Final state (2026-11-12)
 
 - **PR:** https://github.com/Ajayfrizzy/queuebridge/pull/6 — `feature/m4-fairness-routing-audit` → `staging`; **not merged**.
-- **Commits:** `3c46343` (M4), `14de6d1` (review and CI fixes), `014389d` (audit export all or nothing), then this report update.
+- **Commits:** `3c46343` (M4), `14de6d1` (review and CI fixes), `014389d` (audit export all or nothing), then `5bd18d5` (capability removal invariant), then the report update.
 - **CI on `014389d`**, push and pull-request runs, 11/11 jobs passed: Lint and typecheck (format check, ESLint `--max-warnings 0`, typecheck); Tests without DB (contracts 102, domain 98, channels 18, continuity 64, ui 6, worker 10, api 53, web 34); Build; **Tests with PostgreSQL** (api 465 in 25 files, worker 13; Playwright 127 passed, 4 opt-in capture skips); **Apply migrations and validate constraints** (fresh migrate, idempotent re-run, UPDATE/DELETE/TRUNCATE on 6 append-only tables refused by the guard, both unique constraints: 10 OK checks); **Security audit** (`--audit-level high` passes; 2 low and 3 moderate, pre-existing dev tooling).
 - **Codex:** 2 × P2 on `3c46343` and 1 × P2 on `14de6d1`, all valid and all fixed with regression tests that fail without the fix. Review of `014389d`: "Didn't find any major issues."
 - **Manual acceptance:** 17/17 scenarios passed (human tester).

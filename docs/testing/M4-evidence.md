@@ -34,6 +34,23 @@ M1 sign-out test failure not reproduced (unchanged code, recorded). Codex review
 under concurrent writes (single-snapshot fix) and operation-id reuse after a refusal (tracker
 fix) — both fixed with regression tests that fail without the fix; details in `M4-completion.md`. Codex re-review of `14de6d1` (1 × P2): silently truncated audit export over 50,000 events — now refused with 413 and every export states its count and head; regression test fails without the fix.
 
+## Final routing invariant: capability removal (commit `5bd18d5`)
+
+A service capability could be removed from a counter that was calling or serving a visitor of that
+service. `DELETE /counter_service_capabilities/:counterId/:serviceId` now runs under the shared M4
+counter locks (sessions in id order, then the counter `FOR UPDATE`) and answers 409 while a called
+or serving ticket of that service is at the counter; nothing changes on refusal. Details and risk
+in `M4-completion.md` → "Final routing invariant".
+
+| Evidence                                                  | Result                                                                                                                                                                                                                                                                |
+| --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `capability-removal.db.test.ts` (real PostgreSQL)         | 13 tests; **7 fail on the unfixed route**, 13 pass with the fix. Called/serving refusal with exact unchanged state; other-service tickets; 403 before 409; 404; races vs Call Next, Start Serving, Complete (12 rounds each); racing removals; coordinator-held queue |
+| `pnpm test:db`                                            | PASS: api 26 files / **478** tests, worker 13 (M4 before: 465)                                                                                                                                                                                                        |
+| `pnpm test` (no DB)                                       | PASS: 385                                                                                                                                                                                                                                                             |
+| format check, ESLint `--max-warnings 0`, typecheck, build | PASS                                                                                                                                                                                                                                                                  |
+| Playwright `counter-closure.spec.ts`                      | PASS: 10 (deactivation journey ×4, capability-removal journey ×4 widths with axe and overflow checks, policy check, operation-id retry)                                                                                                                               |
+| Playwright full suite                                     | 130 passed, 4 opt-in skips, 1 pre-existing unrelated failure (`review-fixes.spec.ts` logout "Dismiss" strict-mode match; identical with the change stashed; passed in CI)                                                                                             |
+
 ## Manual acceptance result (human tester, reported 2026-11-12)
 
 **All 17 M4 manual acceptance scenarios PASSED** on the local stack (`m4-acceptance`
