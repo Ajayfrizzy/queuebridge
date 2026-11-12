@@ -378,3 +378,132 @@ offline/AI states, WCAG 2.1 A/AA at 320/375/desktop.
 | Milestone                | Scope                                                                                                | Exit criteria                                                                |
 | ------------------------ | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | MQ (after M5, before M6) | Ask Que: deterministic KB + navigation, offline delivery, accessible UI, optional zero-cost AI layer | Group 13 tests pass; usable offline and with AI disabled; read-only verified |
+
+---
+
+## Addendum B — Smart Turn Alerts, SMS Turn Alerts and Final UI/UX architecture notes (planned; added 2026-11-12)
+
+> Additive to §1–§16 and Addendum A. No existing decision, gate or milestone row is removed.
+> Decision records: ADR-013 (turn alerts), ADR-014 (final UI/UX and landing page). Detailed design:
+> `.kiro/specs/queuebridge/design.md` §12–§14.
+
+### B.1 Status
+
+M0–M4 are implemented and merged into `staging` (PRs #1–#6, `staging` at `01927e4`). The §13
+milestone table below is the reconciled plan; milestone order is M5, MQ, M6, M7.
+
+### B.2 Turn alert pipeline (M5)
+
+```text
+committed event (call-next / out-of-order call / counter transfer, online or via sync)
+   └─ same DB transaction ── SAVEPOINT ── enqueue notifications + notification_outbox (web_push)
+                                 └─ error ⇒ ROLLBACK TO SAVEPOINT, log, count; queue command still commits
+apps/worker ── re-check ticket still `called` ── PushTransport.send (VAPID, TTL) ── record sent/failed/…
+visitor page ── SSE/poll of committed state ── TurnAlert (banner + live region [+ sound, vibration])
+service worker ── push event ── focused window? hand off : showNotification (best effort)
+```
+
+- Alert code has no network I/O inside the queue transaction and never writes to ticket or queue
+  tables from the worker; it cannot alter the authoritative sequence (ADR-004).
+- In-app alerts derive from server-committed state; offline-applied actions create none (ADR-006/007).
+- `PushTransport` (Web Push) is a separate narrow interface in `packages/channels`; SMS remains under
+  `ChannelAdapter` (ADR-009). `apps/worker` sends; `apps/api` only enqueues and serves subscription
+  endpoints. No package-boundary change.
+- Persistence: additive M5.4 migration (numbered after the M5.1 and M5.3 migrations; `push_subscriptions`, delivery detail code, widened
+  `notifications` CHECK constraints). Subscription endpoints/keys are encrypted at rest.
+- Delivery states: `sent` ≠ `delivered`; `delivered` only from a first-party acknowledgement or a
+  provider receipt (consistent with §10 and AGENTS §4.6).
+
+### B.3 SMS turn alerts (M6)
+
+SMS reuses the M5 pipeline: outbox row per consenting contact, `ChannelAdapter.sendMessage` with an
+idempotency key, provider receipts via signed, replay-defended webhooks, daily cap enforced before
+send, sandbox default and unmistakable labelling, live only on approved sponsored/free credits.
+
+### B.4 Final UI/UX and landing page (M7)
+
+Design tokens in `packages/ui`; the landing page is a lazy-loaded route chunk at `/` so visitor-flow
+bundles stay within REQ-F7.7; no third-party origins; Playwright gains Firefox and WebKit projects.
+
+### B.5 Milestone row updates (supersede the M5, M6, M7 rows of §13; MQ row in Addendum A.7 unchanged)
+
+| Milestone | Scope                                                                                                                                                                        | Exit criteria                                                                                                                                                            |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| M0–M4     | Implemented and merged into `staging` (PRs #1–#6)                                                                                                                            | Met                                                                                                                                                                      |
+| M5        | Ticket recovery, accessibility, device health, **Smart Turn Alerts** (in-app, sound, foreground vibration, opt-in Web Push); stabilization of known intermittent tests first | Accessibility, recovery and device-health scenarios pass; alert failures never change queue state or mark a visitor missed; no promise of background delivery; CI stable |
+| MQ        | Ask Que (after M5, before M6)                                                                                                                                                | Unchanged (Addendum A.7)                                                                                                                                                 |
+| M6        | **SMS turn alerts** and USSD contracts, adapters, sandbox/live provider gates                                                                                                | Simulated E2E; consent, opt-out, caps, receipts and signatures verified; live only with approved access and no personal spending                                         |
+| M7        | **Final UI/UX, branding, animated landing page and onboarding path**; load/security hardening; demo data; docs; Kiroween submission                                          | All ten core capabilities demonstrated; landing page truthful and accessible; cross-browser matrix and real-device checklist recorded; public artifacts complete         |
+
+### B.6 Failure behaviour additions (extends §3 and the failure table)
+
+| Scenario                                  | Required behaviour                                                                           |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Push service down or subscription expired | Bounded retries within TTL, then `failed`; ticket stays `called`; in-app alert unaffected    |
+| Alert enqueue error                       | Savepoint rollback; the queue command commits normally                                       |
+| Any alert failure while grace time passes | Only the F4 policy decides; alert outcome is never an input; no automatic miss because of it |
+| Offline-applied call                      | No visitor alert until the server commits the call                                           |
+
+### B.7 M5.1 Ticket recovery architecture
+
+Detailed design: `design.md` §15; decision record ADR-015. Recovery sits on the **identity plane**: it
+reads and writes credential tables only and never takes a queue-session lock, appends a `queue_events`
+row, or alters ticket state, position or waiting age, so it cannot interact with the authoritative
+sequence (ADR-004) or the coordinator (ADR-006).
+
+```text
+Visitor (lost device) ── QR/link (key in URL fragment) or typed key + facility + ticket code ──> POST /tickets/recover
+   throttles keyed on public identifiers and source only (never the guess); all state self-expires
+   constant-work HMAC verify ── success: new status token (≤ 3 active)   failure: one uniform response
+Staff (visitor present) ── verification procedure ──> single-use 10-minute grant QR, redeemed on the visitor's device
+   no factor ⇒ restricted assistance, no credential · basic factor ⇒ second QUEUE_MANAGE approver · audited
+```
+
+- Credentials: 256-bit status token (SHA-256 at rest, bearer); ≥128-bit recovery key (initial design
+  160 bits; HMAC-SHA-256 with an HKDF-derived pepper) that only yields a new status token. The public
+  ticket code is an identifier, never a credential.
+- No lifetime lockout exists, so an attacker cannot deny the rightful holder; limits are per source and
+  per ticket-and-source (10 attempts per minute; 5 failures per 15 minutes), with aggregate limits that
+  affect only sources that already failed.
+- Policy additions are versioned with the service policy (ADR-012): `rejoin_policy`
+  (`staff_resume` default | `self_resume`), `auto_miss` (default off) and `staff_recovery`. The grace
+  setting stays the existing `grace_window_seconds`.
+- `self_resume` and automatic no-show are queue transitions: they use the standard command executor
+  under the session and ticket locks and obey the coordinator fence. Automatic no-show runs as an API
+  sweep (it needs `appendEvent`), never in the worker; it is idempotent across instances through a
+  deterministic operation id, stateless across restarts, restarts its clock after coordinator authority
+  ends and after a detected outage, and never reads notification state.
+- Failure behaviour: see design §15.13. Retention: design §15.14.
+
+### B.8 M5.2 Accessibility architecture
+
+Detailed design: `design.md` §16. Device-local preferences (`qb.a11y.v1`) are applied as `data-*`
+attributes on `<html>` before first render and drive CSS custom properties and the root font size;
+they are precached, work offline and are never sent to the server. An announcement policy centralizes
+live-region behaviour in the existing `Announcer`. The PWA manifest no longer locks orientation.
+The same mechanism is extended by the M7 design tokens (ADR-014). No server component is added.
+
+### B.9 M5.3 Device health architecture
+
+Detailed design: `design.md` §17. A worker job `evaluateDeviceHealth` reads devices, coordinator
+fields and conflicts (read-only) and maintains `health_alerts` (one open alert per facility, kind and
+subject, auto-resolved with damping); alerts reach `OPERATIONS_VIEW` roles in the product only. The
+**single-coordinator authority model is unchanged**: health never designates, replaces, renews or
+revokes a coordinator or device; failover remains an explicit, audited supervisor action that advances
+the epoch and fences the previous coordinator. Device data is minimized (no IP, user agent,
+fingerprint or location). Stale evaluation is visible, and device state is still computed on read.
+
+### B.10 API additions for M5 (all `/api/v1`, Zod-strict, CSRF-protected, tenant-scoped, RFC 9457 errors)
+
+| Method and route                                                                          | Role                               | Purpose                                                                                        |
+| ----------------------------------------------------------------------------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `POST /tickets/recover`                                                                   | Visitor                            | Get a new status token with the recovery key                                                   |
+| `POST /tickets/:code/recovery-key`                                                        | Status token                       | Replace the recovery key                                                                       |
+| `POST /tickets/:code/sessions/revoke-others`                                              | Status token                       | Sign out other devices                                                                         |
+| `POST /tickets/:code/rejoin`                                                              | Status token                       | `self_resume` only: missed → waiting inside the grace window                                   |
+| `POST /queues/:id/tickets/:ticketId/recovery/assist`                                      | `WALK_IN` staff                    | Record the verification outcome; create a single-use grant (basic assurance needs an approver) |
+| `POST /queues/:id/tickets/:ticketId/recovery/approve`                                     | `QUEUE_MANAGE`                     | Second-person approval for a basic-assurance grant                                             |
+| `POST /queues/:id/tickets/:ticketId/recovery/revoke-all`                                  | `WALK_IN` staff                    | Revoke all visitor access                                                                      |
+| `GET /push/capability`, `…/tickets/:code/push-subscription` (POST/DELETE), `…/alerts/ack` | Visitor / status token             | Turn-alert capability and subscription (design §12.5.2)                                        |
+| `GET /queues/:id/alerts`                                                                  | Staff                              | Turn-alert state per called ticket                                                             |
+| `GET /facilities/:id/health/alerts`, `POST …/:alertId/acknowledge`                        | `OPERATIONS_VIEW` / `QUEUE_MANAGE` | Device-health alerts (design §17.4)                                                            |

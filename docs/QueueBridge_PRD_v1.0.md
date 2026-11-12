@@ -356,3 +356,95 @@ later milestone.
 - Offline staff help caches only generic procedures, never tenant-sensitive content, and expires
   with the session; role changes and sign-out invalidate it.
 - Group 13 (Ask Que) is part of the M7 final regression and acceptance checklist.
+
+---
+
+## Addendum B — Smart Turn Alerts, SMS Turn Alerts, Final UI/UX and Landing Page (planned; added 2026-11-12)
+
+> This addendum adds planned work. It does **not** modify §1–§16 or Addendum A: the ten core
+> feature groups, F11/F12, F13, the non-goals, the definition of done and all earlier decisions
+> stand as written. Specification: `.kiro/specs/queuebridge/requirements.md` (REQ-F14, REQ-F15,
+> REQ-F11.8–F11.13), `design.md` §12–§14, ADR-013, ADR-014.
+
+### B.1 Status reconciliation
+
+Milestones M0–M4 are implemented and merged into `staging` (PRs #1–#6; `staging` at `01927e4`).
+M5–M7 and MQ are planned. The milestone order, with no renumbering, is
+M5 → MQ → M6 → M7.
+
+### B.2 F14 — Smart Turn Alerts (milestone M5, alongside F4, F7, F9)
+
+Visitors who step away learn that they have been called through layers that fail safely:
+
+1. **In-app notification** when the visitor's ticket is called: a persistent, accessible visual
+   alert with a screen-reader announcement. This layer needs no permission and no provider.
+2. **Optional sound** (off by default, enabled by the visitor) and **supported foreground
+   vibration** (only while the page is open and where the device supports it).
+3. **Opt-in Web Push** where the browser and device support it, requested only by an explicit
+   visitor action, best effort.
+4. **Accessible visual fallbacks** for every non-visual cue.
+
+Constraints that are part of the requirement, not caveats:
+
+- QueueBridge does **not** assume that background vibration or push delivery is guaranteed, and
+  never says so in the product or documentation. The public board and staff calling remain the
+  reliable fallback.
+- A failed, slow or unavailable notification **never blocks queue progression** and **never
+  automatically marks a visitor as missed**. Missed-turn handling follows the configured F4 policy
+  only.
+- Alerts follow server-committed events; offline-applied (provisional) actions do not alert
+  visitors until the server commits them.
+- Delivery states are reported honestly (`sent` is not `delivered`).
+- No paid service: Web Push is a free open standard.
+
+**Acceptance:** an open ticket page announces and displays the call within the live-update cadence;
+sound and vibration work as configured where supported and are silent no-ops elsewhere; push works
+on supported devices after opt-in and is absent without breaking anything elsewhere; injected
+failures in every alert path leave ticket state, queue revision and the audit chain unchanged and
+produce no missed transition; keyboard and screen-reader use pass.
+
+### B.3 F11 extension — SMS Turn Alerts (milestone M6)
+
+SMS "you are called" notifications are delivered through the existing provider-neutral channel
+adapter architecture (ADR-009) and the same outbox pipeline as push, with explicit consent, opt-out,
+hard spending caps and idempotency. Real provider support is preserved (live adapters, signed
+webhooks, receipts) and remains **subject to §13**: live traffic only with approved sponsored or free
+credits, no personal spending; sandbox is the labelled default until then. USSD (F12) stays in M6.
+
+### B.4 F15 — Final UI/UX, Branding and Public Landing Page (milestone M7)
+
+- Complete responsive redesign of all role interfaces on one design-token system, with consistent
+  original branding (wordmark, logo, palette, typography, icons).
+- An **animated public landing page** at `/` with clear product messaging and an **organizational
+  onboarding path** (sign up, get-started checklist mapped to the facility setup flow, how visitors
+  join). Content is truthful: no claim of conflict-free operation or guaranteed delivery, and
+  SMS/USSD shown as live only when they are.
+- Motion respects reduced-motion preferences and never flashes; the landing page is isolated so it
+  does not weigh on visitor flows.
+- Verification covers accessibility, performance (measured budgets), security (no third-party
+  requests, production headers) and cross-browser behaviour (Chromium, Firefox, WebKit engines plus a
+  real-device checklist). Verification limits are stated; full WCAG conformance is not claimed
+  without expert review.
+
+### B.5 Consistency with existing scope
+
+- §2 non-goals: no paid dependency is introduced; F14 uses open standards, F15 uses original or
+  openly licensed assets and no third-party services.
+- F7 and §8: alerts and the redesign are held to the same accessibility requirements.
+- F13 (Addendum A): MQ stays between M5 and M6; its knowledge base gains turn-alert and landing
+  content in step with the milestones (design §11.10).
+- Definition of done (§15): unchanged; F14/F15 are additional required items for M5/M7 exit and are
+  not counted among the ten core groups.
+
+### B.5a M5 detail decisions (2026-11-12)
+
+- **F4:** recovery is never possible from a publicly visible ticket code alone; it needs a privately issued recovery key (at least 128 bits), presented as QR/link or readable text, or a restricted staff procedure in which presence and the public code are explicitly not proof of identity. Brute-force limits cannot be evaded by varying the guess and never lock out the rightful holder. Existing grace configuration (`grace_window_seconds`) is unchanged; the rejoin policy defaults to the current staff-driven behaviour; automatic no-show is off by default, time-based only, and executes through the authoritative queue-transition path without bypassing offline-coordinator fencing. Decision record: ADR-015.
+- **F14 defaults:** push TTL 120 seconds (configurable); at most 3 push subscriptions per ticket; all notification channels best effort; visitors explicitly opt in; push failure never changes queue state; subscription retention and deletion are specified before implementation.
+- **F7 and F9:** detailed designs for accessibility preferences and device health (stale detection, automatic in-product alerts, privacy-minimal device data, lost-device recovery) are in `design.md` §16–§17. The single offline-coordinator authority model (F1) is unchanged. Accepted initial device-health thresholds (configurable): stale 900 s, coordinator-expiry warning 300 s, unreviewed-conflict warning 900 s; recovery rate limit 10 attempts per source per minute.
+
+### B.6 Pending decisions (do not block specification)
+
+- Real-device test matrix available at no cost (which Android and iOS versions can be tested).
+- _Resolved 2026-11-12:_ grace uses the existing 300 s default (`grace_window_seconds`); rejoin defaults to staff resume; automatic no-show is optional, off by default and time-based only.
+- Brand assets (name styling, logo, palette): created originally in M7; PRD §16 item remains open until then.
+- SMS provider selection: unchanged from §13; research during M6.

@@ -3,7 +3,7 @@
 **Date:** 2026-11-08  
 **Branch:** `feature/m4-fairness-routing-audit` (from `staging` @ `f880abb`, which contains M0–M3 via PRs #1–#5)  
 **Status:** IMPLEMENTED — all local gates pass (exact results in `docs/testing/M4-evidence.md`).
-**Committed and pushed; PR #6 → `staging` open, all CI green, Codex: no major issues. Not merged** (merge needs human authorization).
+**Merged into `staging` via PR #6 (squash commit `01927e4`, 2026-11-12)** after all CI green, manual acceptance 17/17 and Codex review with no open findings.
 
 ## Completed scope
 
@@ -356,7 +356,7 @@ deactivation. A coordinator call made offline for a service removed meanwhile is
 
 ## Final state (2026-11-12)
 
-- **PR:** https://github.com/Ajayfrizzy/queuebridge/pull/6 — `feature/m4-fairness-routing-audit` → `staging`; **not merged**.
+- **PR:** https://github.com/Ajayfrizzy/queuebridge/pull/6 — `feature/m4-fairness-routing-audit` → `staging`; **merged 2026-11-12 as `01927e4`**.
 - **Commits:** `3c46343` (M4), `14de6d1` (review and CI fixes), `014389d` (audit export all or nothing), then `5bd18d5` (capability removal invariant), then the report update.
 - **CI on `014389d`**, push and pull-request runs, 11/11 jobs passed: Lint and typecheck (format check, ESLint `--max-warnings 0`, typecheck); Tests without DB (contracts 102, domain 98, channels 18, continuity 64, ui 6, worker 10, api 53, web 34); Build; **Tests with PostgreSQL** (api 465 in 25 files, worker 13; Playwright 127 passed, 4 opt-in capture skips); **Apply migrations and validate constraints** (fresh migrate, idempotent re-run, UPDATE/DELETE/TRUNCATE on 6 append-only tables refused by the guard, both unique constraints: 10 OK checks); **Security audit** (`--audit-level high` passes; 2 low and 3 moderate, pre-existing dev tooling).
 - **Codex:** 2 × P2 on `3c46343` and 1 × P2 on `14de6d1`, all valid and all fixed with regression tests that fail without the fix. Review of `014389d`: "Didn't find any major issues."

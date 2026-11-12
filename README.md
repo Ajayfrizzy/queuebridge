@@ -17,20 +17,23 @@ QueueBridge is not a QR ticket generator. Its key differentiator is the **Contin
 
 ## Feature overview
 
-| #   | Feature                                          | Status |
-| --- | ------------------------------------------------ | ------ |
-| F1  | Offline-first queue operations                   | M3     |
-| F2  | Inclusive registration (web, staff, SMS, USSD)   | M2/M6  |
-| F3  | Queue fairness and transparency                  | M4     |
-| F4  | Ticket recovery and missed-turn handling         | M5     |
-| F5  | Adaptive service routing                         | M4     |
-| F6  | Explainable wait-time estimates                  | M2     |
-| F7  | Accessibility-first visitor experience           | M5     |
-| F8  | Tamper-evident operational history               | M4     |
-| F9  | Connectivity and recovery dashboard              | M3     |
-| F10 | Portable facility setup                          | M1     |
-| F11 | Real SMS (sandbox ready; live pending provider)  | M6     |
-| F12 | Real USSD (sandbox ready; live pending provider) | M6     |
+| #   | Feature                                                               | Status |
+| --- | --------------------------------------------------------------------- | ------ |
+| F1  | Offline-first queue operations                                        | M3     |
+| F2  | Inclusive registration (web, staff, SMS, USSD)                        | M2/M6  |
+| F3  | Queue fairness and transparency                                       | M4     |
+| F4  | Ticket recovery and missed-turn handling                              | M5     |
+| F5  | Adaptive service routing                                              | M4     |
+| F6  | Explainable wait-time estimates                                       | M2     |
+| F7  | Accessibility-first visitor experience                                | M5     |
+| F8  | Tamper-evident operational history                                    | M4     |
+| F9  | Connectivity and recovery dashboard                                   | M3     |
+| F10 | Portable facility setup                                               | M1     |
+| F11 | Real SMS incl. SMS turn alerts (sandbox ready; live pending provider) | M6     |
+| F12 | Real USSD (sandbox ready; live pending provider)                      | M6     |
+| F13 | Ask Que Anything (planned)                                            | MQ     |
+| F14 | Smart Turn Alerts (planned)                                           | M5     |
+| F15 | Final UI/UX, branding, landing page (planned)                         | M7     |
 
 ## Architecture
 
@@ -149,16 +152,17 @@ See `M0-completion.md` for a detailed account of Kiro's contributions.
 
 ## Milestones
 
-| Milestone | Scope                                          | Status         |
-| --------- | ---------------------------------------------- | -------------- |
-| M0        | Foundation, contracts, config, CI, migrations  | ✅ In progress |
-| M1        | Tenancy, roles, facility/service/counter setup | Planned        |
-| M2        | Online queue, visitor flows, staff console     | Planned        |
-| M3        | Continuity Engine, offline sync, conflict UI   | Planned        |
-| M4        | Fairness, overrides, audit, routing, ETA       | Planned        |
-| M5        | Recovery, accessibility, device health         | Planned        |
-| M6        | SMS/USSD adapters, sandbox tests               | Planned        |
-| M7        | Hardening, demo data, submission               | Planned        |
+| Milestone | Scope                                                                                                              | Status                           |
+| --------- | ------------------------------------------------------------------------------------------------------------------ | -------------------------------- |
+| M0        | Foundation, contracts, config, CI, migrations                                                                      | ✅ Merged into `staging` (PR #1) |
+| M1        | Tenancy, roles, facility/service/counter setup                                                                     | ✅ Merged (PR #2)                |
+| M2        | Online queue, visitor flows, staff console                                                                         | ✅ Merged (PR #4)                |
+| M3        | Continuity Engine, offline sync, conflict UI                                                                       | ✅ Merged (PR #5)                |
+| M4        | Fairness, overrides, audit, routing, ETA                                                                           | ✅ Merged (PR #6)                |
+| M5        | Recovery, accessibility, device health, Smart Turn Alerts (in-app, sound, vibration, opt-in Web Push; best effort) | Planned (next)                   |
+| MQ        | Ask Que Anything (after M5, before M6)                                                                             | Planned                          |
+| M6        | SMS turn alerts and USSD adapters, sandbox tests                                                                   | Planned                          |
+| M7        | Final UI/UX, branding, animated landing page, hardening, demo data, submission                                     | Planned                          |
 
 ## License
 

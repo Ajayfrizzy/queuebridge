@@ -28,6 +28,12 @@ All adapters shipped at M0:
 
 Live provider adapters are implemented in M6 after a provider is selected and credentials are available. The adapter registry (`getAdapter(provider: string)`) is configured via the `SMS_PROVIDER` environment variable.
 
+> **Update 2026-11-12 (ADR-013):** M6 additionally delivers SMS _turn alerts_ ("you are called")
+> through this same `ChannelAdapter` interface and the outbox pipeline built in M5, with explicit
+> consent, opt-out, hard daily caps and the zero-personal-spending rule above. Web Push, which is not
+> an SMS/USSD channel, uses a separate narrow `PushTransport` interface in `packages/channels`
+> rather than widening `ChannelAdapter`. The decision in this ADR is otherwise unchanged.
+
 ## Consequences
 
 **Positive:**

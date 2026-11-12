@@ -56,6 +56,22 @@ Rules:
 - Expired or exhausted credentials return a safe error — no information about whether the code exists.
 - Recovery does not expose: phone numbers, names, internal IDs, or other visitors' data.
 
+**M5.1 clarifications (design §15, ADR-015; additive, the rules above stand):**
+
+- The public ticket code is an identifier, never a credential. Recovery requires the **recovery key** (privately issued at join, submitted with the facility and ticket code), a single-use grant from the restricted staff procedure, or nothing. A bare code never yields a token, status or data.
+- Two secrets: the 256-bit **status token** is the device bearer credential (SHA-256 at rest, at most 3 active per ticket); the **recovery key** has at least 128 bits (initial design 160 bits, CSPRNG), is stored as HMAC-SHA-256 with an HKDF-derived pepper, is shown once, is regenerable, and authorizes only a new status token for its ticket.
+- Presentation: QR/link with the key in the URL fragment only (never path or query), read then removed from the address bar, sent in a POST body; readable grouped text with tolerant input. The key is never in `localStorage`, the offline outbox, logs or audit events.
+- Throttle keys use only public identifiers and the request source, never the submitted secret, so changing a guess cannot evade a limit: 10 attempts per source per minute; 5 failed attempts per 15 minutes per ticket code per source (REQ-F4.4 applied per client); aggregate limits that only affect sources that already failed. All state self-expires within 15 minutes: there is no lifetime lock and no unlock action, and a correct key from a clean source always succeeds, so an attacker cannot lock the rightful holder out. Unknown, wrong, expired and terminal cases are indistinguishable. No CAPTCHA.
+- **Staff-assisted recovery is a restricted procedure.** Presence and knowledge of the public code do not prove identity. No verified factor means restricted assistance and no credential; the basic factor (service and join time confirmed against the console) needs a second `QUEUE_MANAGE` approver; a server-checked contact factor arrives with M6. Grants are single use, expire in 10 minutes and are redeemed on the visitor's own device from a QR; staff never see, read out or copy a credential. Roles `WALK_IN` only (never auditors); reason code mandatory; rate-limited; audited without values or secrets; the rightful holder's other devices are notified. A facility can switch the path off.
+- Recovery never creates queue events or changes ticket state, position or waiting age.
+- **Automatic no-show** is off by default and executes only through the authoritative command, transition and audit path (`system` role for `called → missed`), under the session and ticket locks, with database time, a deterministic idempotent operation id, coordinator fencing (refused while a coordinator is assigned; clock restarts after coordinator authority ends and after a detected outage), stateless restart, and no use of notification or delivery state.
+
+## Device health (F9) security (M5.3; design §17)
+
+- Device information is minimized: label, owner, timestamps, reported pending count, last failure code, revoked time. Never IP address, user agent, fingerprint, location or visitor data. Heartbeat payloads are strict and minimal.
+- Health alerts are visible to `OPERATIONS_VIEW` roles (auditors read-only) and acknowledgeable only by `QUEUE_MANAGE` roles; staff see only their own device's warning; cross-tenant is 404.
+- Health evaluation is read-only on queue, coordinator and ticket data and never assigns, fails over, renews or revokes anything. Failover remains an explicit, audited supervisor action that fences the previous coordinator.
+
 ## Offline and coordinator security
 
 - Coordinator epoch is checked server-side on every sync batch — stale epoch rejected, not silently accepted.
@@ -130,6 +146,23 @@ Rules:
 - Visitor consent required before storing phone number or sending notifications.
 - Define data retention and deletion policy before production visitor data is collected.
 - Comply with applicable Nigerian and local privacy obligations before live SMS/USSD activation.
+
+## Smart Turn Alerts (F14) security (planned; applies from milestone M5; ADR-013)
+
+- Push subscription endpoint URLs and keys are secrets (capability URLs): encrypt at rest with the environment-injected key (derived per purpose), never log, never return from any API.
+- Subscribe/unsubscribe/ack endpoints require the ticket's status credential, the CSRF header and an allowed Origin, strict Zod validation, rate limits per IP and per ticket, a cap on active subscriptions per ticket, and tenant scope (cross-tenant = 404).
+- VAPID private key: worker environment only; never in the browser, repository, logs or CI output. Absent keys disable the capability.
+- Push payloads contain only type, ticket code, counter label and timestamp: no names, phone numbers, internal ids or tenant configuration. Logs record counts and outcome codes only.
+- Request notification permission only from an explicit user action; never on page load.
+- Alert code must not be able to fail, delay or alter a queue command (savepoint isolation), and no alert outcome may change ticket state or mark a visitor missed.
+- Never claim delivery without a first-party acknowledgement or provider receipt.
+- SMS turn alerts (M6): explicit consent and opt-out, phone numbers as ciphertext only, daily cap before send, signed and replay-defended receipt webhooks, no real traffic in sandbox, no personal spending.
+
+## Final UI/UX and landing page (F15) security (planned; applies from milestone M7; ADR-014)
+
+- The landing page makes no third-party requests (no analytics, fonts, trackers, embeds); production CSP restricts sources to the app origin; HSTS, frame-ancestors, referrer and permissions policies are verified by test.
+- The landing page collects no data itself; sign-up uses the existing CSRF- and rate-limited flow.
+- Landing content must not make unverified security or reliability claims (no "tamper-proof", "conflict-free" or "guaranteed delivery").
 
 ## Ask Que (F13) security (planned; applies from milestone MQ)
 

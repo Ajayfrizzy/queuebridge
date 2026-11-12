@@ -22,8 +22,17 @@ inclusion: always
 | ADR-010 | Audit hash chain with external checkpoint option                             | Yes                          |
 | ADR-011 | Ask Que: deterministic-first, read-only assistant (Proposed)                 | Yes — applies from MQ        |
 | ADR-012 | Versioned fairness policy, waiting-age order, pull routing, HMAC checkpoints | Yes                          |
+| ADR-013 | Smart Turn Alerts: in-app first, best-effort Web Push, never blocking        | Yes — applies from M5        |
+| ADR-014 | Final UI/UX: design tokens, original branding, code-split landing page       | Yes — applies from M7        |
+| ADR-015 | Ticket recovery credentials, abuse controls, staff procedure, auto no-show   | Yes — applies from M5        |
 
 Full ADRs live in `docs/adr/`.
+
+## Milestone order (reconciled 2026-11-12)
+
+M0–M4 merged into `staging`. Next: **M5** (recovery, accessibility, device health, Smart Turn Alerts;
+stabilization M5.0 first) → **MQ** (Ask Que) → **M6** (SMS turn alerts + USSD) → **M7** (final UI/UX,
+animated landing page, hardening, demo, submission). No renumbering.
 
 ## Runtime components
 
@@ -210,6 +219,26 @@ Before implementing offline queue advancement, code AND tests must answer:
 6. How can staff recognize and resolve a conflicted operation?
 
 **Until these are answered, QueueBridge must not describe offline behavior as conflict-free or globally final.**
+
+## M5 detail constraints (recovery, accessibility, device health; design §15–§17)
+
+- **Recovery is identity-plane only (ADR-015):** credential tables, no session lock, no `queue_events`, no change to ticket state, position or waiting age; works while a coordinator holds the queue. The public ticket code is never a credential; the recovery key is ≥128-bit (160-bit design), HMAC-stored, and throttle keys never include the guess; there is no lifetime lockout. Staff-assisted recovery is a restricted, audited procedure issuing single-use grants.
+- `rejoin_policy` (`staff_resume` default | `self_resume`) and `auto_miss` (default off) are versioned service-policy fields (ADR-012). The only grace setting is the existing `grace_window_seconds`. `self_resume` and automatic no-show are queue transitions: standard command path, session lock, coordinator fence; auto-miss runs as an API sweep, never in the worker, through the standard command executor with a `system` role for `called → missed` only: session then ticket lock, database time, current policy version, deterministic operation id (idempotent across instances), refused while a coordinator is assigned, clock restarted after coordinator authority ends and after a detected outage, stateless restart, and no dependency on notification state.
+- **Accessibility preferences** are device-local (`qb.a11y.v1`), applied as `data-*` attributes before first render, precached, offline-capable, never sent to the server. The PWA manifest must not lock orientation.
+- **Device health is observational:** the worker's `evaluateDeviceHealth` writes only `health_alerts`; it never touches coordinator fields, sessions, tickets or events and never triggers failover. Single-coordinator authority (ADR-006) is unchanged.
+- Migrations for M5 are additive and numbered at implementation (indicatively M5.1 `0007`, M5.3 `0008`, M5.4 `0009`).
+
+## Smart Turn Alerts (F14) — planned architecture constraints (from M5; ADR-013)
+
+- Alerts are produced from **server-committed** events only (online or via sync). Offline-applied actions create none until committed.
+- `enqueueTurnAlerts` runs inside the queue transaction under a **SAVEPOINT** with no network I/O; any error rolls back to the savepoint, is logged and counted, and the queue command commits. Alert code must never be able to fail a queue command.
+- The worker sends; the API only enqueues and serves subscription endpoints. The worker never writes to `tickets`, `queue_sessions` or `queue_events`.
+- Web Push uses a separate narrow `PushTransport` in `packages/channels` (sandbox double + `web-push`/VAPID). `ChannelAdapter` stays SMS/USSD-shaped. No new package; no boundary change.
+- In-app alert derives from server-confirmed ticket state; no outbox row, no delivery claim.
+- Idempotency key `web_push:ticket.called:<ticket_id>:<event_sequence>`; stale alerts are suppressed at send time; TTL bounds retries.
+- States: `sent` (push service accepted) ≠ `delivered` (first-party ack or provider receipt only) · `failed` · `suppressed` · `unknown`.
+- No alert outcome may change ticket state or cause a `missed` transition.
+- The M5.4 migration is additive (new table, new column, widened CHECK constraints); nothing dropped.
 
 ## Ask Que (F13) — planned architecture constraints (from MQ; ADR-011 Proposed)
 

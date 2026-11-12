@@ -125,6 +125,46 @@ general-purpose chatbot and not part of core queue operations. Spec: REQ-F13, de
 - No inference provider is selected; research only during MQ (no payment card, no spending).
 - Do not implement before milestone MQ.
 
+## Milestone status (reconciled 2026-11-12)
+
+M0–M4 are implemented and **merged into `staging`** (PRs #1–#6). Order from here: **M5 → MQ → M6 → M7**
+(MQ = Ask Que, between M5 and M6; no renumbering). Do not implement a later milestone's scope early.
+
+## F14 — Smart Turn Alerts (planned; milestone M5, with F4/F7/F9 unchanged)
+
+Tell a visitor they have been called, through layers that fail safely. Spec: REQ-F14, design §12, ADR-013.
+
+- In-app notification when the visitor is called: persistent, accessible visual alert plus live-region announcement. Needs no permission or provider.
+- Optional sound (off by default) and supported foreground vibration (page open, device support only).
+- Opt-in Web Push where supported, requested only by an explicit visitor action; best effort.
+- Accessible visual fallbacks for every non-visual cue; keyboard and screen-reader usable; reduced-motion safe.
+- **Never assume or promise background vibration or push delivery.** The public board and staff calling are the reliable fallback.
+- **A failed, slow or unavailable notification never blocks queue progression and never automatically marks a visitor missed.** Missed-turn handling follows the F4 policy only.
+- Alerts follow server-committed events only; offline-applied actions alert nobody until committed.
+- Report delivery honestly: `sent` is not `delivered`.
+- No paid service. Do not implement before M5.
+
+## M5 detail for F4, F7 and F9 (design §15–§17; requirements unchanged, additive detail)
+
+- **F4 recovery:** never from the public ticket code alone. A private ≥128-bit recovery key (QR/link or readable text) or a restricted, audited staff procedure (presence and the public code are not proof); status tokens capped at 3 and revocable ("sign out other devices"); throttles that the guess cannot evade and that never lock out the rightful holder; recovery never changes queue state. Grace stays the existing per-service `grace_window_seconds`; `rejoin_policy` defaults to `staff_resume`; automatic no-show is off by default and executes only through the authoritative command path.
+- **F7 accessibility:** device-local display preferences (contrast, text size, motion, quiet alerts), keyboard and focus rules, an announcement policy, offline accessibility, 320/375 px, unlocked orientation. Verified, not claimed as conformant.
+- **F9 device health:** stale detection, automatic in-product alerts to supervisors/admins, privacy-minimal device data, lost-device guidance. Observes only; the single-coordinator model is unchanged and failover stays an explicit supervisor action.
+
+## F11 extension — SMS Turn Alerts (planned; milestone M6)
+
+"You are called" SMS through the existing `ChannelAdapter` architecture and the M5 outbox pipeline, with consent, opt-out, hard caps and idempotency. Real provider support is preserved but live traffic only with approved sponsored/free credits (no personal spending); sandbox is the labelled default. USSD (F12) stays in M6.
+
+## F15 — Final UI/UX, Branding and Public Landing (planned; milestone M7)
+
+Spec: REQ-F15, design §14, ADR-014.
+
+- Complete responsive redesign of all role interfaces on one design-token system; consistent original branding.
+- Animated public landing page at `/` with clear product messaging and an organizational onboarding path (sign up, get-started checklist, how visitors join).
+- Truthful content: no "conflict-free", no guaranteed delivery, SMS/USSD shown as live only when the capability manifest says so, no invented metrics or testimonials.
+- Reduced-motion safe, pausable, never flashing; separate lazy-loaded chunk so visitor flows stay light; no third-party requests.
+- Verified for accessibility, performance (measured budgets), security and cross-browser (Chromium, Firefox, WebKit + real-device checklist). State verification limits honestly.
+- Do not implement before M7.
+
 ## Non-goals (do not implement)
 
 - Hospital EMR/EHR, banking core, government identity, or enterprise connectors.
