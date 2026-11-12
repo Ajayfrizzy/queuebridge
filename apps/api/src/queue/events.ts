@@ -44,6 +44,12 @@ export async function lockSessions(
   const ids = [...new Set(sessionIds)].sort();
   const out = new Map<string, LockedSession>();
   for (const id of ids) {
+    // 1) Lock the session row alone. 2) THEN read the service policy etc. in a NEW statement:
+    // under READ COMMITTED it sees anything committed while we waited for the lock (e.g. a policy
+    // change that also had to lock this session), so a decision never cites a superseded policy.
+    const lockedRow = await tx<{ id: string }[]>`
+      SELECT id FROM queue_sessions WHERE id = ${id} AND organization_id = ${organizationId} FOR UPDATE`;
+    if (!lockedRow[0]) continue;
     const rows = await tx<LockedSession[]>`
       SELECT qs.id, qs.organization_id, qs.facility_id, qs.service_id,
              to_char(qs.operational_date, 'YYYY-MM-DD') AS operational_date,
@@ -55,8 +61,7 @@ export async function lockSessions(
         FROM queue_sessions qs
         JOIN services s ON s.id = qs.service_id AND s.organization_id = qs.organization_id
         JOIN facilities f ON f.id = qs.facility_id AND f.organization_id = qs.organization_id
-       WHERE qs.id = ${id} AND qs.organization_id = ${organizationId}
-         FOR UPDATE OF qs`;
+       WHERE qs.id = ${id} AND qs.organization_id = ${organizationId}`;
     const row = rows[0];
     if (row) out.set(id, row);
   }

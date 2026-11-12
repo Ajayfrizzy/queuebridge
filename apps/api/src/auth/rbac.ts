@@ -49,6 +49,11 @@ export const Permission = {
    * Auditors may inspect; they can never act (acting requires QUEUE_MANAGE).
    */
   OPERATIONS_VIEW: [Role.SUPERVISOR, Role.FACILITY_ADMIN, Role.AUDITOR],
+  /**
+   * Read-only audit view, export and integrity verification (REQ-F8.5). Auditors read; nobody
+   * can write through these endpoints.
+   */
+  AUDIT_VIEW: [Role.AUDITOR, Role.SUPERVISOR, Role.FACILITY_ADMIN],
   /** Staff-assisted walk-in registration. */
   WALK_IN: [Role.STAFF_RECEPTION, Role.STAFF_COUNTER, Role.SUPERVISOR, Role.FACILITY_ADMIN],
 } as const satisfies Record<string, readonly Role[]>;

@@ -9,6 +9,7 @@ import {
   type StaffQueue,
   type TicketStatus,
 } from '@queuebridge/contracts';
+import { DEFAULT_OVERRIDE_REASONS } from '@queuebridge/contracts';
 import { describeOrderingPolicy, orderWaiting, ticketsAhead } from '@queuebridge/domain';
 import { hashToken } from '../auth/tokens.js';
 import type { Db } from '../db.js';
@@ -35,6 +36,7 @@ interface TicketLite {
   state: TicketState;
   priority_class: PriorityClass;
   issued_sequence: number;
+  wait_since: Date;
 }
 
 const sessionColumns = (db: Db): ReturnType<Db['unsafe']> =>
@@ -44,7 +46,7 @@ const sessionColumns = (db: Db): ReturnType<Db['unsafe']> =>
 
 async function waitingTickets(db: Db, sessionId: string): Promise<TicketLite[]> {
   return db<TicketLite[]>`
-    SELECT id, public_code, state, priority_class, issued_sequence
+    SELECT id, public_code, state, priority_class, issued_sequence, wait_since
       FROM tickets WHERE queue_session_id = ${sessionId} AND state = 'waiting'`;
 }
 
@@ -106,7 +108,7 @@ export async function staffQueueView(
       updated_at: Date;
     })[]
   >`
-    SELECT t.id, t.public_code, t.state, t.priority_class, t.issued_sequence,
+    SELECT t.id, t.public_code, t.state, t.priority_class, t.issued_sequence, t.wait_since,
            t.current_counter_id AS counter_id, c.name AS counter_name, t.created_channel AS channel,
            t.joined_at, t.called_at, src.public_code AS transferred_from_code, t.updated_at
       FROM tickets t
@@ -130,9 +132,15 @@ export async function staffQueueView(
     .slice(0, 10);
 
   const counters = await db<
-    { id: string; name: string; active: boolean; busy_with_code: string | null }[]
+    {
+      id: string;
+      name: string;
+      active: boolean;
+      availability: 'open' | 'closed';
+      busy_with_code: string | null;
+    }[]
   >`
-    SELECT c.id, c.name, c.active,
+    SELECT c.id, c.name, c.active, c.availability,
            (SELECT t.public_code FROM tickets t
              WHERE t.current_counter_id = c.id AND t.state IN ('called', 'serving') LIMIT 1) AS busy_with_code
       FROM counters c
@@ -171,6 +179,7 @@ export async function staffQueueView(
     counter_name: t.counter_name,
     channel: t.channel,
     joined_at: t.joined_at.toISOString(),
+    wait_since: t.wait_since.toISOString(),
     called_at: iso(t.called_at),
     transferred_from_code: t.transferred_from_code,
   });
@@ -187,6 +196,13 @@ export async function staffQueueView(
     policy_summary: describeOrderingPolicy(session.policy),
     tickets: [...active, ...finished].map(toStaff),
     counters,
+    policy: {
+      version: session.policy.version,
+      priority_order: session.policy.priority_order,
+      override_reasons: session.policy.override_reasons ?? [...DEFAULT_OVERRIDE_REASONS],
+      transfer_placement: session.policy.transfer_placement ?? 'end_of_queue',
+    },
+    no_open_counter: !counters.some((c) => c.active && c.availability === 'open'),
     transfer_targets: transferTargets,
     estimate_for_new_visitor: session.state === QueueSessionState.CLOSED ? null : estimate,
   };

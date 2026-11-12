@@ -37,6 +37,13 @@ import {
 } from '../lib/permissions.js';
 import { buildQr, qrPath, QUIET_ZONE } from '../lib/qr.js';
 import { OutboxPanel } from '../components/OutboxPanel.js';
+import {
+  CounterAvailabilityControl,
+  CounterTransferForm,
+  PriorityBadge,
+  TicketOverridePanel,
+  type RunOnline,
+} from '../components/FairnessControls.js';
 import { StatusHandoverPanel } from '../components/StatusHandoverPanel.js';
 import { useOffline } from '../offline/OfflineProvider.js';
 import { useCachedLoad } from '../offline/useCachedLoad.js';
@@ -54,13 +61,14 @@ function toViewTicket(t: LocalTicket, base: StaffQueue['tickets'][number] | unde
     id: t.id ?? t.key,
     public_code: t.label,
     state: t.state,
-    priority_class: base?.priority_class ?? 'normal',
+    priority_class: t.priority_class,
     issued_sequence: t.issued_sequence,
     position: t.position,
     counter_id: t.counter_id,
     counter_name: t.counter_name,
     channel: base?.channel ?? 'staff',
     joined_at: t.joined_at ?? new Date(0).toISOString(),
+    wait_since: t.wait_since ?? base?.wait_since ?? t.joined_at ?? new Date(0).toISOString(),
     called_at: base?.called_at ?? null,
     transferred_from_code: base?.transferred_from_code ?? null,
     provisional: t.provisional,
@@ -88,6 +96,10 @@ const TRANSFER_REASONS = [
 ] as const;
 
 const counterKey = (queueId: string): string => `qb.staffCounter.${queueId}`;
+
+/** UI hints only (the API re-authorizes): who may override, and who may read the audit. */
+const OVERRIDE_ROLES = ['supervisor', 'facility_admin'] as const;
+const AUDIT_ROLES = ['auditor', 'supervisor', 'facility_admin'] as const;
 
 /**
  * Staff queue console (M2.3). Every button sends an idempotent, server-authorized command; the
@@ -120,6 +132,10 @@ export function StaffConsole(): ReactElement {
   const [transferTarget, setTransferTarget] = useState('');
   const [transferReason, setTransferReason] = useState<string>('needs_other_service');
   const [confirmCancel, setConfirmCancel] = useState<string | null>(null);
+  /** Waiting ticket whose supervisor actions panel is open (M4) */
+  const [managing, setManaging] = useState<string | null>(null);
+  /** Services left without an open counter by the last availability change (M4) */
+  const [uncovered, setUncovered] = useState<string[]>([]);
 
   const q = queue.data?.queue;
 
@@ -249,6 +265,9 @@ export function StaffConsole(): ReactElement {
   const canCount = hasFacilityRole(user, fid, COUNTER_ROLES);
   const canWalkIn = hasFacilityRole(user, fid, WALK_IN_ROLES);
   const isSupervisor = hasFacilityRole(user, fid, ['supervisor']);
+  /** Priority / routing overrides and releasing a called visitor (API: supervisor, facility admin) */
+  const canOverride = hasFacilityRole(user, fid, OVERRIDE_ROLES);
+  const canAudit = hasFacilityRole(user, fid, AUDIT_ROLES);
   const canReturnMissed = hasFacilityRole(user, fid, [
     'staff_reception',
     'staff_counter',
@@ -264,6 +283,41 @@ export function StaffConsole(): ReactElement {
   );
   const advanceDisabled = busy || advanceBlockedReason !== null;
   const onlineOnlyDisabled = busy || viaOutbox || otherCoordinator;
+  const counterOpen = counter?.availability !== 'closed';
+  /** Active AND open: only then may it call or start serving (the API enforces the same rule) */
+  const counterInService = counter !== undefined && counter.active && counterOpen;
+  /** Overrides are online-only and need the live (M4-shaped) queue, never a saved copy */
+  const overridesAvailable = reachable && !viaOutbox && !queue.fromCache;
+  /** This device's counter, when it could take a call right now (for "call out of order") */
+  const callableCounter =
+    counter && counter.active && counterOpen && !counter.busy_with && q.state === 'open'
+      ? { id: counter.id, name: counter.name }
+      : null;
+  const transferCounters = (projected?.counters ?? [])
+    .filter((c) => c.id !== counterId && c.active && c.availability === 'open' && !c.busy_with)
+    .map((c) => ({ id: c.id, name: c.name }));
+
+  /** Run one online-only M4 action: busy state, announcement, visible error, then reload. */
+  const runOnline: RunOnline = async (action) => {
+    setBusy(true);
+    setLastError(null);
+    setLocalNote(null);
+    try {
+      announce(await action());
+      return true;
+    } catch (e) {
+      const err =
+        e instanceof ApiRequestError ? e : new ApiRequestError(0, null, 'Unexpected error');
+      const fields = Object.values(err.fieldErrors());
+      const message = fields.length > 0 ? `${err.message} ${fields.join(' ')}` : err.message;
+      setLastError({ message, retry: null });
+      announce(message);
+      return false;
+    } finally {
+      setBusy(false);
+      await reload();
+    }
+  };
   const labelFor = (op: OutboxOperation): string => {
     const p = op.payload as { ticket_id?: string; ticket_ref?: string; temporary_ref?: string };
     if (p.temporary_ref) return p.temporary_ref;
@@ -315,6 +369,7 @@ export function StaffConsole(): ReactElement {
           queue_not_open: 'Calling is only possible while the queue is open.',
           queue_empty: 'Nobody is waiting.',
           counter_missing: 'Choose an active counter first.',
+          counter_closed: 'That counter is closed. Open it before calling.',
           counter_busy: 'That counter is still handling a ticket.',
         }[d.reason];
         refuse(why);
@@ -515,6 +570,24 @@ export function StaffConsole(): ReactElement {
           the server can be reached.
         </p>
       ) : null}
+      {q.no_open_counter && q.state === 'open' ? (
+        <p role="status" className="alert alert-warn" data-testid="no-open-counter">
+          <strong>No counter is open for this service.</strong> Visitors keep their place in line,
+          but nobody can be called until a counter is opened.
+        </p>
+      ) : null}
+      {uncovered.length > 0 ? (
+        <p role="status" className="alert alert-warn" data-testid="uncovered-services">
+          Now without an open counter: {uncovered.join(', ')}.
+        </p>
+      ) : null}
+      {canAudit ? (
+        <p>
+          <Link to={`/staff/queues/${queueId}/audit`} data-testid="audit-link">
+            Audit trail and integrity check
+          </Link>
+        </p>
+      ) : null}
       {canCount && advanceBlockedReason ? (
         <p role="status" className="alert alert-warn" data-testid="authority-banner">
           {advanceBlockedReason}
@@ -567,7 +640,13 @@ export function StaffConsole(): ReactElement {
                   {(projected?.counters ?? []).map((c) => (
                     <option key={c.id} value={c.id} disabled={!c.active}>
                       {c.name}
-                      {!c.active ? ' (inactive)' : c.busy_with ? ` (serving ${c.busy_with})` : ''}
+                      {!c.active
+                        ? ' (inactive)'
+                        : c.availability === 'closed'
+                          ? ' (closed)'
+                          : c.busy_with
+                            ? ` (serving ${c.busy_with})`
+                            : ''}
                     </option>
                   ))}
                 </select>
@@ -575,6 +654,30 @@ export function StaffConsole(): ReactElement {
               {q.counters.length === 0 ? (
                 <p className="hint">
                   No counter is set to serve this service. An administrator can assign one.
+                </p>
+              ) : null}
+              {counter && counter.active && reachable && !viaOutbox ? (
+                <CounterAvailabilityControl
+                  counter={{
+                    id: counter.id,
+                    name: counter.name,
+                    availability: counter.availability,
+                  }}
+                  atCounterState={
+                    atCounter?.state === 'called' || atCounter?.state === 'serving'
+                      ? atCounter.state
+                      : null
+                  }
+                  canRelease={canOverride}
+                  disabled={onlineOnlyDisabled}
+                  run={runOnline}
+                  onResult={(r) => setUncovered(r.services_without_open_counter.map((x) => x.name))}
+                />
+              ) : null}
+              {counter && !counter.active ? (
+                <p role="status" className="alert alert-warn" data-testid="counter-inactive">
+                  <strong>{counter.name} has been deactivated by an administrator.</strong> It
+                  cannot call or serve visitors. Choose another counter.
                 </p>
               ) : null}
 
@@ -597,13 +700,19 @@ export function StaffConsole(): ReactElement {
                       ) : null}
                     </p>
                   </div>
+                  {atCounter.state === 'called' && !counterInService ? (
+                    <p className="hint" data-testid="serve-blocked-hint">
+                      This counter is out of service, so {atCounter.public_code} cannot be served
+                      here. A supervisor can return them to the queue for an open counter.
+                    </p>
+                  ) : null}
                   <div className="btn-row">
                     {atCounter.state === 'called' ? (
                       <>
                         <button
                           type="button"
                           className="btn btn-primary"
-                          disabled={advanceDisabled}
+                          disabled={advanceDisabled || !counterInService}
                           onClick={() =>
                             void send(
                               cmd('ticket.serve', { ticket_id: atCounter.id }),
@@ -673,6 +782,14 @@ export function StaffConsole(): ReactElement {
                       </button>
                     ) : null}
                   </div>
+                  {!atCounter.provisional && reachable && !viaOutbox ? (
+                    <CounterTransferForm
+                      ticket={{ id: atCounter.id, public_code: atCounter.public_code }}
+                      targets={transferCounters}
+                      disabled={onlineOnlyDisabled}
+                      run={runOnline}
+                    />
+                  ) : null}
                   {atCounter.state === 'serving' && q.transfer_targets.length > 0 ? (
                     <form
                       aria-label={`Transfer ${atCounter.public_code}`}
@@ -746,6 +863,7 @@ export function StaffConsole(): ReactElement {
                       advanceDisabled ||
                       !counter ||
                       !counter.active ||
+                      !counterOpen ||
                       q.state !== 'open' ||
                       waiting.length === 0
                     }
@@ -763,6 +881,9 @@ export function StaffConsole(): ReactElement {
                   ) : null}
                   {q.state === 'open' && waiting.length === 0 ? (
                     <p className="hint">Nobody is waiting.</p>
+                  ) : null}
+                  {counter && !counterOpen ? (
+                    <p className="hint">Open this counter to call visitors.</p>
                   ) : null}
                 </>
               )}
@@ -792,6 +913,8 @@ export function StaffConsole(): ReactElement {
                   <span className="ticket-row-code">{t.public_code}</span>
                   {t.local_status ? <SyncStateIndicator status={t.local_status} /> : null}
                   <span className="muted ticket-row-meta">
+                    <PriorityBadge cls={t.priority_class} />
+                    {t.priority_class !== 'normal' ? ' ' : null}
                     {t.provisional
                       ? 'Temporary reference — the server has not confirmed this ticket'
                       : t.channel === 'staff'
@@ -802,6 +925,33 @@ export function StaffConsole(): ReactElement {
                     {' · joined '}
                     {formatTime(t.joined_at)}
                   </span>
+                  {canOverride && overridesAvailable && !t.provisional && managing !== t.id ? (
+                    <span className="ticket-row-actions">
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        aria-expanded={false}
+                        onClick={() => setManaging(t.id)}
+                      >
+                        Supervisor actions
+                        <span className="visually-hidden"> for {t.public_code}</span>
+                      </button>
+                    </span>
+                  ) : null}
+                  {canOverride && overridesAvailable && managing === t.id ? (
+                    <TicketOverridePanel
+                      ticket={{
+                        id: t.id,
+                        public_code: t.public_code,
+                        priority_class: t.priority_class,
+                      }}
+                      policy={q.policy}
+                      counter={callableCounter}
+                      disabled={onlineOnlyDisabled}
+                      run={runOnline}
+                      onClose={() => setManaging(null)}
+                    />
+                  ) : null}
                   {canWalkIn && !t.provisional ? (
                     confirmCancel === t.id ? (
                       <span className="ticket-row-actions">

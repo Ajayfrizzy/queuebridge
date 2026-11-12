@@ -68,20 +68,24 @@ git clone https://github.com/your-org/queuebridge
 cd queuebridge
 pnpm install
 
-# 2. Configure environment
-cp .env.example .env
-# Edit .env — set DATABASE_URL and generate SESSION_SECRET:
-#   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+# 2. Configure environment (details: docs/local-environment.md)
+cp .env.example .env          # DATABASE_URL / TEST_DATABASE_URL → localhost:55433 (queuebridge-pg)
+pnpm env:generate             # fresh random secrets + audit key id; values are never printed
 
-# 3. Create database and run migrations
-createdb queuebridge          # or use Docker
+# 3. Build, load the environment (EVERY terminal — nothing reads .env automatically) and check
+pnpm build
+set -a; source .env; set +a
+pnpm env:check                # API + worker parse .env, same audit key, DB identity → READY
+
+# 4. Database (identity-guarded: refuses any non-QueueBridge database, changes nothing)
+pnpm db:check                 # read-only status
 pnpm db:migrate
 pnpm db:seed                  # optional: load dev fixture data
 
-# 4. Start development servers
+# 5. Start development servers (each in a terminal with the environment loaded)
 pnpm dev:api                  # Fastify API on http://localhost:3002
 pnpm dev:web                  # Vite/React on http://localhost:5173
-pnpm dev:worker               # Notification worker
+pnpm dev:worker               # Audit checkpoint worker (one pass: node apps/worker/dist/worker.js --once)
 ```
 
 ### Running tests

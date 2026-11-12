@@ -58,6 +58,14 @@ describe('M1 journey: new org configures a facility without any DB access', () =
       version: 'v1',
       priority_order: ['normal'],
       grace_window_seconds: 300,
+      // M4: configured override reasons and transfer placement are part of the published policy
+      override_reasons: [
+        'accessibility_need',
+        'urgent_need',
+        'returning_visitor',
+        'administrative_error',
+      ],
+      transfer_placement: 'by_original_join_time',
     });
 
     const ctr = await org.admin.post<CounterBody>(`/api/v1/facilities/${fid}/counters`, {

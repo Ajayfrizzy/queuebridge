@@ -465,6 +465,10 @@ legend {
 .badge-off {
   color: var(--muted);
 }
+/* Priority class (M4): text + symbol carry the meaning; colour only reinforces it */
+.badge-priority {
+  color: var(--focus);
+}
 
 .chips {
   list-style: none;
@@ -782,6 +786,11 @@ legend {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: var(--space-2) var(--space-3);
+}
+/* Supervisor actions for one ticket span the whole row (M4) */
+.ticket-row-panel {
+  grid-column: 1 / -1;
+  min-width: 0;
 }
 .ticket-row-code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;

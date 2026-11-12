@@ -19,6 +19,7 @@ import { DisplayBoard } from './pages/DisplayBoard.js';
 import { JoinPage } from './pages/JoinPage.js';
 import { Connectivity } from './pages/Connectivity.js';
 import { StaffConsole } from './pages/StaffConsole.js';
+import { AuditTrail } from './pages/AuditTrail.js';
 import { StaffFacility, StaffHome } from './pages/StaffHome.js';
 import { TicketPage } from './pages/TicketPage.js';
 
@@ -61,6 +62,8 @@ export function App(): ReactElement {
                   <Route path="/staff" element={<StaffHome />} />
                   <Route path="/staff/facilities/:fid" element={<StaffFacility />} />
                   <Route path="/staff/queues/:queueId" element={<StaffConsole />} />
+                  {/* Read-only audit trail and integrity check (M4, F8) */}
+                  <Route path="/staff/queues/:queueId/audit" element={<AuditTrail />} />
                   {/* Connectivity and recovery dashboard (M3, F9) */}
                   <Route path="/staff/facilities/:fid/connectivity" element={<Connectivity />} />
                 </Route>

@@ -231,6 +231,19 @@ GET    /api/v1/queues/:id/audit                 # auditor: paginated immutable e
 GET    /api/v1/queues/:id/audit/verify          # auditor: hash chain verification result
 ```
 
+M4 adds (auditor, supervisor, facility admin; tenant-scoped, read-only):
+
+```
+GET    /api/v1/queues/:id/audit?after_sequence&limit   # page ≤ 200, with override explanations
+GET    /api/v1/queues/:id/audit/export                 # redacted (no names / free text)
+GET    /api/v1/queues/:id/audit/verify                 # verified | failed | incomplete
+POST   /api/v1/tickets/:id/priority-override           # supervisor/facility_admin, reason required
+POST   /api/v1/tickets/:id/call-out-of-order           # supervisor/facility_admin, reason required
+POST   /api/v1/tickets/:id/counter-transfer            # counter operator/supervisor
+POST   /api/v1/counters/:id/availability               # open | closed (reason to close)
+GET    /api/v1/facilities/:id/services/:sid/policy-versions   # immutable policy history
+```
+
 ### Webhooks
 
 ```
@@ -428,6 +441,31 @@ function computeEventHash(params: {
 ```
 
 Checkpoints store `root_hash = SHA256(all event hashes in range concatenated)` and are signed with a server key (key ID stored, not the key itself).
+
+### M4 implementation notes (2026-11-08) — see ADR-012
+
+- **Where the code lives.** Hash primitives are in `packages/domain/src/audit.ts` (sha256
+  injected; no Node I/O): `canonicalJson`, `computeEventHash` (the construction above, unchanged),
+  `genesisHash`, `verifyChain`, `checkpointRoot`, `checkpointMessage`, `verifyCheckpoints`.
+  `apps/api/src/queue/hash.ts` wraps them with Node `crypto`; `apps/worker` imports them directly.
+- **Checkpoint job** (`apps/worker/src/checkpoints.ts`): per session with ≥
+  `AUDIT_CHECKPOINT_MIN_EVENTS` unanchored events, or older than `AUDIT_CHECKPOINT_MAX_AGE_MS`, or
+  closed: lock the session row, verify the WHOLE chain and every existing checkpoint, then insert
+  `[last_to + 1, last_sequence]` with `signature = HMAC-SHA256(key, checkpointMessage)` where the
+  message is `queuebridge:v1:checkpoint|session|from|to|root|head`. Ranges are contiguous and
+  unique (`UNIQUE (queue_session_id, from_sequence, to_sequence)`), so concurrent workers write one
+  row. A failed verification inserts a deduplicated `audit_integrity_alerts` row and skips the
+  session. No key → job disabled.
+- **SQL-only root check** (no application code):
+  `SELECT encode(sha256(convert_to(string_agg(event_hash, '' ORDER BY sequence), 'UTF8')), 'hex')
+FROM queue_events WHERE queue_session_id = $1 AND sequence BETWEEN $from AND $to`.
+- **Verification endpoint** (`apps/api/src/queue/audit.ts → verifyAudit`): chain → checkpoints
+  (invalid / unverifiable) → override text hashes vs sealed hashes → routing-decision replay
+  against `service_policy_versions` snapshots → worker alerts → event count vs `last_sequence`.
+  Result `verified | failed | incomplete`; `incomplete` is never shown as success.
+- **Append-only:** row triggers (UPDATE/DELETE) plus statement `BEFORE TRUNCATE` triggers on
+  `queue_events`, `admin_events`, `service_policy_versions`, `priority_overrides`,
+  `audit_checkpoints`, `audit_integrity_alerts` (migration `0006`).
 
 ## 7. Wait-time estimate algorithm
 

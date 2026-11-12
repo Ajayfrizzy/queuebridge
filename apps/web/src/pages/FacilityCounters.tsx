@@ -13,6 +13,8 @@ export function FacilityCounters(): ReactElement {
   const services = useLoad(() => api.listServices(facilityId), `svc-${facilityId}`);
   const readiness = useLoad(() => api.readiness(facilityId), `ready-${facilityId}`);
   const [error, setError] = useState<ApiRequestError | null>(null);
+  /** Outcome of the last activate/deactivate, shown next to that counter (not only announced) */
+  const [notice, setNotice] = useState<{ id: string; error: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   // Optimistic checkbox state while a capability change is in flight (server stays authoritative)
   const [pending, setPending] = useState<Record<string, boolean>>({});
@@ -67,10 +69,18 @@ export function FacilityCounters(): ReactElement {
 
   async function toggleActive(id: string, name: string, active: boolean): Promise<void> {
     try {
-      await api.updateCounter(facilityId, id, { active });
-      announce(`Counter ${name} ${active ? 'activated' : 'deactivated'}.`);
+      const res = await api.updateCounter(facilityId, id, { active });
+      const codes = (res.released ?? []).map((r) => r.public_code);
+      const text = `Counter ${name} ${active ? 'activated' : 'deactivated'}.${
+        codes.length > 0 ? ` ${codes.join(', ')} returned to the front of the queue.` : ''
+      }`;
+      setNotice({ id, error: false, text });
+      announce(text);
     } catch (err) {
-      announce(err instanceof ApiRequestError ? err.message : 'Could not update the counter.');
+      // The server refuses to deactivate a counter that is serving someone: say so where it happened
+      const text = err instanceof ApiRequestError ? err.message : 'Could not update the counter.';
+      setNotice({ id, error: true, text });
+      announce(text);
     }
     await refresh();
   }
@@ -141,6 +151,15 @@ export function FacilityCounters(): ReactElement {
                     {c.active ? 'Deactivate' : 'Activate'}
                     <span className="visually-hidden"> {c.name}</span>
                   </button>
+                ) : null}
+                {notice?.id === c.id ? (
+                  <p
+                    role={notice.error ? 'alert' : 'status'}
+                    className={`alert ${notice.error ? 'alert-error' : 'alert-info'}`}
+                    data-testid="counter-notice"
+                  >
+                    {notice.text}
+                  </p>
                 ) : null}
               </li>
             );

@@ -2,23 +2,45 @@ import {
   QueueAction,
   QueueSessionState,
   TicketState,
+  DEFAULT_OVERRIDE_REASONS,
   type CommandOutcome,
   type PriorityClass,
+  type QueueCommandAction,
   type QueueCommandRequest,
   type Role,
 } from '@queuebridge/contracts';
 import {
   ACTIVE_TICKET_STATES,
-  selectNextTicket,
+  counterIneligibility,
+  decideNextCall,
   sessionTransition,
   transition,
   TRANSITION_RULES,
+  validatePriorityOverride,
+  type RoutingExplanation,
 } from '@queuebridge/domain';
 import { Permission, queueActorRoles, type AuthContext } from '../auth/rbac.js';
 import type { Db } from '../db.js';
 import { ApiProblem, isUniqueViolation, problems } from '../errors.js';
 import { appendEvent, lockSessions, type LockedSession } from './events.js';
+import { sha256Hex } from './hash.js';
 import { issueTicket } from './tickets.js';
+
+/**
+ * A command as executed internally: the public online vocabulary plus the M4 supervisor and
+ * routing actions. The public `/queues/:id/commands` schema cannot produce the M4 actions; they
+ * arrive only through their own endpoints, which validate their own inputs.
+ */
+export type InternalCommand = Omit<QueueCommandRequest, 'action'> & {
+  action: QueueCommandAction;
+  /** ticket.priority_override */
+  to_class?: PriorityClass;
+  /** ticket.priority_override / ticket.call_specific */
+  override_reason?: { code: string; text: string };
+  /** ticket.counter_transfer */
+  to_counter_id?: string;
+  counter_reason_code?: string;
+};
 
 /** A business-rule rejection: recorded as the operation's disposition and replayed on retry. */
 export class CommandRejected extends Error {
@@ -44,7 +66,11 @@ interface TicketRow {
   current_counter_id: string | null;
   missed_at: Date | null;
   joined_at: Date;
+  wait_since: Date;
 }
+
+const TICKET_COLUMNS =
+  'id, public_code, state, priority_class, issued_sequence, current_counter_id, missed_at, joined_at, wait_since';
 
 interface StoredOperation {
   queue_session_id: string;
@@ -105,7 +131,7 @@ function authorizeTransition(
 
 async function lockTicket(tx: Db, session: LockedSession, ticketId: string): Promise<TicketRow> {
   const rows = await tx<TicketRow[]>`
-    SELECT id, public_code, state, priority_class, issued_sequence, current_counter_id, missed_at, joined_at
+    SELECT ${tx.unsafe(TICKET_COLUMNS)}
       FROM tickets
      WHERE id = ${ticketId} AND queue_session_id = ${session.id}
        AND organization_id = ${session.organization_id}
@@ -120,7 +146,7 @@ export interface ExecuteCommandInput {
   auth: AuthContext;
   queueId: string;
   facilityId: string;
-  command: QueueCommandRequest;
+  command: InternalCommand;
 }
 
 /**
@@ -238,7 +264,7 @@ export async function applyCommand(
   destinationQueueId: string | null,
   roles: Role[],
   auth: AuthContext,
-  command: QueueCommandRequest,
+  command: InternalCommand,
   options: ApplyOptions = {},
 ): Promise<CommandOutcome> {
   if (command.expected_revision !== undefined && command.expected_revision !== session.revision) {
@@ -302,67 +328,22 @@ export async function applyCommand(
     });
   }
 
-  // ---- Call next ----------------------------------------------------------------------------
-  if (command.action === QueueAction.TICKET_CALL_NEXT) {
-    // Role check first (any waiting ticket would do): an unauthorized caller learns nothing
-    authorizeTransition(roles, TicketState.WAITING, QueueAction.TICKET_CALL_NEXT);
-    if (session.state !== QueueSessionState.OPEN) {
-      reject('queue_not_open', 'Calling is only possible while the queue is open.');
-    }
-    const counterId = command.counter_id as string;
-    const counters = await tx<{ id: string; name: string; active: boolean }[]>`
-      SELECT id, name, active FROM counters
-       WHERE id = ${counterId} AND facility_id = ${session.facility_id}
-         AND organization_id = ${session.organization_id}
-         FOR UPDATE`;
-    const counter = counters[0];
-    if (!counter) throw problems.notFound();
-    if (!counter.active) reject('counter_inactive', `${counter.name} is not active.`);
-    const capable = await tx`
-      SELECT 1 FROM counter_service_capabilities
-       WHERE counter_id = ${counter.id} AND service_id = ${session.service_id}`;
-    if (capable.length === 0) {
-      reject('counter_not_capable', `${counter.name} is not set to serve ${session.service_name}.`);
-    }
-    const busy = await tx<{ public_code: string }[]>`
-      SELECT public_code FROM tickets
-       WHERE current_counter_id = ${counter.id} AND state IN ('called', 'serving')`;
-    if (busy[0]) {
-      reject('counter_busy', `${counter.name} is still handling ${busy[0].public_code}.`);
-    }
-    const waiting = await tx<TicketRow[]>`
-      SELECT id, public_code, state, priority_class, issued_sequence, current_counter_id, missed_at, joined_at
-        FROM tickets
-       WHERE queue_session_id = ${session.id} AND state = 'waiting'
-         FOR UPDATE`;
-    const next = selectNextTicket(waiting, session.policy.priority_order);
-    if (!next) return reject('queue_empty', 'Nobody is waiting.');
-    await tx`
-      UPDATE tickets
-         SET state = 'called', current_counter_id = ${counter.id}, called_at = NOW(),
-             version = version + 1, updated_at = NOW()
-       WHERE id = ${next.id}`;
-    const ev = await appendEvent(tx, session, {
-      eventType: QueueAction.TICKET_CALL_NEXT,
-      actorId: auth.staffUserId,
-      operationId: command.operation_id,
-      payload: {
-        ticket_id: next.id,
-        public_code: next.public_code,
-        from_state: TicketState.WAITING,
-        to_state: TicketState.CALLED,
-        counter_id: counter.id,
-        policy_version: session.policy.version,
-      },
-      transition: { ticketId: next.id, from: TicketState.WAITING, to: TicketState.CALLED },
-    });
-    return {
-      ...base,
-      server_revision: ev.revision,
-      server_sequence: ev.sequence,
-      ticket_id: next.id,
-      public_code: next.public_code,
-    };
+  // ---- Call next / call specific (routing) ---------------------------------------------------
+  if (
+    command.action === QueueAction.TICKET_CALL_NEXT ||
+    command.action === QueueAction.TICKET_CALL_SPECIFIC
+  ) {
+    return callTicket(tx, session, roles, auth, command, base);
+  }
+
+  // ---- Priority override (supervisor; REQ-F3.3) ------------------------------------------------
+  if (command.action === QueueAction.TICKET_PRIORITY_OVERRIDE) {
+    return priorityOverride(tx, session, roles, auth, command, base);
+  }
+
+  // ---- Counter-to-counter transfer (same service) -----------------------------------------------
+  if (command.action === QueueAction.TICKET_COUNTER_TRANSFER) {
+    return counterTransfer(tx, session, roles, auth, command, base);
   }
 
   // ---- Ticket-specific actions ----------------------------------------------------------------
@@ -382,6 +363,28 @@ export async function applyCommand(
 
   if (action === QueueAction.TICKET_TRANSFER) {
     return transfer(tx, session, locked, destinationQueueId, auth, command, ticket, base);
+  }
+
+  // Starting service needs the ticket's counter to be IN SERVICE (active and open). Taking a
+  // counter out of service locks this session first and then the counter (FOR UPDATE), so this
+  // check cannot interleave with it: either the counter left service before (refused here) or
+  // the serve commits first (and the closure is then refused because the counter is serving).
+  if (to === TicketState.SERVING && ticket.current_counter_id) {
+    const [c] = await tx<{ name: string; active: boolean; availability: string }[]>`
+      SELECT name, active, availability FROM counters WHERE id = ${ticket.current_counter_id}
+         FOR SHARE`;
+    if (c && !c.active) {
+      reject(
+        'counter_inactive',
+        `${c.name} is not active. Return ${ticket.public_code} to the queue so an open counter can call them.`,
+      );
+    }
+    if (c && c.availability !== 'open') {
+      reject(
+        'counter_closed',
+        `${c.name} is closed. Return ${ticket.public_code} to the queue so an open counter can call them.`,
+      );
+    }
   }
 
   // Column side-effects per transition
@@ -426,7 +429,7 @@ async function transfer(
   locked: Map<string, LockedSession>,
   destinationQueueId: string | null,
   auth: AuthContext,
-  command: QueueCommandRequest,
+  command: InternalCommand,
   ticket: TicketRow,
   base: Omit<CommandOutcome, 'server_revision' | 'server_sequence' | 'ticket_id' | 'public_code'>,
 ): Promise<CommandOutcome> {
@@ -444,6 +447,8 @@ async function transfer(
   }
   const destination = dest as LockedSession;
 
+  // Placement follows the DESTINATION's published policy; the original join time is always kept
+  const placement = destination.policy.transfer_placement ?? 'end_of_queue';
   const issued = await issueTicket(tx, destination, {
     channel: 'transfer',
     actorId: auth.staffUserId,
@@ -452,6 +457,7 @@ async function transfer(
     joinedAt: ticket.joined_at,
     transferredFromTicketId: ticket.id,
     sourceQueueId: session.id,
+    ...(placement === 'by_original_join_time' ? { waitSince: ticket.joined_at } : {}),
   });
 
   await tx`
@@ -470,6 +476,7 @@ async function transfer(
       destination_queue_id: destination.id,
       destination_ticket_id: issued.ticketId,
       destination_code: issued.publicCode,
+      destination_placement: placement,
       reason_code: command.reason_code ?? null,
       policy_version: session.policy.version,
     },
@@ -482,5 +489,342 @@ async function transfer(
     server_sequence: ev.sequence,
     ticket_id: issued.ticketId,
     public_code: issued.publicCode,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// M4 — routing and overrides
+// ---------------------------------------------------------------------------
+
+type CommittedBase = Omit<
+  CommandOutcome,
+  'server_revision' | 'server_sequence' | 'ticket_id' | 'public_code'
+>;
+
+interface CounterRow {
+  id: string;
+  name: string;
+  active: boolean;
+  availability: 'open' | 'closed';
+  capable: boolean;
+  busy_with: string | null;
+}
+
+/**
+ * Lock a counter of the session's facility, THEN describe its eligibility in a separate
+ * statement. Under READ COMMITTED a statement that waited for a row lock still evaluates its
+ * other sub-queries against the snapshot from before the wait; checking "busy" in a fresh
+ * statement after the lock sees a ticket a concurrent transaction just assigned to this counter.
+ */
+async function lockCounter(tx: Db, session: LockedSession, counterId: string): Promise<CounterRow> {
+  const locked = await tx<{ id: string }[]>`
+    SELECT id FROM counters
+     WHERE id = ${counterId} AND facility_id = ${session.facility_id}
+       AND organization_id = ${session.organization_id}
+       FOR UPDATE`;
+  // Another facility's or tenant's counter is indistinguishable from a missing one
+  if (!locked[0]) throw problems.notFound();
+  const rows = await tx<CounterRow[]>`
+    SELECT c.id, c.name, c.active, c.availability,
+           EXISTS (SELECT 1 FROM counter_service_capabilities csc
+                    WHERE csc.counter_id = c.id AND csc.service_id = ${session.service_id}) AS capable,
+           (SELECT t.public_code FROM tickets t
+             WHERE t.current_counter_id = c.id AND t.state IN ('called', 'serving') LIMIT 1) AS busy_with
+      FROM counters c WHERE c.id = ${counterId}`;
+  const c = rows[0];
+  if (!c) throw problems.notFound();
+  return c;
+}
+
+/** Disabled, closed, incapable or busy counters can never receive a new assignment. */
+function assertCounterCanTake(c: CounterRow, session: LockedSession): void {
+  const why = counterIneligibility(
+    {
+      id: c.id,
+      active: c.active,
+      availability: c.availability,
+      service_ids: c.capable ? [session.service_id] : [],
+      busy_with: c.busy_with,
+    },
+    session.service_id,
+  );
+  if (why === 'inactive') reject('counter_inactive', `${c.name} is not active.`);
+  if (why === 'closed') reject('counter_closed', `${c.name} is closed.`);
+  if (why === 'not_capable') {
+    reject('counter_not_capable', `${c.name} is not set to serve ${session.service_name}.`);
+  }
+  if (why === 'busy') reject('counter_busy', `${c.name} is still handling ${c.busy_with ?? ''}.`);
+}
+
+function policyOf(session: LockedSession): {
+  version: string;
+  priority_order: PriorityClass[];
+  override_reasons: string[];
+} {
+  return {
+    version: session.policy.version,
+    priority_order: session.policy.priority_order,
+    override_reasons: session.policy.override_reasons ?? [...DEFAULT_OVERRIDE_REASONS],
+  };
+}
+
+/** Validate an override's reason against the session's configured codes and minimum text. */
+function checkOverrideReason(
+  session: LockedSession,
+  roles: Role[],
+  reason: InternalCommand['override_reason'],
+): { code: string; text: string } {
+  if (!reason) return reject('reason_required', 'A reason code and explanation are required.');
+  const policy = policyOf(session);
+  if (!policy.override_reasons.includes(reason.code)) {
+    reject('invalid_reason_code', 'That reason is not configured for this service.');
+  }
+  // Reuse the domain rule (role, code, text length, policy version)
+  const role = roles.find((r) => r === 'supervisor' || r === 'facility_admin') ?? roles[0];
+  const problem = role
+    ? validatePriorityOverride({
+        actorRole: role,
+        reasonCode: reason.code,
+        reasonText: reason.text,
+        policyVersion: policy.version,
+      })
+    : 'no role';
+  if (problem) reject('invalid_override', problem);
+  return reason;
+}
+
+async function recordOverride(
+  tx: Db,
+  session: LockedSession,
+  auth: AuthContext,
+  o: {
+    id: string;
+    kind: 'priority' | 'routing';
+    ticketId: string;
+    eventId: string;
+    reason: { code: string; text: string };
+    fromClass?: string;
+    toClass?: string;
+    counterId?: string;
+    operationId: string;
+  },
+): Promise<void> {
+  await tx`
+    INSERT INTO priority_overrides
+      (id, ticket_id, actor_id, reason_code, reason_text, policy_version, queue_event_id,
+       organization_id, queue_session_id, kind, from_class, to_class, counter_id, operation_id)
+    VALUES (${o.id}, ${o.ticketId}, ${auth.staffUserId}, ${o.reason.code}, ${o.reason.text},
+            ${session.policy.version}, ${o.eventId}, ${session.organization_id}, ${session.id},
+            ${o.kind}, ${o.fromClass ?? null}, ${o.toClass ?? null}, ${o.counterId ?? null},
+            ${o.operationId})`;
+}
+
+async function waitingRows(tx: Db, session: LockedSession): Promise<TicketRow[]> {
+  return tx<TicketRow[]>`
+    SELECT ${tx.unsafe(TICKET_COLUMNS)} FROM tickets
+     WHERE queue_session_id = ${session.id} AND state = 'waiting'
+       FOR UPDATE`;
+}
+
+/**
+ * Call the next ticket (published rule) or, as a supervisor routing override, a specific one.
+ * Either way the counter must be active, open, capable and free, and the event records the
+ * routing explanation so the decision can be replayed against its policy snapshot.
+ */
+async function callTicket(
+  tx: Db,
+  session: LockedSession,
+  roles: Role[],
+  auth: AuthContext,
+  command: InternalCommand,
+  base: CommittedBase,
+): Promise<CommandOutcome> {
+  const specific = command.action === QueueAction.TICKET_CALL_SPECIFIC;
+  // Role check first (any waiting ticket would do): an unauthorized caller learns nothing
+  authorizeTransition(roles, TicketState.WAITING, command.action);
+  if (session.state !== QueueSessionState.OPEN) {
+    reject('queue_not_open', 'Calling is only possible while the queue is open.');
+  }
+  const counter = await lockCounter(tx, session, command.counter_id as string);
+  assertCounterCanTake(counter, session);
+
+  const waiting = await waitingRows(tx, session);
+  const policy = policyOf(session);
+  const decision = decideNextCall(waiting, policy);
+  if (!decision) return reject('queue_empty', 'Nobody is waiting.');
+
+  let chosen: TicketRow = decision.ticket;
+  let override: Record<string, unknown> | undefined;
+  let reason: { code: string; text: string } | undefined;
+  const overrideId = crypto.randomUUID();
+  if (specific) {
+    reason = checkOverrideReason(session, roles, command.override_reason);
+    const target = waiting.find((t) => t.id === command.ticket_id);
+    if (!target) {
+      // Not waiting in THIS session (or not visible to this tenant): same answer either way
+      await lockTicket(tx, session, command.ticket_id as string); // 404 if foreign
+      return reject('invalid_state', 'Only a waiting ticket can be called out of order.');
+    }
+    chosen = target;
+    override = {
+      kind: 'routing',
+      override_id: overrideId,
+      reason_code: reason.code,
+      reason_text_sha256: sha256Hex(reason.text),
+      would_have_called: decision.ticket.id,
+      would_have_called_code: decision.ticket.public_code,
+    };
+  }
+
+  await tx`
+    UPDATE tickets
+       SET state = 'called', current_counter_id = ${counter.id}, called_at = NOW(),
+           version = version + 1, updated_at = NOW()
+     WHERE id = ${chosen.id}`;
+  const routing: RoutingExplanation & { counter: { id: string; availability: string } } = {
+    ...decision.explanation,
+    counter: { id: counter.id, availability: counter.availability },
+  };
+  const ev = await appendEvent(tx, session, {
+    eventType: command.action,
+    actorId: auth.staffUserId,
+    operationId: command.operation_id,
+    payload: {
+      ticket_id: chosen.id,
+      public_code: chosen.public_code,
+      from_state: TicketState.WAITING,
+      to_state: TicketState.CALLED,
+      counter_id: counter.id,
+      policy_version: session.policy.version,
+      routing,
+      ...(override ? { override } : {}),
+    },
+    transition: { ticketId: chosen.id, from: TicketState.WAITING, to: TicketState.CALLED },
+  });
+  if (specific && reason) {
+    await recordOverride(tx, session, auth, {
+      id: overrideId,
+      kind: 'routing',
+      ticketId: chosen.id,
+      eventId: ev.eventId,
+      reason,
+      counterId: counter.id,
+      operationId: command.operation_id,
+    });
+  }
+  return {
+    ...base,
+    server_revision: ev.revision,
+    server_sequence: ev.sequence,
+    ticket_id: chosen.id,
+    public_code: chosen.public_code,
+  };
+}
+
+/**
+ * Supervisor priority override: change a WAITING ticket's priority class to another class the
+ * service's published policy enables. Never assigns an arbitrary position — the published rule
+ * then orders the ticket. Records actor, ticket, original and resulting class, reason code,
+ * a hash of the explanation (the text itself stays in the access-controlled override record),
+ * policy version and timestamp.
+ */
+async function priorityOverride(
+  tx: Db,
+  session: LockedSession,
+  roles: Role[],
+  auth: AuthContext,
+  command: InternalCommand,
+  base: CommittedBase,
+): Promise<CommandOutcome> {
+  const ticket = await lockTicket(tx, session, command.ticket_id as string);
+  authorizeTransition(roles, ticket.state, QueueAction.TICKET_PRIORITY_OVERRIDE);
+  const reason = checkOverrideReason(session, roles, command.override_reason);
+  const to = command.to_class as PriorityClass;
+  const policy = policyOf(session);
+  if (!policy.priority_order.includes(to)) {
+    reject('class_not_enabled', `The ${to} class is not enabled for ${session.service_name}.`);
+  }
+  if (to === ticket.priority_class) {
+    reject('no_change', `${ticket.public_code} is already ${to}.`);
+  }
+  const overrideId = crypto.randomUUID();
+  await tx`
+    UPDATE tickets SET priority_class = ${to}, version = version + 1, updated_at = NOW()
+     WHERE id = ${ticket.id}`;
+  const ev = await appendEvent(tx, session, {
+    eventType: QueueAction.TICKET_PRIORITY_OVERRIDE,
+    actorId: auth.staffUserId,
+    operationId: command.operation_id,
+    payload: {
+      ticket_id: ticket.id,
+      public_code: ticket.public_code,
+      from_class: ticket.priority_class,
+      to_class: to,
+      override_id: overrideId,
+      reason_code: reason.code,
+      reason_text_sha256: sha256Hex(reason.text),
+      policy_version: session.policy.version,
+    },
+  });
+  await recordOverride(tx, session, auth, {
+    id: overrideId,
+    kind: 'priority',
+    ticketId: ticket.id,
+    eventId: ev.eventId,
+    reason,
+    fromClass: ticket.priority_class,
+    toClass: to,
+    operationId: command.operation_id,
+  });
+  return {
+    ...base,
+    server_revision: ev.revision,
+    server_sequence: ev.sequence,
+    ticket_id: ticket.id,
+    public_code: ticket.public_code,
+  };
+}
+
+/** Hand a called/serving ticket to another active, open, capable, free counter (same service). */
+async function counterTransfer(
+  tx: Db,
+  session: LockedSession,
+  roles: Role[],
+  auth: AuthContext,
+  command: InternalCommand,
+  base: CommittedBase,
+): Promise<CommandOutcome> {
+  const ticket = await lockTicket(tx, session, command.ticket_id as string);
+  const to = authorizeTransition(roles, ticket.state, QueueAction.TICKET_COUNTER_TRANSFER);
+  const target = await lockCounter(tx, session, command.to_counter_id as string);
+  if (target.id === ticket.current_counter_id) {
+    reject('same_counter', `${ticket.public_code} is already at ${target.name}.`);
+  }
+  assertCounterCanTake(target, session);
+  await tx`
+    UPDATE tickets SET current_counter_id = ${target.id}, version = version + 1, updated_at = NOW()
+     WHERE id = ${ticket.id}`;
+  const ev = await appendEvent(tx, session, {
+    eventType: QueueAction.TICKET_COUNTER_TRANSFER,
+    actorId: auth.staffUserId,
+    operationId: command.operation_id,
+    payload: {
+      ticket_id: ticket.id,
+      public_code: ticket.public_code,
+      from_state: ticket.state,
+      to_state: to,
+      from_counter_id: ticket.current_counter_id,
+      counter_id: target.id,
+      reason_code: command.counter_reason_code ?? null,
+      policy_version: session.policy.version,
+    },
+    transition: { ticketId: ticket.id, from: ticket.state, to },
+  });
+  return {
+    ...base,
+    server_revision: ev.revision,
+    server_sequence: ev.sequence,
+    ticket_id: ticket.id,
+    public_code: ticket.public_code,
   };
 }

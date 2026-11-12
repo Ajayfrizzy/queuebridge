@@ -136,7 +136,32 @@ export const FacilitySchema = z.object({
 });
 export type Facility = z.infer<typeof FacilitySchema>;
 
-/** Published ordering policy for a service (F3). Default: FIFO within `normal`. */
+/** A configurable override reason code (REQ-F3.3): lower-case slug, no free text. */
+export const OverrideReasonCodeSchema = z
+  .string()
+  .regex(/^[a-z][a-z0-9_]{1,39}$/, 'Reason codes are lower-case letters, digits and _ (2–40)');
+
+export const DEFAULT_OVERRIDE_REASONS = [
+  'accessibility_need',
+  'urgent_need',
+  'returning_visitor',
+  'administrative_error',
+] as const;
+
+/**
+ * Where a transferred ticket joins the destination queue (REQ-F5.4: the original join time is
+ * always preserved and shown; this decides whether it also determines the new place in line).
+ */
+export const TransferPlacementSchema = z.enum(['by_original_join_time', 'end_of_queue']);
+export type TransferPlacement = z.infer<typeof TransferPlacementSchema>;
+
+/**
+ * Published ordering policy for a service (F3). Default: FIFO within `normal`.
+ *
+ * `version` is assigned BY THE SERVER (`v1`, `v2`, …) every time the policy changes; any value a
+ * client sends is ignored. Every version is kept as an immutable snapshot so past decisions can
+ * be explained and replayed against the policy that was in force.
+ */
 export const ServicePolicySchema = z
   .object({
     version: z.string().min(1).max(32).default('v1'),
@@ -148,6 +173,14 @@ export const ServicePolicySchema = z
       .refine((v) => v.includes(PriorityClass.NORMAL), 'priority_order must include "normal"')
       .default([PriorityClass.NORMAL]),
     grace_window_seconds: z.number().int().min(0).max(3600).default(300),
+    /** Reason codes a supervisor may cite for a priority or routing override */
+    override_reasons: z
+      .array(OverrideReasonCodeSchema)
+      .min(1)
+      .max(12)
+      .refine((v) => new Set(v).size === v.length, 'override_reasons must not repeat')
+      .default([...DEFAULT_OVERRIDE_REASONS]),
+    transfer_placement: TransferPlacementSchema.default('by_original_join_time'),
   })
   .strict();
 export type ServicePolicy = z.infer<typeof ServicePolicySchema>;
@@ -160,6 +193,8 @@ export const CreateServiceRequestSchema = z
       version: 'v1',
       priority_order: [PriorityClass.NORMAL],
       grace_window_seconds: 300,
+      override_reasons: [...DEFAULT_OVERRIDE_REASONS],
+      transfer_placement: 'by_original_join_time',
     }),
   })
   .strict();

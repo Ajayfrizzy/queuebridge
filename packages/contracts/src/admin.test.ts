@@ -63,7 +63,27 @@ describe('facility / service / counter schemas', () => {
       version: 'v1',
       priority_order: ['normal'],
       grace_window_seconds: 300,
+      // M4: configured override reasons and transfer placement are part of the published policy
+      override_reasons: [
+        'accessibility_need',
+        'urgent_need',
+        'returning_visitor',
+        'administrative_error',
+      ],
+      transfer_placement: 'by_original_join_time',
     });
+  });
+
+  it('validates override reason codes and transfer placement (M4)', () => {
+    const ok = (policy: unknown): boolean =>
+      CreateServiceRequestSchema.safeParse({ name: 'Svc', policy }).success;
+    expect(ok({ override_reasons: ['wheelchair_user'] })).toBe(true);
+    expect(ok({ override_reasons: [] })).toBe(false);
+    expect(ok({ override_reasons: ['Has Spaces'] })).toBe(false);
+    expect(ok({ override_reasons: ['dup', 'dup'] })).toBe(false);
+    expect(ok({ override_reasons: Array.from({ length: 13 }, (_, i) => `r${i}x`) })).toBe(false);
+    expect(ok({ transfer_placement: 'end_of_queue' })).toBe(true);
+    expect(ok({ transfer_placement: 'jump_ahead' })).toBe(false);
   });
 
   it('validates priority_order: must include normal, no repeats, known classes only', () => {

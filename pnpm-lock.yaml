@@ -163,6 +163,9 @@ importers:
       '@queuebridge/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@queuebridge/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       postgres:
         specifier: 3.4.5
         version: 3.4.5

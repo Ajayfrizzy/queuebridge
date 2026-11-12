@@ -1,12 +1,15 @@
 # QueueBridge — Spec Tasks
 
 **Spec version:** 1.0  
-**Status:** M0–M2 complete (merged into `staging`); M3 implemented on `feature/m3-continuity-engine` (local gates pass; not yet committed / reviewed); M4–M7 planned; MQ (Ask Que, F13) planned between M5 and M6  
+**Status:** M0–M3 complete and merged into `staging` (PRs #1 M0, #2 M1, #3 F13 spec, #4 M2, #5 M3; `staging` at `f880abb`); M4 implemented on `feature/m4-fairness-routing-audit` (local gates pass — see `docs/testing/M4-evidence.md`; not yet committed, reviewed or merged); M5–M7 planned; MQ (Ask Que, F13) planned between M5 and M6  
 **Each task:** implement → test → validate → mark done
 
 ---
 
 ## M0 — Project Foundation
+
+> Complete; merged into `staging` via PR #1 (`4ed1478`). Evidence: `docs/testing/M0-evidence.md`,
+> `docs/testing/M0-ci-correction.md`. Report: `M0-completion.md`.
 
 ### M0.1 Kiro persistent configuration ✅
 
@@ -21,79 +24,82 @@
 
 ### M0.2 Monorepo foundation
 
-- [ ] Root `package.json` with pnpm workspace scripts
-- [ ] `pnpm-workspace.yaml` declaring all apps and packages
-- [ ] Root `tsconfig.base.json` with strict mode settings
-- [ ] All `apps/` and `packages/` directories initialized with `package.json` and `tsconfig.json`
-- [ ] Workspace dependency linking verified (`pnpm install` succeeds)
+- [x] Root `package.json` with pnpm workspace scripts
+- [x] `pnpm-workspace.yaml` declaring all apps and packages
+- [x] Root `tsconfig.base.json` with strict mode settings
+- [x] All `apps/` and `packages/` directories initialized with `package.json` and `tsconfig.json`
+- [x] Workspace dependency linking verified (`pnpm install` succeeds)
 
 ### M0.3 Shared packages skeleton
 
-- [ ] `packages/contracts`: Zod schemas for CommandEnvelope, Ticket, QueueSession, QueueEvent, SyncBatch, ApiError, WaitEstimate
-- [ ] `packages/domain`: ticket state machine stub with all states and transitions declared
-- [ ] `packages/continuity`: coordinator epoch validation, command envelope creation stubs
-- [ ] `packages/channels`: `ChannelAdapter` interface, `SandboxSmsAdapter`, `SandboxUssdAdapter`
-- [ ] `packages/ui`: component stubs with accessible HTML structure for `TicketCard`, `SyncStateIndicator`, `QueueStatusBanner`
+- [x] `packages/contracts`: Zod schemas for CommandEnvelope, Ticket, QueueSession, QueueEvent, SyncBatch, ApiError, WaitEstimate
+- [x] `packages/domain`: ticket state machine stub with all states and transitions declared
+- [x] `packages/continuity`: coordinator epoch validation, command envelope creation stubs
+- [x] `packages/channels`: `ChannelAdapter` interface, `SandboxSmsAdapter`, `SandboxUssdAdapter`
+- [x] `packages/ui`: component stubs with accessible HTML structure for `TicketCard`, `SyncStateIndicator`, `QueueStatusBanner`
 
 ### M0.4 Application skeletons
 
-- [ ] `apps/api`: Fastify server with health endpoints (`/health`, `/health/ready`), plugin stubs, env validation
-- [ ] `apps/web`: Vite + React app with PWA manifest, offline shell, routing stubs, i18n setup
-- [ ] `apps/worker`: process entry point, outbox poll loop stub, graceful shutdown
+- [x] `apps/api`: Fastify server with health endpoints (`/health`, `/health/ready`), plugin stubs, env validation
+- [x] `apps/web`: Vite + React app with PWA manifest, offline shell, routing stubs, i18n setup
+- [x] `apps/worker`: process entry point, outbox poll loop stub, graceful shutdown
 
 ### M0.5 Database foundation
 
-- [ ] `infra/migrations/0001_initial_schema.sql` — all tables from architecture §6 with correct constraints
-- [ ] `infra/migrations/0002_append_only_trigger.sql` — `queue_events` append-only trigger
-- [ ] `infra/seeds/dev_seed.sql` — one org, one facility, one service, one counter, one staff user
-- [ ] Migration runner script in root `package.json` (`pnpm db:migrate`, `pnpm db:seed`)
-- [ ] Migrations verified idempotent (run twice → no error)
+- [x] `infra/migrations/0001_initial_schema.sql` — all tables from architecture §6 with correct constraints
+- [x] `infra/migrations/0002_append_only_trigger.sql` — `queue_events` append-only trigger
+- [x] `infra/seeds/dev_seed.sql` — one org, one facility, one service, one counter, one staff user
+- [x] Migration runner script in root `package.json` (`pnpm db:migrate`, `pnpm db:seed`)
+- [x] Migrations verified idempotent (run twice → no error)
 
 ### M0.6 Developer tooling
 
-- [ ] ESLint 9 flat config at root with TypeScript plugin, applied to all packages and apps
-- [ ] Prettier config at root, consistent with 2-space indent, single quotes
-- [ ] `pnpm lint`, `pnpm format`, `pnpm format:check` scripts working
-- [ ] `pnpm typecheck` script running `tsc --noEmit` across all packages
-- [ ] `.env.example` at root and per app with all required variables and safe placeholders
-- [ ] `.gitignore` covering `.env`, `node_modules`, `dist`, `.turbo`, build artifacts
+- [x] ESLint 9 flat config at root with TypeScript plugin, applied to all packages and apps
+- [x] Prettier config at root, consistent with 2-space indent, single quotes
+- [x] `pnpm lint`, `pnpm format`, `pnpm format:check` scripts working
+- [x] `pnpm typecheck` script running `tsc --noEmit` across all packages
+- [x] `.env.example` at root and per app with all required variables and safe placeholders
+- [x] `.gitignore` covering `.env`, `node_modules`, `dist`, `.turbo`, build artifacts
 
 ### M0.7 Initial tests
 
-- [ ] `packages/contracts`: Zod schema parse/reject tests (≥ 10 meaningful assertions)
-- [ ] `packages/domain`: ticket state machine transition tests (all valid and invalid transitions)
-- [ ] `packages/continuity`: coordinator epoch validation tests
-- [ ] `packages/channels`: SandboxAdapter tests (no real network, SANDBOX label present)
-- [ ] `apps/api`: health endpoint tests (200 from `/health`, DB connection check from `/health/ready`)
-- [ ] `infra`: migration idempotency test (apply migrations twice, verify table structure)
-- [ ] All tests pass: `pnpm test`
+- [x] `packages/contracts`: Zod schema parse/reject tests (≥ 10 meaningful assertions)
+- [x] `packages/domain`: ticket state machine transition tests (all valid and invalid transitions)
+- [x] `packages/continuity`: coordinator epoch validation tests
+- [x] `packages/channels`: SandboxAdapter tests (no real network, SANDBOX label present)
+- [x] `apps/api`: health endpoint tests (200 from `/health`, DB connection check from `/health/ready`)
+- [x] `infra`: migration idempotency test (apply migrations twice, verify table structure)
+- [x] All tests pass: `pnpm test`
 
 ### M0.8 CI
 
-- [ ] `.github/workflows/ci.yml`: lint → typecheck → test → build on push/PR
-- [ ] `.github/workflows/db-validate.yml`: PostgreSQL service container, run migrations, verify constraints
-- [ ] CI passes on `feature/m0-foundation`
+- [x] `.github/workflows/ci.yml`: lint → typecheck → test → build on push/PR
+- [x] `.github/workflows/db-validate.yml`: PostgreSQL service container, run migrations, verify constraints
+- [x] CI passes on `feature/m0-foundation`
 
 ### M0.9 Documentation
 
-- [ ] `README.md`: project overview, local setup, architecture diagram reference, Kiro contribution summary
-- [ ] `docs/adr/ADR-001.md` through `ADR-010.md`: one ADR per architecture decision
-- [ ] `docs/testing/M0-evidence.md`: test run outputs
-- [ ] `M0-completion.md`: full implementation report
+- [x] `README.md`: project overview, local setup, architecture diagram reference, Kiro contribution summary
+- [x] `docs/adr/ADR-001.md` through `ADR-010.md`: one ADR per architecture decision
+- [x] `docs/testing/M0-evidence.md`: test run outputs
+- [x] `M0-completion.md`: full implementation report
 
 ### M0 exit criteria (ALL must pass before M0 is complete)
 
-- [ ] `pnpm typecheck` — zero errors
-- [ ] `pnpm lint` — zero errors
-- [ ] `pnpm format:check` — no violations
-- [ ] `pnpm test` — all tests pass
-- [ ] `pnpm build` — all packages and apps build
-- [ ] `pnpm db:migrate` — migrations apply cleanly to fresh DB
-- [ ] CI green on `feature/m0-foundation`
+- [x] `pnpm typecheck` — zero errors
+- [x] `pnpm lint` — zero errors
+- [x] `pnpm format:check` — no violations
+- [x] `pnpm test` — all tests pass
+- [x] `pnpm build` — all packages and apps build
+- [x] `pnpm db:migrate` — migrations apply cleanly to fresh DB
+- [x] CI green on `feature/m0-foundation`
 
 ---
 
 ## M1 — Tenancy, Roles, Facility Setup (F10 foundation)
+
+> Complete; merged into `staging` via PR #2 (`d0ceb6f`). Evidence: `docs/testing/M1-evidence.md`.
+> Report: `M1-completion.md`.
 
 ### M1.1 Organization and facility APIs
 
@@ -142,8 +148,8 @@ Deferred to M2 (not implemented here): routing-engine eligibility tests, visitor
 
 ## M2 — Queue Core and Visitor Flows (F1 online, F2, F3, F6)
 
-> Implemented on `feature/m2-queue-core` (2026-11-08); in review via a PR to `staging`. Evidence:
-> `docs/testing/M2-evidence.md`. Report: `M2-completion.md`.
+> Complete; merged into `staging` via PR #4 (`25d3686`). Evidence: `docs/testing/M2-evidence.md`.
+> Report: `M2-completion.md`.
 
 ### M2.1 Online queue operations
 
@@ -191,6 +197,9 @@ Deferred to M2 (not implemented here): routing-engine eligibility tests, visitor
 
 ## M3 — Continuity Engine (F1 offline, F9)
 
+> Complete; merged into `staging` via PR #5 (`f880abb`), CI green. Evidence:
+> `docs/testing/M3-evidence.md`. Report: `M3-completion.md`.
+
 ### M3.1 Offline command capture
 
 - [x] IndexedDB outbox in apps/web (`apps/web/src/offline/idb.ts`; logic in `packages/continuity/src/outbox.ts`)
@@ -236,31 +245,46 @@ Deferred to M2 (not implemented here): routing-engine eligibility tests, visitor
 
 ## M4 — Fairness, Overrides, Audit, Routing (F3, F5, F8)
 
+> Implemented on `feature/m4-fairness-routing-audit` (from `staging` `f880abb`). Local gates pass;
+> NOT yet committed, reviewed or merged. Evidence: `docs/testing/M4-evidence.md`. Report:
+> `M4-completion.md`. Decisions: ADR-012. Each box below names the test that evidences it.
+
 ### M4.1 Fairness and priority
 
-- [ ] Priority class configuration per service
-- [ ] Supervisor priority override flow with reason codes
-- [ ] Fairness policy version tracking
-- [ ] Override audit event with full required fields
+- [x] Priority class configuration per service (`priority_order`, override reasons, transfer placement; editor + history in `FacilityServices`) — `contracts/admin.test.ts`, `e2e/fairness.spec.ts` "policy versions"
+- [x] Supervisor priority override flow with reason codes (supervisor / facility admin only; denied attempts 403 + logged) — `fairness.db.test.ts`, `e2e/fairness.spec.ts` "priority override"
+- [x] Fairness policy version tracking (server-assigned `vN`, immutable `service_policy_versions`, `policy.changed` event) — `fairness.db.test.ts` ("server-managed policy versions", "append-only: UPDATE and DELETE are refused")
+- [x] Override audit event with full required fields (actor, ticket, from/to class, reason code, hashed free text, policy version, timestamp; DB check constraints) — `fairness.db.test.ts`, `audit.db.test.ts`
+- [x] Deterministic ordering `priority_class > wait_since > issued_sequence > id`, equal-priority FIFO, stable ties — `domain/fairness-routing.test.ts`, `domain/queue.test.ts` (property test)
 
 ### M4.2 Routing
 
-- [ ] Deterministic routing: service match → priority class → waiting age → counter availability
-- [ ] Transfer between counters/services with audit trail
-- [ ] Counter unavailable: reassign eligible waiting tickets
+- [x] Deterministic routing: service match → priority class → waiting age → counter availability (every call records `payload.routing`) — `domain/fairness-routing.test.ts`, `fairness.db.test.ts`
+- [x] Transfer between counters/services with audit trail (`ticket.counter_transfer`; service transfer keeps original waiting age per policy) — `fairness.db.test.ts`, `e2e/fairness.spec.ts` "routing"
+- [x] Counter unavailable: no new assignments; a CALLED visitor is released to the head of the line (`ticket.release`); closing while serving refused — `fairness.db.test.ts`, `e2e/fairness.spec.ts`. Manual-acceptance fix: the admin Deactivate path now obeys the same invariant and serve requires an in-service counter — `counter-closure.db.test.ts`, `e2e/counter-closure.spec.ts`
+- [x] Duplicate calls and unauthorized transfers prevented; M3 coordinator fence applies to every new action — `fairness.db.test.ts` (concurrency + coordinator cases), existing `queue-concurrency.db.test.ts`
+- [x] Offline projection mirrors the server order and refuses closed counters — `continuity/projection.test.ts`
 
 ### M4.3 Audit integrity
 
-- [ ] Hash chain implementation in queue event insertion
-- [ ] `audit_checkpoints` job in worker
-- [ ] Audit verification endpoint
-- [ ] Tamper-detection test with known modified event
+- [x] Hash chain implementation in queue event insertion (primitives moved to `packages/domain/src/audit.ts`) — `domain/audit.test.ts`, `api/queue/hash.test.ts`
+- [x] `audit_checkpoints` job in worker (HMAC-SHA256, verifies chain + earlier checkpoints first; never signs a broken chain; raises append-only alerts) — `worker/checkpoints.db.test.ts`
+- [x] Audit verification endpoint (`verified | failed | incomplete`; incomplete is never success) + read-only view + redacted export — `audit.db.test.ts`, `e2e/fairness.spec.ts` "audit trail"
+- [x] Tamper-detection test with known modified event (isolated database: modified, deleted, re-hashed and override-text tampering) — `audit.db.test.ts`, `worker/checkpoints.db.test.ts`
 
 ### M4 exit criteria
 
-- [ ] Groups 7, 8, 9 tests pass
-- [ ] Deterministic policy replay verified
-- [ ] Append-only trigger prevents UPDATE/DELETE on queue_events
+- [x] Groups 7, 8, 9 tests pass (see evidence for exact counts; Group 8 recovery/webhook items remain M5/M6)
+- [x] Deterministic policy replay verified (`verifyRoutingDecisions` + verification endpoint replay)
+- [x] Append-only trigger prevents UPDATE/DELETE (and now TRUNCATE) on queue_events and all M4 audit tables
+
+### M4 deferrals (explicit)
+
+- Strict priority between classes can starve lower classes while higher-class tickets keep arriving (policy limitation, ADR-012; no aging/interleaving — requires a future ADR)
+- Checkpoint signatures are HMAC: verifying them needs the key (no public verification yet; Ed25519 → later)
+- Call events committed before M4 carry no routing explanation: reported as `not_replayable`, not verified
+- Releasing a called visitor when closing a counter requires a supervisor; there is no automatic reassignment push (routing stays pull-based)
+- Recovery rate limits (Group 8) → M5; webhook signature/replay tests (Group 8) → M6
 
 ---
 

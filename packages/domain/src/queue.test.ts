@@ -89,6 +89,19 @@ describe('published ordering policy', () => {
     });
     expect(text).toContain('Priority, Normal');
     expect(text).not.toContain('Urgent');
+    expect(text).toContain('Only a supervisor can change');
+  });
+
+  it('states the transfer placement when the policy carries one', () => {
+    const base = { priority_order: [PriorityClass.NORMAL], grace_window_seconds: 60 } as const;
+    expect(
+      describeOrderingPolicy({ ...base, transfer_placement: 'by_original_join_time' }),
+    ).toContain('keep their original waiting time');
+    expect(describeOrderingPolicy({ ...base, transfer_placement: 'end_of_queue' })).toContain(
+      'end of the destination queue',
+    );
+    // no override sentence when there is no class to move to
+    expect(describeOrderingPolicy(base)).not.toContain('supervisor');
   });
 });
 
@@ -220,6 +233,8 @@ function randomHistory(seed: number, length: number): QueueEventForReplay[] {
     ev(1, 'queue.open', { from_state: 'closed', to_state: 'open' }),
   ];
   const states: Record<string, TicketState> = {};
+  const classes: Record<string, PriorityClass> = {};
+  const CLASSES = [PriorityClass.NORMAL, PriorityClass.PRIORITY, PriorityClass.URGENT];
   let issued = 0;
   const ticketActions = TRANSITION_RULES.filter(
     (r) => r.from !== TicketState.MISSED || r.action !== QueueAction.TICKET_RESUME,
@@ -231,6 +246,7 @@ function randomHistory(seed: number, length: number): QueueEventForReplay[] {
       issued += 1;
       const id = `t${issued}`;
       states[id] = TicketState.WAITING;
+      classes[id] = PriorityClass.NORMAL;
       events.push(
         ev(seq, 'ticket.create', {
           ticket_id: id,
@@ -245,6 +261,14 @@ function randomHistory(seed: number, length: number): QueueEventForReplay[] {
     if (options.length === 0) continue;
     const rule = options[Math.floor(rnd() * options.length)]!;
     states[id] = rule.to;
+    if (rule.action === QueueAction.TICKET_PRIORITY_OVERRIDE) {
+      // An override changes the class only (never the state)
+      const from = classes[id] ?? PriorityClass.NORMAL;
+      const to = CLASSES.filter((c) => c !== from)[Math.floor(rnd() * 2)]!;
+      classes[id] = to;
+      events.push(ev(seq, rule.action, { ticket_id: id, from_class: from, to_class: to }));
+      continue;
+    }
     events.push(
       ev(seq, rule.action, {
         ticket_id: id,
@@ -257,6 +281,19 @@ function randomHistory(seed: number, length: number): QueueEventForReplay[] {
   return events;
 }
 
+/** The classes the generator assigned, recomputed independently from the same seed. */
+function classesOf(seed: number): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const e of randomHistory(seed, 60)) {
+    const id = e.payload['ticket_id'];
+    if (typeof id !== 'string') continue;
+    if (e.event_type === 'ticket.create') out[id] = PriorityClass.NORMAL;
+    if (e.event_type === QueueAction.TICKET_PRIORITY_OVERRIDE)
+      out[id] = String(e.payload['to_class']);
+  }
+  return out;
+}
+
 describe('property: replay determinism', () => {
   it('200 random legal histories replay to identical state every time, and match the generator', () => {
     for (let seed = 1; seed <= 200; seed++) {
@@ -267,9 +304,15 @@ describe('property: replay determinism', () => {
       expect(a.last_sequence).toBe(60);
       // Ordering derived from the replayed state is itself deterministic
       const tickets = Object.values(a.tickets);
-      expect(orderWaiting(tickets, [PriorityClass.NORMAL])).toEqual(
-        orderWaiting([...tickets].reverse(), [PriorityClass.NORMAL]),
-      );
+      for (const order of [
+        [PriorityClass.NORMAL],
+        [PriorityClass.URGENT, PriorityClass.PRIORITY, PriorityClass.NORMAL],
+      ]) {
+        expect(orderWaiting(tickets, order)).toEqual(orderWaiting([...tickets].reverse(), order));
+      }
+      // ...and the replayed classes are exactly the generator's
+      for (const t of Object.values(a.tickets))
+        expect(t.priority_class).toBe(classesOf(seed)[t.id]);
     }
   });
 });

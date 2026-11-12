@@ -1,4 +1,5 @@
 import type { ServicePolicy } from '@queuebridge/contracts';
+import { describeOrderingPolicy } from '@queuebridge/domain';
 
 const LABELS: Record<string, string> = { urgent: 'Urgent', priority: 'Priority', normal: 'Normal' };
 
@@ -14,12 +15,13 @@ export function isSingleQueue(policy: ServicePolicy): boolean {
 
 /**
  * Human description of what the policy really enables — never a fixed urgent → priority →
- * normal sequence. Visitors within one class are always served first come, first served.
+ * normal sequence. Same wording the server publishes to visitors (single source in domain).
  */
 export function describePolicy(policy: ServicePolicy): string {
-  const grace = `Grace window ${policy.grace_window_seconds}s`;
-  if (isSingleQueue(policy)) {
-    return `Single queue, first come first served (no priority classes). ${grace}.`;
-  }
-  return `Enabled classes, highest first: ${enabledClasses(policy).join(', ')}. First come first served within each class. ${grace}.`;
+  return describeOrderingPolicy(policy);
+}
+
+/** Labels for priority classes (for badges and selects). */
+export function classLabel(c: string): string {
+  return LABELS[c] ?? c;
 }

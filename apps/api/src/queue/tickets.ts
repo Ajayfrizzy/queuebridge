@@ -61,6 +61,11 @@ export interface IssueTicketInput {
   joinedAt?: Date;
   transferredFromTicketId?: string;
   sourceQueueId?: string;
+  /**
+   * Place in line (waiting age) for a transfer when the destination policy keeps the original
+   * join time. Omitted ⇒ the ticket's place is measured from now (issue time).
+   */
+  waitSince?: Date;
 }
 
 export interface IssuedTicket {
@@ -68,6 +73,7 @@ export interface IssuedTicket {
   publicCode: string;
   issuedSequence: number;
   sequence: number;
+  waitSince: Date;
 }
 
 /** Create a confirmed waiting ticket in a LOCKED session and append its ticket.create event. */
@@ -86,16 +92,20 @@ export async function issueTicket(
   const publicCode = formatTicketCode(prefix, issuedSequence);
   const joinedAt = input.joinedAt ?? new Date();
 
-  const rows = await tx<{ id: string }[]>`
+  // wait_since uses the DATABASE clock (clock_timestamp) while this session row is locked, so
+  // issue order and waiting-age order agree for native tickets, across API instances.
+  const rows = await tx<{ id: string; wait_since: Date }[]>`
     INSERT INTO tickets
       (queue_session_id, organization_id, public_code, state, priority_class, issued_sequence,
-       joined_at, created_channel, created_by, transferred_from_ticket_id)
+       joined_at, created_channel, created_by, transferred_from_ticket_id, wait_since)
     VALUES (${session.id}, ${session.organization_id}, ${publicCode}, ${TicketState.WAITING},
             ${PriorityClass.NORMAL}, ${issuedSequence}, ${joinedAt}, ${input.channel},
-            ${input.createdBy}, ${input.transferredFromTicketId ?? null})
-    RETURNING id`;
+            ${input.createdBy}, ${input.transferredFromTicketId ?? null},
+            COALESCE(${input.waitSince ?? null}::timestamptz, clock_timestamp()))
+    RETURNING id, wait_since`;
   const ticketId = rows[0]?.id;
-  if (!ticketId) throw new Error('ticket insert returned no row');
+  const waitSince = rows[0]?.wait_since;
+  if (!ticketId || !waitSince) throw new Error('ticket insert returned no row');
 
   const ev = await appendEvent(tx, session, {
     eventType: QueueAction.TICKET_CREATE,
@@ -107,6 +117,7 @@ export async function issueTicket(
       issued_sequence: issuedSequence,
       priority_class: PriorityClass.NORMAL,
       channel: input.channel,
+      wait_since: waitSince.toISOString(),
       policy_version: session.policy.version,
       ...(input.transferredFromTicketId
         ? {
@@ -117,7 +128,7 @@ export async function issueTicket(
     },
     transition: { ticketId, from: 'none', to: TicketState.WAITING },
   });
-  return { ticketId, publicCode, issuedSequence, sequence: ev.sequence };
+  return { ticketId, publicCode, issuedSequence, sequence: ev.sequence, waitSince };
 }
 
 /** Issue (or rotate) the status credential for a ticket; returns the raw token exactly once. */

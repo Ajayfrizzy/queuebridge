@@ -16,6 +16,12 @@ export interface OrderableTicket {
   state: TicketState;
   priority_class: PriorityClassT;
   issued_sequence: number;
+  /**
+   * The instant this ticket's place in line is measured from (its waiting age): issue time for
+   * native tickets, original join time or transfer time for transfers (per policy). ISO string
+   * or epoch ms. Missing only for tickets replayed from pre-M4 events (issue order then decides).
+   */
+  wait_since?: string | number | Date | null;
 }
 
 /**
@@ -31,9 +37,36 @@ export function priorityRank(
   return i === -1 ? priorityOrder.length : i;
 }
 
+/** The published, versioned ordering rule (REQ-F5.2), recorded with every routing decision. */
+export const ORDERING_RULE = 'priority_class>wait_since>issued_sequence>id';
+
+const waitMs = (t: OrderableTicket): number | null => {
+  const v = t.wait_since;
+  if (v === undefined || v === null) return null;
+  const ms = v instanceof Date ? v.getTime() : typeof v === 'number' ? v : Date.parse(v);
+  return Number.isFinite(ms) ? ms : null;
+};
+
+/** Total, deterministic comparator for waiting tickets under a published priority order. */
+export function compareForCall(
+  a: OrderableTicket,
+  b: OrderableTicket,
+  priorityOrder: readonly PriorityClassT[],
+): number {
+  const r =
+    priorityRank(a.priority_class, priorityOrder) - priorityRank(b.priority_class, priorityOrder);
+  if (r !== 0) return r;
+  const wa = waitMs(a);
+  const wb = waitMs(b);
+  if (wa !== null && wb !== null && wa !== wb) return wa - wb;
+  if (a.issued_sequence !== b.issued_sequence) return a.issued_sequence - b.issued_sequence;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
 /**
- * Waiting tickets in the order they will be called: priority rank, then issue sequence (FIFO),
- * then id as a final deterministic tiebreak. Paused, missed and other states are excluded.
+ * Waiting tickets in the order they will be called: priority rank (classes the policy does not
+ * enable rank last), then waiting age (oldest `wait_since` first), then issue number, then id.
+ * Paused, missed and other states are excluded. Never mutates its input.
  */
 export function orderWaiting<T extends OrderableTicket>(
   tickets: readonly T[],
@@ -41,14 +74,7 @@ export function orderWaiting<T extends OrderableTicket>(
 ): T[] {
   return tickets
     .filter((t) => t.state === TicketState.WAITING)
-    .sort((a, b) => {
-      const r =
-        priorityRank(a.priority_class, priorityOrder) -
-        priorityRank(b.priority_class, priorityOrder);
-      if (r !== 0) return r;
-      if (a.issued_sequence !== b.issued_sequence) return a.issued_sequence - b.issued_sequence;
-      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-    });
+    .sort((a, b) => compareForCall(a, b, priorityOrder));
 }
 
 /** Next ticket to call, or null when nobody is waiting. */
@@ -75,17 +101,31 @@ const CLASS_LABEL: Record<string, string> = {
   [PriorityClass.NORMAL]: 'Normal',
 };
 
-/** Plain-language description of a published policy; lists only enabled classes. */
+/**
+ * Plain-language description of a published policy; lists only enabled classes. Mentions the
+ * supervisor-override rule only when there is a class to move to, and the transfer placement
+ * only when the policy states one (callers without it get the M2 wording unchanged).
+ */
 export function describeOrderingPolicy(policy: {
   priority_order: readonly PriorityClassT[];
   grace_window_seconds: number;
+  transfer_placement?: 'by_original_join_time' | 'end_of_queue';
 }): string {
-  const grace = `Grace window ${policy.grace_window_seconds}s`;
+  const grace = `Grace window ${policy.grace_window_seconds}s.`;
+  const transfer =
+    policy.transfer_placement === undefined
+      ? ''
+      : policy.transfer_placement === 'by_original_join_time'
+        ? ' Transferred visitors keep their original waiting time.'
+        : ' Transferred visitors join the end of the destination queue.';
   if (policy.priority_order.every((c) => c === PriorityClass.NORMAL)) {
-    return `Single queue, first come first served (no priority classes). ${grace}.`;
+    return `Single queue, first come first served (no priority classes). ${grace}${transfer}`;
   }
   const classes = policy.priority_order.map((c) => CLASS_LABEL[c] ?? c).join(', ');
-  return `Enabled classes, highest first: ${classes}. First come first served within each class. ${grace}.`;
+  return (
+    `Enabled classes, highest first: ${classes}. First come first served within each class. ` +
+    `Only a supervisor can change a visitor's class, and must record a reason. ${grace}${transfer}`
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -135,6 +175,9 @@ export interface QueueEventForReplay {
   payload: Record<string, unknown>;
 }
 
+/** Audit-only events: occupy a sequence, never change ticket or session state. */
+const AUDIT_ONLY_PREFIXES = ['coordinator.', 'sync.', 'policy.'] as const;
+
 export interface ProjectedTicket {
   id: string;
   public_code: string;
@@ -142,6 +185,8 @@ export interface ProjectedTicket {
   priority_class: PriorityClassT;
   issued_sequence: number;
   counter_id: string | null;
+  /** From the ticket.create payload (M4+); null for tickets created by pre-M4 events */
+  wait_since: string | null;
 }
 
 export interface QueueProjection {
@@ -149,9 +194,6 @@ export interface QueueProjection {
   last_sequence: number;
   tickets: Record<string, ProjectedTicket>;
 }
-
-/** Event families that are audit-only: coordinator authority changes and sync conflict records. */
-const NON_STATE_EVENT_PREFIXES = ['coordinator.', 'sync.'] as const;
 
 export class ReplayError extends Error {
   public constructor(message: string) {
@@ -182,7 +224,7 @@ export function applyQueueEvent(p: QueueProjection, e: QueueEventForReplay): Que
   const next: QueueProjection = { ...p, last_sequence: e.sequence, tickets: { ...p.tickets } };
 
   // Authority and conflict-audit events occupy a sequence but never change ticket or session state
-  if (NON_STATE_EVENT_PREFIXES.some((prefix) => e.event_type.startsWith(prefix))) return next;
+  if (AUDIT_ONLY_PREFIXES.some((prefix) => e.event_type.startsWith(prefix))) return next;
 
   if (
     e.event_type === 'queue.open' ||
@@ -216,7 +258,22 @@ export function applyQueueEvent(p: QueueProjection, e: QueueEventForReplay): Que
         (e.payload['priority_class'] as PriorityClassT | undefined) ?? PriorityClass.NORMAL,
       issued_sequence: issued,
       counter_id: null,
+      wait_since:
+        typeof e.payload['wait_since'] === 'string' ? (e.payload['wait_since'] as string) : null,
     };
+    return next;
+  }
+
+  if (e.event_type === QueueAction.TICKET_PRIORITY_OVERRIDE) {
+    const id = str(e.payload, 'ticket_id');
+    const t = next.tickets[id];
+    if (!t) throw new ReplayError(`unknown ticket ${id} at ${e.sequence}`);
+    if (t.state !== TicketState.WAITING)
+      throw new ReplayError(`override of non-waiting ticket at ${e.sequence}`);
+    if (str(e.payload, 'from_class') !== t.priority_class) {
+      throw new ReplayError(`priority class mismatch at ${e.sequence}`);
+    }
+    next.tickets[id] = { ...t, priority_class: str(e.payload, 'to_class') as PriorityClassT };
     return next;
   }
 
@@ -234,7 +291,9 @@ export function applyQueueEvent(p: QueueProjection, e: QueueEventForReplay): Que
   next.tickets[id] = {
     ...current,
     state: to as TicketState,
-    counter_id: typeof counter === 'string' ? counter : current.counter_id,
+    // An explicit null (e.g. ticket.release) clears the counter; an absent field keeps it
+    counter_id:
+      typeof counter === 'string' ? counter : counter === null ? null : current.counter_id,
   };
   return next;
 }

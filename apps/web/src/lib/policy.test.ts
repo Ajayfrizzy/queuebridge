@@ -6,6 +6,8 @@ const p = (priority_order: ServicePolicy['priority_order'], grace = 300): Servic
   version: 'v1',
   priority_order,
   grace_window_seconds: grace,
+  override_reasons: ['accessibility_need'],
+  transfer_placement: 'by_original_join_time',
 });
 
 describe('service policy display', () => {
@@ -34,6 +36,13 @@ describe('service policy display', () => {
     const priorityOnly = describePolicy(p(['priority', 'normal']));
     expect(priorityOnly).toContain('Priority, Normal');
     expect(priorityOnly).not.toContain('Urgent');
+  });
+
+  it('uses the same published wording as the server, including transfer placement', () => {
+    expect(describePolicy(p(['normal']))).toContain('keep their original waiting time');
+    expect(
+      describePolicy({ ...p(['priority', 'normal']), transfer_placement: 'end_of_queue' }),
+    ).toContain('Only a supervisor can change');
   });
 
   it('includes the grace window', () => {
