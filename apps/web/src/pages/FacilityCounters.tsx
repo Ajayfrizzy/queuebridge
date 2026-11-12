@@ -56,9 +56,14 @@ export function FacilityCounters(): ReactElement {
     try {
       if (enabled) await api.assignCapability(counterId, serviceId);
       else await api.removeCapability(counterId, serviceId);
+      setNotice((n) => (n?.id === counterId ? null : n));
       announce(`${counterName} ${enabled ? 'now serves' : 'no longer serves'} ${serviceName}.`);
     } catch (err) {
-      announce(err instanceof ApiRequestError ? err.message : 'Could not update the counter.');
+      // e.g. 409: the counter is calling or serving a visitor of this service. Say so where it
+      // happened; the refresh below puts the checkbox back to the server's state.
+      const text = err instanceof ApiRequestError ? err.message : 'Could not update the counter.';
+      setNotice({ id: counterId, error: true, text });
+      announce(text);
     }
     await refresh();
     setPending((p) => {

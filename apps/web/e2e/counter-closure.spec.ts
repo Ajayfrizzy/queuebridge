@@ -124,6 +124,79 @@ test.describe('@responsive counter deactivation keeps the serving/called invaria
   });
 });
 
+test.describe('@responsive removing a service from a counter keeps the calling/serving invariant (PR #6 final review)', () => {
+  test('refused with a visible alert while calling or serving; allowed once the visit is done', async ({
+    page,
+    browser,
+  }) => {
+    const viewport = page.viewportSize();
+    const s = await apiQueueSetup(page.request);
+    const queueId = s.queueId ?? '';
+    const g1 = await walkIn(page.request, queueId);
+
+    const op = await makeStaff(browser, page.request, s.facility.id, 'staff_counter', { viewport });
+    await op.page.goto(`/staff/queues/${queueId}`);
+    await op.page.locator('#counter-select').selectOption(s.counterId);
+    await op.page.getByRole('button', { name: 'Call next' }).click();
+    await expect(op.page.getByTestId('current-code')).toHaveText(g1);
+
+    await page.goto(`/admin/facilities/${s.facility.id}/counters`);
+    const card = page.getByTestId('counter-item').filter({ hasText: 'Counter 1' });
+    const box = card.getByRole('checkbox', { name: 'General Consultation' });
+    await expect(box).toBeChecked();
+
+    const tryRemove = async (): Promise<void> => {
+      const resp = page.waitForResponse(
+        (r) =>
+          r.url().includes('/counter_service_capabilities/') && r.request().method() === 'DELETE',
+      );
+      await box.uncheck();
+      expect((await resp).status()).toBe(409);
+    };
+
+    // 1. CALLED: refused, stated in place, checkbox returns to checked, operator unaffected
+    await tryRemove();
+    await expect(card.getByTestId('counter-notice')).toContainText('is calling a visitor');
+    await expect(card.getByRole('alert')).toBeVisible();
+    await expect(box).toBeChecked();
+    await expect(op.page.getByTestId('current-code')).toHaveText(g1);
+    expect(await hasHorizontalOverflow(page)).toBe(false);
+    await expectNoA11yViolations(page);
+
+    // 2. SERVING: still refused
+    await op.page.getByRole('button', { name: 'Start serving' }).click();
+    await expect(op.page.getByRole('button', { name: 'Complete' })).toBeVisible();
+    await tryRemove();
+    await expect(card.getByTestId('counter-notice')).toContainText('is serving a visitor');
+    await expect(box).toBeChecked();
+    await expect(op.page.getByRole('button', { name: 'Complete' })).toBeEnabled();
+
+    // 3. Server state unchanged: capability still listed, ticket still serving
+    const counters = (await (
+      await page.request.get(`/api/v1/facilities/${s.facility.id}/counters`)
+    ).json()) as { counters: { id: string; service_ids: string[] }[] };
+    expect(counters.counters.find((c) => c.id === s.counterId)?.service_ids).toEqual([s.serviceId]);
+
+    // 4. Once the visit is complete, the same action succeeds
+    await op.page.getByRole('button', { name: 'Complete' }).click();
+    await expect(op.page.getByTestId('counter-free')).toBeVisible();
+    await box.uncheck();
+    await expect(page.getByTestId('toast')).toContainText(
+      'Counter 1 no longer serves General Consultation.',
+    );
+    await expect(box).not.toBeChecked();
+    await expect(card.getByTestId('counter-notice')).toHaveCount(0);
+    await page.reload();
+    await expect(
+      page
+        .getByTestId('counter-item')
+        .filter({ hasText: 'Counter 1' })
+        .getByRole('checkbox', { name: 'General Consultation' }),
+    ).not.toBeChecked();
+    await op.ctx.close();
+  });
+});
+
 test.describe('policy configuration is for administrators only (manual test 1)', () => {
   test('a supervisor sees the services but no policy editor; the API refuses them', async ({
     page,

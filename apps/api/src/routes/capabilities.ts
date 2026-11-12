@@ -4,6 +4,7 @@ import { recordAdminEvent } from '../admin-events.js';
 import { requireFacilityPermission } from '../auth/rbac.js';
 import { requireAuth } from '../auth/session.js';
 import { parseInput, problems } from '../errors.js';
+import { removeCounterCapability } from '../queue/counters.js';
 import { loadCounters } from './counters.js';
 import { uuidParam, type RouteDeps } from './deps.js';
 
@@ -82,14 +83,10 @@ export async function capabilityRoutes(app: FastifyInstance, deps: RouteDeps): P
       const { facilityId } = await authorizeCounter(auth.organizationId, counterId, req);
 
       const removed = await db.begin(async (tx) => {
-        const rows = await tx`
-          DELETE FROM counter_service_capabilities csc
-                USING counters c
-                WHERE csc.counter_id = c.id AND c.id = ${counterId}
-                  AND c.organization_id = ${auth.organizationId}
-                  AND csc.service_id = ${serviceId}
-          RETURNING csc.counter_id`;
-        if (rows.length > 0) {
+        // Shared M4 counter lock procedure: sessions, then the counter; refused (409) while the
+        // counter is calling or serving a visitor of this service
+        const deleted = await removeCounterCapability(tx, auth, facilityId, counterId, serviceId);
+        if (deleted) {
           await recordAdminEvent(tx, {
             organizationId: auth.organizationId,
             facilityId,
@@ -100,7 +97,7 @@ export async function capabilityRoutes(app: FastifyInstance, deps: RouteDeps): P
             details: { service_id: serviceId },
           });
         }
-        return rows.length > 0;
+        return deleted;
       });
       if (!removed) throw problems.notFound();
       return reply.status(204).send();

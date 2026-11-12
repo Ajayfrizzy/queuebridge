@@ -195,6 +195,51 @@ export async function vacateCounter(
   return released;
 }
 
+/**
+ * Remove a service capability from a counter, under the same locks as every queue command that
+ * touches the counter (`lockCounterScope`: sessions in id order, THEN the counter FOR UPDATE).
+ *
+ * Invariant: a counter never keeps a called or serving ticket of a service it no longer serves.
+ * If the counter is CALLING or SERVING a visitor of that service the removal is refused (409) and
+ * nothing changes: the operator finishes, hands over or requeues the visit first. Tickets of
+ * other services at the counter do not block the removal. Returns false if the capability did not
+ * exist (the route answers 404).
+ */
+export async function removeCounterCapability(
+  tx: Db,
+  auth: AuthContext,
+  facilityId: string,
+  counterId: string,
+  serviceId: string,
+): Promise<boolean> {
+  const { counter } = await lockCounterScope(tx, auth, counterId, facilityId);
+  // Fresh statements AFTER the locks: they see every call / serve committed before we got them
+  const existing = await tx`
+    SELECT 1 FROM counter_service_capabilities
+     WHERE counter_id = ${counter.id} AND service_id = ${serviceId} FOR UPDATE`;
+  if (existing.length === 0) return false;
+  const active = await tx<{ public_code: string; state: string; service_name: string }[]>`
+    SELECT t.public_code, t.state, s.name AS service_name FROM tickets t
+      JOIN queue_sessions qs ON qs.id = t.queue_session_id
+      JOIN services s ON s.id = qs.service_id
+     WHERE t.current_counter_id = ${counter.id} AND t.organization_id = ${auth.organizationId}
+       AND qs.service_id = ${serviceId} AND t.state IN ('called', 'serving')
+       FOR UPDATE OF t`;
+  const blocking = active[0];
+  if (blocking) {
+    const doing = blocking.state === TicketState.SERVING ? 'serving' : 'calling';
+    throw problems.conflict(
+      `${counter.name} is ${doing} a visitor (${blocking.public_code}) for ${blocking.service_name}. Complete the visit, hand it to another counter or return the visitor to the queue before removing this service.`,
+    );
+  }
+  // Signal while the capability row still exists (the signal joins on it); delivered on commit
+  await signalCounterQueues(tx, auth, facilityId, counter.id);
+  await tx`
+    DELETE FROM counter_service_capabilities
+     WHERE counter_id = ${counter.id} AND service_id = ${serviceId}`;
+  return true;
+}
+
 /** Staff consoles of today's queues served by this counter refresh (signal only, no data). */
 export async function signalCounterQueues(
   tx: Db,
