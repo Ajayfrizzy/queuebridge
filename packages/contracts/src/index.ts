@@ -15,3 +15,5 @@ export * from './admin.js';
 export * from './queue.js';
 export * from './ids.js';
 export * from './sync.js';
+export * from './fairness.js';
+export * from './audit-key.js';

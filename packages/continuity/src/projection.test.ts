@@ -39,6 +39,7 @@ const ticket = (
   counter_name: null,
   channel: 'web',
   joined_at: '2026-11-08T10:00:00.000Z',
+  wait_since: `2026-11-08T10:00:0${seq % 10}.000Z`,
   called_at: null,
   transferred_from_code: null,
 });
@@ -53,7 +54,16 @@ const snap: StaffQueue = {
   last_sequence: 3,
   policy_summary: '',
   tickets: [ticket(T1, 'G001', 1), ticket(T2, 'G002', 2)],
-  counters: [{ id: C1, name: 'Counter 1', active: true, busy_with_code: null }],
+  counters: [
+    { id: C1, name: 'Counter 1', active: true, availability: 'open', busy_with_code: null },
+  ],
+  policy: {
+    version: 'v1',
+    priority_order: ['normal'],
+    override_reasons: [],
+    transfer_placement: 'by_original_join_time',
+  },
+  no_open_counter: false,
   transfer_targets: [],
   estimate_for_new_visitor: null,
 };
@@ -155,6 +165,45 @@ describe('decideLocalCall mirrors the server rules', () => {
     ['unknown counter', 'open', 'nope', 'counter_missing'],
   ] as const)('refuses: %s', (_n, state, counter, reason) => {
     expect(decideLocalCall(state, p, counter)).toEqual({ ok: false, reason });
+  });
+  it('refuses a counter that is closed (M4: closed counters receive no calls)', () => {
+    const closed = projectQueue(
+      { ...snap, counters: [{ ...snap.counters[0]!, availability: 'closed' }] },
+      [],
+    );
+    expect(decideLocalCall('open', closed, C1)).toEqual({ ok: false, reason: 'counter_closed' });
+  });
+  it('follows the published class order and waiting age, like the server (no avoidable conflicts)', async () => {
+    const T3 = '550e8400-e29b-41d4-a716-446655440043';
+    const prio: StaffQueue = {
+      ...snap,
+      policy: { ...snap.policy, priority_order: ['priority', 'normal'] },
+      tickets: [
+        ticket(T1, 'G001', 1),
+        // issued later, but a transfer that kept an EARLIER waiting age
+        { ...ticket(T2, 'G002', 2), wait_since: '2026-11-08T09:00:00.000Z' },
+        { ...ticket(T3, 'G003', 3), priority_class: 'priority' },
+      ],
+    };
+    const cap = await recordLocalOperation(new MemoryOutboxStore(), newCaptureInput(base));
+    const pp = projectQueue(prio, [cap]);
+    const order = [...pp.tickets]
+      .filter((t) => t.position !== null)
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+      .map((t) => t.label);
+    expect(order).toEqual(['G003', 'G002', 'G001', cap.temporary_ref]);
+    expect(decideLocalCall('open', pp, C1)).toMatchObject({ ok: true, payload: { ticket_id: T3 } });
+  });
+  it('defaults safely for a snapshot cached before M4 (no policy, no availability)', () => {
+    const legacy = {
+      ...snap,
+      policy: undefined,
+      counters: [{ id: C1, name: 'Counter 1', active: true, busy_with_code: null }],
+    } as unknown as StaffQueue;
+    expect(decideLocalCall('open', projectQueue(legacy, []), C1)).toMatchObject({
+      ok: true,
+      payload: { ticket_id: T1 },
+    });
   });
   it('refuses a busy counter and an empty queue', async () => {
     const busy = projectQueue(

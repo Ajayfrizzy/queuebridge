@@ -6,9 +6,15 @@ import {
 } from '@queuebridge/contracts';
 import { recordAdminEvent } from '../admin-events.js';
 import type { Db } from '../db.js';
-import { requireFacilityPermission } from '../auth/rbac.js';
+import { queueActorRoles, requireFacilityPermission } from '../auth/rbac.js';
 import { requireAuth } from '../auth/session.js';
 import { isUniqueViolation, parseInput, problems } from '../errors.js';
+import {
+  lockCounterScope,
+  RELEASE_ROLES,
+  signalCounterQueues,
+  vacateCounter,
+} from '../queue/counters.js';
 import { uuidParam, type RouteDeps } from './deps.js';
 
 interface CounterRow {
@@ -130,19 +136,25 @@ export async function counterRoutes(app: FastifyInstance, deps: RouteDeps): Prom
       const counterId = uuidParam(req.params.counterId);
       const body = parseInput(UpdateCounterRequestSchema, req.body);
 
+      let released: { queue_id: string; public_code: string }[] = [];
       try {
-        await db.begin(async (tx) => {
-          const current = (
-            await tx<{ name: string; active: boolean }[]>`
-              SELECT name, active FROM counters
-               WHERE id = ${counterId} AND facility_id = ${facility.id}
-                 AND organization_id = ${auth.organizationId}
-               FOR UPDATE`
-          )[0];
-          if (!current) throw problems.notFound();
+        released = await db.begin(async (tx) => {
+          // Same lock order and invariant as closing a counter (queue/counters.ts): sessions,
+          // then the counter; a SERVING counter cannot be deactivated, a CALLED visitor is
+          // atomically returned to the head of their queue. Renames take the same locks.
+          const { sessions, counter } = await lockCounterScope(tx, auth, counterId, facility.id);
+          const deactivating = body.active === false && counter.active;
+          const freed = deactivating
+            ? await vacateCounter(tx, auth, counter, sessions, {
+                mayRelease: queueActorRoles(auth, facility.id).some((r) =>
+                  (RELEASE_ROLES as readonly string[]).includes(r),
+                ),
+                reasonCode: 'counter_deactivated',
+              })
+            : [];
           await tx`
             UPDATE counters
-               SET name = ${body.name ?? current.name}, active = ${body.active ?? current.active},
+               SET name = ${body.name ?? counter.name}, active = ${body.active ?? counter.active},
                    updated_at = NOW()
              WHERE id = ${counterId}`;
           await recordAdminEvent(tx, {
@@ -152,8 +164,15 @@ export async function counterRoutes(app: FastifyInstance, deps: RouteDeps): Prom
             eventType: 'counter.updated',
             targetType: 'counter',
             targetId: counterId,
-            details: { fields: Object.keys(body).join(',') },
+            details: {
+              fields: Object.keys(body).join(','),
+              ...(body.active !== undefined ? { active: body.active, released: freed.length } : {}),
+            },
           });
+          if (body.active !== undefined && body.active !== counter.active) {
+            await signalCounterQueues(tx, auth, facility.id, counterId);
+          }
+          return freed;
         });
       } catch (err) {
         if (isUniqueViolation(err, 'counters_facility_name_idx')) {
@@ -163,7 +182,7 @@ export async function counterRoutes(app: FastifyInstance, deps: RouteDeps): Prom
       }
       const [row] = await loadCounters(db, auth.organizationId, facility.id, counterId);
       if (!row) throw problems.notFound();
-      return reply.send({ counter: toDto(row) });
+      return reply.send({ counter: toDto(row), released });
     },
   );
 }

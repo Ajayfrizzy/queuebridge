@@ -10,13 +10,15 @@
     "typecheck": "tsc --noEmit --project tsconfig.json",
     "dev": "node --watch dist/worker.js",
     "start": "node dist/worker.js",
-    "test": "vitest run",
+    "test": "vitest run --exclude 'src/**/*.db.test.ts'",
     "test:coverage": "vitest run --coverage",
-    "clean": "rm -rf dist tsconfig.tsbuildinfo"
+    "clean": "rm -rf dist tsconfig.tsbuildinfo",
+    "test:db": "vitest run --config vitest.db.config.ts"
   },
   "dependencies": {
     "@queuebridge/channels": "workspace:*",
     "@queuebridge/contracts": "workspace:*",
+    "@queuebridge/domain": "workspace:*",
     "postgres": "3.4.5",
     "zod": "4.6.7"
   },

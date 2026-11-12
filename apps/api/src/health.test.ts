@@ -2,6 +2,7 @@ import { describe, expect, it, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from './app.js';
 import { parseEnv } from './env.js';
+import { auditKeyFingerprint } from './queue/audit.js';
 
 let app: FastifyInstance;
 
@@ -94,5 +95,39 @@ describe('env validation', () => {
         SESSION_SECRET: 'a'.repeat(32),
       }),
     ).not.toThrow();
+  });
+});
+
+describe('API audit signing configuration (same rules as the worker)', () => {
+  const base = { DATABASE_URL: 'postgres://localhost:5432/test', SESSION_SECRET: 'a'.repeat(32) };
+  const REAL = '3f9c2a7e1b0d4c6f8a5e2d9b7c1f0a3e6d8b4c2a9f7e1d0c5b3a8e6f2d4c1b9a';
+
+  it('loads a real key', () => {
+    const env = parseEnv({ ...base, AUDIT_SIGNING_KEY_ID: 'dev-1', AUDIT_SIGNING_KEY: REAL });
+    expect(env.AUDIT_SIGNING_KEY_ID).toBe('dev-1');
+  });
+
+  it('refuses the example placeholder without printing it', () => {
+    const placeholder = 'replace-with-ed25519-or-hmac-key';
+    let message = '';
+    try {
+      parseEnv({ ...base, AUDIT_SIGNING_KEY_ID: 'dev-1', AUDIT_SIGNING_KEY: placeholder });
+    } catch (e) {
+      message = e instanceof Error ? e.message : String(e);
+    }
+    expect(message).toMatch(/AUDIT_SIGNING_KEY: .*placeholder/);
+    expect(message).not.toContain(placeholder);
+  });
+
+  it('refuses a key without an id (and vice versa), and no key in production', () => {
+    expect(() => parseEnv({ ...base, AUDIT_SIGNING_KEY: REAL })).toThrow(/set together/);
+    expect(() => parseEnv({ ...base, AUDIT_SIGNING_KEY_ID: 'dev-1' })).toThrow(/set together/);
+    expect(() => parseEnv({ ...base, NODE_ENV: 'production' })).toThrow(/required in production/);
+  });
+
+  it('fingerprint matches the fixed vector the worker test also asserts', () => {
+    expect(auditKeyFingerprint('test-audit-signing-key-at-least-32-characters')).toBe(
+      '7714c1b67f8249cb',
+    );
   });
 });

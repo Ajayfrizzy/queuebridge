@@ -669,6 +669,7 @@ describe('append-only audit log', () => {
         'from_state',
         'to_state',
         'genesis',
+        'wait_since', // M4: the ticket's place-in-line timestamp (not personal data)
       ]).toContain(k);
     }
   });

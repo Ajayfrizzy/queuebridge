@@ -78,6 +78,10 @@ export const QueueAction = {
   TICKET_CANCEL: 'ticket.cancel',
   TICKET_TRANSFER: 'ticket.transfer',
   TICKET_PRIORITY_OVERRIDE: 'ticket.priority_override',
+  /** M4: a called/serving ticket handed to another counter of the same service */
+  TICKET_COUNTER_TRANSFER: 'ticket.counter_transfer',
+  /** M4: a called ticket returned to the head of its queue because its counter closed */
+  TICKET_RELEASE: 'ticket.release',
   QUEUE_OPEN: 'queue.open',
   QUEUE_PAUSE: 'queue.pause',
   QUEUE_CLOSE: 'queue.close',
@@ -89,6 +93,8 @@ export const QueueAction = {
   SYNC_CONFLICT_DETECTED: 'sync.conflict_detected',
   /** M3: a supervisor resolved a conflicted offline command */
   SYNC_CONFLICT_RESOLVED: 'sync.conflict_resolved',
+  /** M4: a service's fairness policy changed (audit-only; cites old and new version) */
+  POLICY_CHANGED: 'policy.changed',
 } as const;
 export type QueueAction = (typeof QueueAction)[keyof typeof QueueAction];
 

@@ -1,4 +1,11 @@
-import { QueueAction, type SyncStatus, TicketState, type StaffQueue } from '@queuebridge/contracts';
+import {
+  PriorityClass,
+  QueueAction,
+  type SyncStatus,
+  TicketState,
+  type StaffQueue,
+} from '@queuebridge/contracts';
+import { compareForCall } from '@queuebridge/domain';
 import { isUnsynced, type OutboxOperation } from './outbox.js';
 
 /**
@@ -22,6 +29,10 @@ export interface LocalTicket {
   local_status: SyncStatus | null;
   joined_at: string | null;
   issued_sequence: number;
+  /** Server-reported class (provisional captures are always `normal`) */
+  priority_class: PriorityClass;
+  /** Server-reported waiting age; null for provisional captures (the server assigns it on sync) */
+  wait_since: string | null;
   /** Position among waiting tickets (0 = next); null when not waiting */
   position: number | null;
 }
@@ -30,6 +41,8 @@ export interface LocalCounter {
   id: string;
   name: string;
   active: boolean;
+  /** Operational availability (M4): a closed counter receives no new calls */
+  availability: 'open' | 'closed';
   busy_with: string | null;
 }
 
@@ -40,6 +53,8 @@ export interface ProjectedQueue {
   applied: number;
   /** Operations that could not be folded in (target unknown / wrong state); still pending */
   skipped: string[];
+  /** The published class order the local call order follows */
+  priority_order: PriorityClass[];
 }
 
 const VIRTUAL_BASE = 1_000_000;
@@ -61,11 +76,36 @@ const STEP: Record<string, [TicketState, TicketState] | undefined> = {
   [QueueAction.TICKET_MISS]: [TicketState.CALLED, TicketState.MISSED],
 };
 
+/**
+ * Waiting tickets in the order the SERVER would call them (same comparator as the API:
+ * priority class → waiting age → issue number → id). Provisional captures have no waiting age
+ * yet and a virtual issue number, so they rank after every confirmed ticket of their class —
+ * exactly where the server will place them when they sync.
+ */
+function localCallOrder(tickets: LocalTicket[], order: readonly PriorityClass[]): LocalTicket[] {
+  return tickets
+    .filter((t) => t.state === TicketState.WAITING)
+    .sort((a, b) =>
+      compareForCall(
+        { ...a, id: a.id ?? a.key, wait_since: a.provisional ? null : a.wait_since },
+        { ...b, id: b.id ?? b.key, wait_since: b.provisional ? null : b.wait_since },
+        order,
+      ),
+    );
+}
+
 /** Fold unsent operations onto a server snapshot. Pure and deterministic. */
 export function projectQueue(
   snapshot: StaffQueue,
   ops: readonly OutboxOperation[],
 ): ProjectedQueue {
+  // Snapshots cached by a pre-M4 build carry no policy / availability: default conservatively
+  // (single FIFO class, counters open) — the server remains the judge on sync.
+  const priorityOrder = [
+    ...((snapshot.policy as StaffQueue['policy'] | undefined)?.priority_order ?? [
+      PriorityClass.NORMAL,
+    ]),
+  ];
   const tickets: LocalTicket[] = snapshot.tickets.map((t) => ({
     key: t.id,
     id: t.id,
@@ -78,12 +118,15 @@ export function projectQueue(
     local_status: null,
     joined_at: t.joined_at,
     issued_sequence: t.issued_sequence,
+    priority_class: t.priority_class,
+    wait_since: (t.wait_since as string | undefined) ?? null,
     position: null,
   }));
   const counters: LocalCounter[] = snapshot.counters.map((c) => ({
     id: c.id,
     name: c.name,
     active: c.active,
+    availability: (c.availability as LocalCounter['availability'] | undefined) ?? 'open',
     busy_with: c.busy_with_code,
   }));
   const skipped: string[] = [];
@@ -109,6 +152,8 @@ export function projectQueue(
         local_status: op.status,
         joined_at: op.created_at_client,
         issued_sequence: VIRTUAL_BASE + ++virtual,
+        priority_class: PriorityClass.NORMAL,
+        wait_since: null,
         position: null,
       });
       applied++;
@@ -143,24 +188,30 @@ export function projectQueue(
     applied++;
   }
 
-  // Local order: server order for confirmed tickets, then provisional ones in capture order
-  const waiting = tickets
-    .filter((t) => t.state === TicketState.WAITING)
-    .sort((a, b) => a.issued_sequence - b.issued_sequence);
+  const waiting = localCallOrder(tickets, priorityOrder);
   for (const t of tickets) {
     const i = waiting.indexOf(t);
     t.position = i === -1 ? null : i;
   }
-  return { tickets, counters, applied, skipped };
+  return { tickets, counters, applied, skipped, priority_order: priorityOrder };
 }
 
 export type LocalCallDecision =
   | { ok: true; ticket: LocalTicket; payload: { counter_id: string } & Target }
-  | { ok: false; reason: 'queue_not_open' | 'queue_empty' | 'counter_missing' | 'counter_busy' };
+  | {
+      ok: false;
+      reason:
+        | 'queue_not_open'
+        | 'queue_empty'
+        | 'counter_missing'
+        | 'counter_closed'
+        | 'counter_busy';
+    };
 
 /**
- * Decide what an offline "Call next" would call, mirroring the server's rules, so the UI can
- * refuse obviously invalid calls early. The server remains the judge on sync.
+ * Decide what an offline "Call next" would call, mirroring the server's rules (published class
+ * order, waiting age, open counters only), so the UI can refuse obviously invalid calls early.
+ * The server remains the judge on sync.
  */
 export function decideLocalCall(
   queueState: StaffQueue['state'],
@@ -170,10 +221,9 @@ export function decideLocalCall(
   if (queueState !== 'open') return { ok: false, reason: 'queue_not_open' };
   const counter = projected.counters.find((c) => c.id === counterId && c.active);
   if (!counter) return { ok: false, reason: 'counter_missing' };
+  if (counter.availability !== 'open') return { ok: false, reason: 'counter_closed' };
   if (counter.busy_with) return { ok: false, reason: 'counter_busy' };
-  const next = projected.tickets
-    .filter((t) => t.state === TicketState.WAITING)
-    .sort((a, b) => a.issued_sequence - b.issued_sequence)[0];
+  const next = localCallOrder(projected.tickets, projected.priority_order)[0];
   if (!next) return { ok: false, reason: 'queue_empty' };
   return {
     ok: true,

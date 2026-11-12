@@ -26,11 +26,20 @@ export const TRANSITION_RULES: TransitionRule[] = [
     allowedRoles: [Role.STAFF_COUNTER, Role.SUPERVISOR],
     to: TicketState.CALLED,
   },
+  // Calling a specific ticket out of the published order is a ROUTING OVERRIDE (REQ-F5.5):
+  // supervisor only, with a recorded reason
   {
     from: TicketState.WAITING,
     action: QueueAction.TICKET_CALL_SPECIFIC,
-    allowedRoles: [Role.STAFF_COUNTER, Role.SUPERVISOR],
+    allowedRoles: [Role.SUPERVISOR],
     to: TicketState.CALLED,
+  },
+  // Priority class change (REQ-F3.3): the ticket keeps waiting; only its class changes
+  {
+    from: TicketState.WAITING,
+    action: QueueAction.TICKET_PRIORITY_OVERRIDE,
+    allowedRoles: [Role.SUPERVISOR, Role.FACILITY_ADMIN],
+    to: TicketState.WAITING,
   },
   // waiting → paused
   {
@@ -130,6 +139,27 @@ export const TRANSITION_RULES: TransitionRule[] = [
     action: QueueAction.TICKET_CANCEL,
     allowedRoles: [Role.STAFF_RECEPTION, Role.STAFF_COUNTER, Role.SUPERVISOR],
     to: TicketState.CANCELLED,
+  },
+  // M4 routing: hand a called/serving ticket to another counter of the same service
+  {
+    from: TicketState.CALLED,
+    action: QueueAction.TICKET_COUNTER_TRANSFER,
+    allowedRoles: [Role.STAFF_COUNTER, Role.SUPERVISOR],
+    to: TicketState.CALLED,
+  },
+  {
+    from: TicketState.SERVING,
+    action: QueueAction.TICKET_COUNTER_TRANSFER,
+    allowedRoles: [Role.STAFF_COUNTER, Role.SUPERVISOR],
+    to: TicketState.SERVING,
+  },
+  // M4 routing: a called ticket returns to the head of its queue when its counter closes. Only
+  // roles that may close a busy counter can cause it (an idle counter has nothing to release).
+  {
+    from: TicketState.CALLED,
+    action: QueueAction.TICKET_RELEASE,
+    allowedRoles: [Role.SUPERVISOR, Role.FACILITY_ADMIN],
+    to: TicketState.WAITING,
   },
   // any → needs_review (supervisor forced review)
   // needs_review can only be resolved by supervisor; transition OUT handled separately

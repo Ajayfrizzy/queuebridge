@@ -6,7 +6,7 @@ const WEB_PORT = 4173;
 const WEB_ORIGIN = `http://localhost:${WEB_PORT}`;
 const DATABASE_URL =
   process.env['TEST_DATABASE_URL'] ??
-  'postgres://postgres:password@localhost:5432/queuebridge_test';
+  'postgres://postgres:password@localhost:55433/queuebridge_test';
 
 /**
  * Browser tests run against the REAL stack: built API (Fastify) + real PostgreSQL + built web

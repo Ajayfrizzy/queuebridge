@@ -124,6 +124,21 @@ jobs:
             echo "OK: DELETE on queue_events was correctly rejected by the trigger."
           fi
 
+      - name: Verify TRUNCATE on append-only audit tables is blocked (M4)
+        run: |
+          for t in queue_events admin_events service_policy_versions priority_overrides audit_checkpoints audit_integrity_alerts; do
+            if out=$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "TRUNCATE $t CASCADE" 2>&1); then
+              echo "ERROR: TRUNCATE on $t succeeded — append-only guard is NOT working!"
+              exit 1
+            elif echo "$out" | grep -q 'append-only'; then
+              echo "OK: TRUNCATE on $t was rejected by the append-only guard."
+            else
+              echo "ERROR: TRUNCATE on $t failed for an unexpected reason: $out"
+              exit 1
+            fi
+          done
+          test "$(psql "$DATABASE_URL" -tAc "SELECT count(*) FROM queue_events")" = "1"
+
       - name: Verify UNIQUE (queue_session_id, sequence) constraint
         run: |
           if psql "$DATABASE_URL" -c "

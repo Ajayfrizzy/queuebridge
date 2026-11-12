@@ -41,7 +41,7 @@ VALUES
     '018d1a2b-3c4d-7e5f-8a9b-0c1d2e3f4a5b',
     'General Consultation',
     'General outpatient consultation',
-    '{"version": "v1", "priority_order": ["urgent", "priority", "normal"], "grace_window_seconds": 300}'
+    '{"version": "v1", "priority_order": ["urgent", "priority", "normal"], "grace_window_seconds": 300, "override_reasons": ["accessibility_need", "urgent_need", "returning_visitor", "administrative_error"], "transfer_placement": "by_original_join_time"}'
   ),
   (
     '018d1a2b-3c4d-7e5f-8a9b-3c4d5e6f7a8b',
@@ -49,8 +49,17 @@ VALUES
     '018d1a2b-3c4d-7e5f-8a9b-0c1d2e3f4a5b',
     'Registration',
     'Patient registration and records',
-    '{"version": "v1", "priority_order": ["urgent", "normal"], "grace_window_seconds": 180}'
+    '{"version": "v1", "priority_order": ["urgent", "normal"], "grace_window_seconds": 180, "override_reasons": ["accessibility_need", "urgent_need", "returning_visitor", "administrative_error"], "transfer_placement": "by_original_join_time"}'
   )
+ON CONFLICT DO NOTHING;
+
+-- Immutable policy history (M4, ADR-012): the API records v1 when it creates a service; seeded
+-- services get the same snapshot so their history and decision replay work like any other.
+INSERT INTO service_policy_versions
+  (organization_id, facility_id, service_id, version_number, version_label, policy)
+SELECT s.organization_id, s.facility_id, s.id, 1, 'v1', s.policy
+  FROM services s
+ WHERE s.id IN ('018d1a2b-3c4d-7e5f-8a9b-2c3d4e5f6a7b', '018d1a2b-3c4d-7e5f-8a9b-3c4d5e6f7a8b')
 ON CONFLICT DO NOTHING;
 
 -- ---------------------------------------------------------------------------

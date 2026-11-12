@@ -11,7 +11,12 @@
  */
 
 import { execSync } from 'node:child_process';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
+import { assertQueueBridge, LOCK_KEY } from './db-identity.js';
+
+const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
 
 async function main() {
   const databaseUrl = process.env.DATABASE_URL;
@@ -28,6 +33,11 @@ async function main() {
   const sql = postgres(databaseUrl, { max: 1 });
 
   try {
+    // Only ever drop an identified QueueBridge database (never one reached by a wrong URL);
+    // hold the migration lock so nothing migrates it between the check and the drop
+    await sql`SELECT pg_advisory_lock(hashtext(${LOCK_KEY}))`;
+    const inspection = await assertQueueBridge(sql, MIGRATIONS_DIR, { allowEmpty: true });
+    console.log(`Database "${inspection.database}" identified as ${inspection.kind}.`);
     console.log('Dropping public schema...');
     await sql`DROP SCHEMA public CASCADE`;
     await sql`CREATE SCHEMA public`;
@@ -44,6 +54,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('Reset failed:', err.message);
+  console.error(err.code === 'QB_DB_IDENTITY' ? err.message : `Reset failed: ${err.message}`);
   process.exit(1);
 });

@@ -12,9 +12,11 @@ import { readFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
+import { assertQueueBridge } from './db-identity.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SEED_FILE = join(__dirname, '..', 'seeds', 'dev_seed.sql');
+const MIGRATIONS_DIR = join(__dirname, '..', 'migrations');
 
 async function main() {
   const databaseUrl = process.env.DATABASE_URL;
@@ -28,9 +30,11 @@ async function main() {
     process.exit(1);
   }
 
-  const sql = postgres(databaseUrl, { max: 1 });
+  const sql = postgres(databaseUrl, { max: 1, onnotice: () => undefined });
 
   try {
+    // Seed data only into an identified, fully migrated QueueBridge database
+    await assertQueueBridge(sql, MIGRATIONS_DIR, { requireFullyMigrated: true });
     const content = await readFile(SEED_FILE, 'utf8');
     console.log('Applying dev seed data...');
     await sql.unsafe(content);
@@ -41,6 +45,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('Seed failed:', err.message);
+  console.error(err.code === 'QB_DB_IDENTITY' ? err.message : `Seed failed: ${err.message}`);
   process.exit(1);
 });

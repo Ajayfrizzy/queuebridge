@@ -24,6 +24,7 @@ import { QueueNotifier } from './queue/notifier.js';
 import { serviceRoutes } from './routes/services.js';
 import { staffRoutes } from './routes/staff.js';
 import { syncRoutes } from './routes/sync.js';
+import { fairnessRoutes } from './routes/fairness.js';
 import type { RouteDeps } from './routes/deps.js';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -249,6 +250,7 @@ export async function buildApp(
       await api.register(staffRoutes, deps);
       await api.register(queueRoutes, deps);
       await api.register(syncRoutes, deps);
+      await api.register(fairnessRoutes, deps);
       await api.register(publicRoutes, deps);
     },
     { prefix: '/api/v1' },

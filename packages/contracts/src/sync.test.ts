@@ -132,3 +132,46 @@ describe('transport and request schemas', () => {
     expect(CommandResultSchema.safeParse({ ...r, disposition: 'maybe' }).success).toBe(false);
   });
 });
+
+describe('M4 fairness requests', () => {
+  it('priority override needs a v7 id, a class, a configured-shape code and a real explanation', async () => {
+    const {
+      PriorityOverrideRequestSchema,
+      CallOutOfOrderRequestSchema,
+      CounterAvailabilityRequestSchema,
+    } = await import('./index.js');
+    const base = {
+      operation_id: uuidv7(),
+      to_class: 'priority',
+      reason_code: 'accessibility_need',
+      reason_text: 'Uses a wheelchair',
+    };
+    expect(PriorityOverrideRequestSchema.safeParse(base).success).toBe(true);
+    expect(PriorityOverrideRequestSchema.safeParse({ ...base, reason_text: 'ok' }).success).toBe(
+      false,
+    );
+    expect(
+      PriorityOverrideRequestSchema.safeParse({ ...base, reason_text: 'x'.repeat(501) }).success,
+    ).toBe(false);
+    expect(PriorityOverrideRequestSchema.safeParse({ ...base, to_class: 'vip' }).success).toBe(
+      false,
+    );
+    expect(PriorityOverrideRequestSchema.safeParse({ ...base, actor_id: U }).success).toBe(false);
+    expect(
+      CallOutOfOrderRequestSchema.safeParse({
+        operation_id: uuidv7(),
+        counter_id: U,
+        reason_code: 'urgent_need',
+        reason_text: 'Needs care now',
+      }).success,
+    ).toBe(true);
+    expect(CounterAvailabilityRequestSchema.safeParse({ availability: 'closed' }).success).toBe(
+      false,
+    );
+    expect(
+      CounterAvailabilityRequestSchema.safeParse({ availability: 'closed', reason_code: 'break' })
+        .success,
+    ).toBe(true);
+    expect(CounterAvailabilityRequestSchema.safeParse({ availability: 'open' }).success).toBe(true);
+  });
+});

@@ -102,10 +102,22 @@ export const QueueCommandRequestSchema = z
   });
 export type QueueCommandRequest = z.infer<typeof QueueCommandRequestSchema>;
 
+/**
+ * Every action that can appear in a command outcome: the online command vocabulary plus the M4
+ * supervisor/routing actions, which have their own dedicated endpoints.
+ */
+export const QueueCommandActionSchema = z.enum([
+  ...OnlineQueueActionSchema.options,
+  QueueAction.TICKET_PRIORITY_OVERRIDE,
+  QueueAction.TICKET_CALL_SPECIFIC,
+  QueueAction.TICKET_COUNTER_TRANSFER,
+]);
+export type QueueCommandAction = z.infer<typeof QueueCommandActionSchema>;
+
 export const CommandOutcomeSchema = z.object({
   disposition: z.enum(['committed', 'duplicate', 'rejected']),
   operation_id: UuidSchema,
-  action: OnlineQueueActionSchema,
+  action: QueueCommandActionSchema,
   server_revision: z.number().int().nonnegative(),
   server_sequence: z.number().int().nonnegative().nullable(),
   ticket_id: UuidSchema.nullable(),
@@ -234,6 +246,8 @@ export const StaffTicketSchema = z.object({
   counter_name: z.string().nullable(),
   channel: z.enum(['web', 'staff', 'transfer']),
   joined_at: z.string(),
+  /** The instant this ticket's place in line is measured from (waiting age) */
+  wait_since: z.string(),
   called_at: z.string().nullable(),
   transferred_from_code: z.string().nullable(),
 });
@@ -255,9 +269,20 @@ export const StaffQueueSchema = z.object({
       id: UuidSchema,
       name: z.string(),
       active: z.boolean(),
+      /** Operational availability: a closed counter receives no new assignments */
+      availability: z.enum(['open', 'closed']),
       busy_with_code: z.string().nullable(),
     }),
   ),
+  /** The policy snapshot in force (classes, override reasons, transfer placement) */
+  policy: z.object({
+    version: z.string(),
+    priority_order: z.array(z.nativeEnum(PriorityClass)),
+    override_reasons: z.array(z.string()),
+    transfer_placement: z.enum(['by_original_join_time', 'end_of_queue']),
+  }),
+  /** True when no active, open counter can serve this service right now */
+  no_open_counter: z.boolean(),
   transfer_targets: z.array(z.object({ service_id: UuidSchema, service_name: z.string() })),
   estimate_for_new_visitor: WaitEstimateSchema.nullable(),
 });

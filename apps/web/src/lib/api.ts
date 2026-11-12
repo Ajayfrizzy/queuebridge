@@ -27,6 +27,14 @@ import type {
   SyncConflict,
   SyncSnapshot,
   CoordinatorStatus,
+  AuditPage,
+  AuditVerification,
+  CallOutOfOrderRequest,
+  CounterAvailabilityRequest,
+  CounterAvailabilityResult,
+  CounterTransferRequest,
+  PolicyVersion,
+  PriorityOverrideRequest,
 } from '@queuebridge/contracts';
 
 const BASE: string =
@@ -203,8 +211,10 @@ export const api = {
   updateService: (
     fid: string,
     sid: string,
-    body: { status?: 'active' | 'inactive' },
+    body: { status?: 'active' | 'inactive'; policy?: ServicePolicy },
   ): Promise<{ service: Service }> => request('PATCH', `/facilities/${fid}/services/${sid}`, body),
+  policyVersions: (fid: string, sid: string): Promise<{ versions: PolicyVersion[] }> =>
+    request('GET', `/facilities/${fid}/services/${sid}/policy-versions`),
 
   listCounters: (fid: string): Promise<{ counters: Counter[] }> =>
     request('GET', `/facilities/${fid}/counters`),
@@ -214,7 +224,8 @@ export const api = {
     fid: string,
     cid: string,
     body: { active: boolean },
-  ): Promise<{ counter: Counter }> => request('PATCH', `/facilities/${fid}/counters/${cid}`, body),
+  ): Promise<{ counter: Counter; released?: { queue_id: string; public_code: string }[] }> =>
+    request('PATCH', `/facilities/${fid}/counters/${cid}`, body),
   assignCapability: (counterId: string, serviceId: string): Promise<{ counter: Counter }> =>
     request('POST', '/counter_service_capabilities', {
       counter_id: counterId,
@@ -257,6 +268,32 @@ export const api = {
     request('POST', `/queues/${queueId}/commands`, body),
   walkIn: (queueId: string, operationId: string): Promise<{ ticket: JoinQueueResponse }> =>
     request('POST', `/queues/${queueId}/walk-ins`, { operation_id: operationId }),
+
+  // ---- M4: fairness, routing and audit (supervisor actions are re-authorized server-side) ----
+  priorityOverride: (
+    ticketId: string,
+    body: PriorityOverrideRequest,
+  ): Promise<{ outcome: CommandOutcome }> =>
+    request('POST', `/tickets/${ticketId}/priority-override`, body),
+  callOutOfOrder: (
+    ticketId: string,
+    body: CallOutOfOrderRequest,
+  ): Promise<{ outcome: CommandOutcome }> =>
+    request('POST', `/tickets/${ticketId}/call-out-of-order`, body),
+  counterTransfer: (
+    ticketId: string,
+    body: CounterTransferRequest,
+  ): Promise<{ outcome: CommandOutcome }> =>
+    request('POST', `/tickets/${ticketId}/counter-transfer`, body),
+  setCounterAvailability: (
+    counterId: string,
+    body: CounterAvailabilityRequest,
+  ): Promise<{ result: CounterAvailabilityResult }> =>
+    request('POST', `/counters/${counterId}/availability`, body),
+  audit: (queueId: string, afterSequence = 0, limit = 50): Promise<{ audit: AuditPage }> =>
+    request('GET', `/queues/${queueId}/audit?after_sequence=${afterSequence}&limit=${limit}`),
+  verifyAudit: (queueId: string): Promise<{ verification: AuditVerification }> =>
+    request('GET', `/queues/${queueId}/audit/verify`),
 
   // ---- M2: public / visitor ----
   publicFacility: (org: string, fac: string): Promise<{ facility: PublicFacility }> =>

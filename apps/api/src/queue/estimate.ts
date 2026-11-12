@@ -17,7 +17,7 @@ export interface EstimateContext {
   queueState: string;
 }
 
-/** Active counters, in an active facility, set to serve this active service. */
+/** Active, OPEN counters, in an active facility, set to serve this active service. */
 export async function activeCompatibleCounters(
   db: Db,
   organizationId: string,
@@ -30,7 +30,8 @@ export async function activeCompatibleCounters(
       JOIN counter_service_capabilities csc ON csc.counter_id = c.id AND csc.service_id = ${serviceId}
       JOIN services s ON s.id = csc.service_id AND s.status = 'active'
       JOIN facilities f ON f.id = c.facility_id AND f.status = 'active'
-     WHERE c.organization_id = ${organizationId} AND c.facility_id = ${facilityId} AND c.active`;
+     WHERE c.organization_id = ${organizationId} AND c.facility_id = ${facilityId} AND c.active
+       AND c.availability = 'open'`;
   return rows[0]?.n ?? 0;
 }
 

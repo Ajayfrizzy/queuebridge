@@ -8,19 +8,20 @@ inclusion: always
 
 ## Architecture decisions (ADR summary)
 
-| ID      | Decision                                                     | Must not deviate without ADR |
-| ------- | ------------------------------------------------------------ | ---------------------------- |
-| ADR-001 | Modular TypeScript monorepo (pnpm workspaces)                | Yes                          |
-| ADR-002 | React + TypeScript mobile-first PWA                          | Yes                          |
-| ADR-003 | Fastify API + PostgreSQL                                     | Yes                          |
-| ADR-004 | Server-authoritative final sequence                          | Yes — core invariant         |
-| ADR-005 | IndexedDB outbox + service worker                            | Yes                          |
-| ADR-006 | One designated coordinator per queue during outage           | Yes — core invariant         |
-| ADR-007 | Explicit recovery after partitions (no silent overwrite)     | Yes — core invariant         |
-| ADR-008 | Relational outbox for channel dispatch                       | Yes                          |
-| ADR-009 | Provider-neutral SMS and USSD adapters                       | Yes                          |
-| ADR-010 | Audit hash chain with external checkpoint option             | Yes                          |
-| ADR-011 | Ask Que: deterministic-first, read-only assistant (Proposed) | Yes — applies from MQ        |
+| ID      | Decision                                                                     | Must not deviate without ADR |
+| ------- | ---------------------------------------------------------------------------- | ---------------------------- |
+| ADR-001 | Modular TypeScript monorepo (pnpm workspaces)                                | Yes                          |
+| ADR-002 | React + TypeScript mobile-first PWA                                          | Yes                          |
+| ADR-003 | Fastify API + PostgreSQL                                                     | Yes                          |
+| ADR-004 | Server-authoritative final sequence                                          | Yes — core invariant         |
+| ADR-005 | IndexedDB outbox + service worker                                            | Yes                          |
+| ADR-006 | One designated coordinator per queue during outage                           | Yes — core invariant         |
+| ADR-007 | Explicit recovery after partitions (no silent overwrite)                     | Yes — core invariant         |
+| ADR-008 | Relational outbox for channel dispatch                                       | Yes                          |
+| ADR-009 | Provider-neutral SMS and USSD adapters                                       | Yes                          |
+| ADR-010 | Audit hash chain with external checkpoint option                             | Yes                          |
+| ADR-011 | Ask Que: deterministic-first, read-only assistant (Proposed)                 | Yes — applies from MQ        |
+| ADR-012 | Versioned fairness policy, waiting-age order, pull routing, HMAC checkpoints | Yes                          |
 
 Full ADRs live in `docs/adr/`.
 
@@ -51,7 +52,7 @@ channels    → imports contracts only; no domain/continuity internals
 ui          → imports contracts + React deps; no server-side packages
 apps/api    → imports all packages; does NOT import ui
 apps/web    → imports contracts, domain, continuity, ui; does NOT import channels internals
-apps/worker → imports contracts, channels, DB client; does NOT import ui or continuity IndexedDB
+apps/worker → imports contracts, domain (pure audit/ordering functions, ADR-012), channels, DB client; does NOT import ui or continuity IndexedDB
 ```
 
 Violating package boundaries invalidates the architectural isolation guarantee.

@@ -58,17 +58,17 @@ queuebridge/
 
 ### Package boundaries (enforced)
 
-| Package                | May import                                | Must NOT import                                     |
-| ---------------------- | ----------------------------------------- | --------------------------------------------------- |
-| `contracts`            | nothing internal                          | any app or package                                  |
-| `domain`               | `contracts`                               | `db`, `api`, any Node I/O                           |
-| `continuity`           | `contracts`, `domain`                     | `api`, direct DB calls                              |
-| `channels`             | `contracts`                               | `domain`, `continuity`, direct DB                   |
-| `ui`                   | `contracts`, `ui` deps                    | `domain`, `continuity`, `channels`, any server code |
-| `assist` (planned, MQ) | `contracts`                               | any app, DB, network or Node I/O                    |
-| `apps/api`             | all packages                              | `ui` (server-only)                                  |
-| `apps/web`             | `contracts`, `domain`, `continuity`, `ui` | `channels` server internals                         |
-| `apps/worker`          | `contracts`, `channels`, DB client        | `ui`, `continuity` IndexedDB                        |
+| Package                | May import                                                    | Must NOT import                                     |
+| ---------------------- | ------------------------------------------------------------- | --------------------------------------------------- |
+| `contracts`            | nothing internal                                              | any app or package                                  |
+| `domain`               | `contracts`                                                   | `db`, `api`, any Node I/O                           |
+| `continuity`           | `contracts`, `domain`                                         | `api`, direct DB calls                              |
+| `channels`             | `contracts`                                                   | `domain`, `continuity`, direct DB                   |
+| `ui`                   | `contracts`, `ui` deps                                        | `domain`, `continuity`, `channels`, any server code |
+| `assist` (planned, MQ) | `contracts`                                                   | any app, DB, network or Node I/O                    |
+| `apps/api`             | all packages                                                  | `ui` (server-only)                                  |
+| `apps/web`             | `contracts`, `domain`, `continuity`, `ui`                     | `channels` server internals                         |
+| `apps/worker`          | `contracts`, `domain` (pure), `channels`, DB client (ADR-012) | `ui`, `continuity` IndexedDB                        |
 
 ---
 
@@ -89,7 +89,7 @@ queuebridge/
 | Linting            | ESLint 9 flat-config                             | With TypeScript plugin                   |
 | Formatting         | Prettier                                         | 2-space indent, single quotes            |
 | CI                 | GitHub Actions                                   | Free tier                                |
-| Env validation     | `zod` + dotenv                                   | No runtime env surprises                 |
+| Env validation     | `zod` (no dotenv: env comes from the shell)      | `docs/local-environment.md`              |
 
 **Paid services:** explicitly prohibited. Do not add any dependency with a paid tier requirement for local or CI use.
 
