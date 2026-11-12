@@ -14,7 +14,7 @@
 | `pnpm typecheck`                                                    | PASS (all workspaces, 0 errors)                                                                                                                                                                                                            |
 | `pnpm build`                                                        | PASS                                                                                                                                                                                                                                       |
 | `pnpm test` (no DB)                                                 | PASS: contracts 102, domain 98, channels 18, continuity 64, ui 6, worker 10, api 53, web 34 (= **385**; M3 baseline 299)                                                                                                                   |
-| `pnpm test:db` (real PostgreSQL; api + worker)                      | PASS: api 25 files / **463** tests (M3 baseline 21 / 395; incl. 14 migration-guard and 16 counter-closure tests) + worker 1 file / **13** tests; 2 consecutive runs on the final tree (earlier rounds: 3 runs + 1 on a brand-new database) |
+| `pnpm test:db` (real PostgreSQL; api + worker)                      | PASS: api 25 files / **465** tests (M3 baseline 21 / 395; incl. 14 migration-guard and 16 counter-closure tests) + worker 1 file / **13** tests; 2 consecutive runs on the final tree (earlier rounds: 3 runs + 1 on a brand-new database) |
 | Playwright (all projects: 1280, 1440, 375, 320 px)                  | PASS: **127 passed**, 4 skipped (the pre-existing opt-in screenshot-capture test, `CAPTURE` unset); M3 baseline 108                                                                                                                        |
 | Playwright `e2e/fairness.spec.ts` alone                             | PASS: **13** (3 `@responsive` journeys × 4 widths + policy versions at 1280)                                                                                                                                                               |
 | Playwright `e2e/counter-closure.spec.ts` alone                      | PASS: **5** (deactivation journey × 4 widths + policy-permission check at 1280)                                                                                                                                                            |
@@ -32,7 +32,7 @@ See `M4-completion.md` → "GitHub — PR #6 and CI" for the job-by-job results.
 M3 offline-sync test defect fixed (assertion made precise and stronger, mutation-checked); an
 M1 sign-out test failure not reproduced (unchanged code, recorded). Codex review (2 × P2) — false `failed`
 under concurrent writes (single-snapshot fix) and operation-id reuse after a refusal (tracker
-fix) — both fixed with regression tests that fail without the fix; details in `M4-completion.md`.
+fix) — both fixed with regression tests that fail without the fix; details in `M4-completion.md`. Codex re-review of `14de6d1` (1 × P2): silently truncated audit export over 50,000 events — now refused with 413 and every export states its count and head; regression test fails without the fix.
 
 ## Manual acceptance result (human tester, reported 2026-11-12)
 

@@ -34,6 +34,8 @@ const EnvSchema = z
      * snapshot).
      */
     COORDINATOR_SIGNING_KEY: z.string().min(32).optional(),
+    /** Largest session a single redacted audit export may hold (larger ones are refused, never cut). */
+    AUDIT_EXPORT_MAX_EVENTS: z.coerce.number().int().min(1).max(1_000_000).default(50_000),
     /** Comma-separated list of allowed browser origins (CORS + CSRF origin check). */
     CORS_ORIGIN: z.string().default('http://localhost:5173'),
     /** Public origin of the web app; used to build join links. */

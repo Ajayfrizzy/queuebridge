@@ -160,29 +160,54 @@ export async function auditPage(
 }
 
 /** Redacted export (REQ-F8.6): no staff names, no free-text explanations (hash only). */
-export async function auditExport(
-  db: Db,
-  organizationId: string,
-  queueId: string,
-): Promise<{
+export interface AuditExport {
   queue_id: string;
   service_name: string;
   operational_date: string;
   exported_at: string;
   redacted: true;
+  /** The session's recorded head when exported: `event_count` must equal it for a whole record */
+  last_sequence: number;
+  event_count: number;
+  head_hash: string | null;
   events: AuditEvent[];
-} | null> {
-  const s = await sessionInfo(db, organizationId, queueId);
-  if (!s) return null;
-  const rows = await loadEvents(db, organizationId, queueId, 0, AUDIT_FULL_MAX);
-  return {
-    queue_id: s.id,
-    service_name: s.service_name,
-    operational_date: s.operational_date,
-    exported_at: new Date().toISOString(),
-    redacted: true,
-    events: rows.map((r) => toAuditEvent(r, true)),
-  };
+}
+
+/**
+ * Redacted export of a whole session — ALL of it or nothing: a session larger than `maxEvents`
+ * is refused (`too_large`) instead of returning a silently truncated file. Read in one snapshot,
+ * so `event_count`, `last_sequence` and `head_hash` describe the same moment.
+ */
+export async function auditExport(
+  db: Db,
+  organizationId: string,
+  queueId: string,
+  maxEvents: number = AUDIT_FULL_MAX,
+): Promise<AuditExport | { too_large: true; last_sequence: number; max_events: number } | null> {
+  return db.begin('isolation level repeatable read read only', async (tx) => {
+    const s = await sessionInfo(tx, organizationId, queueId);
+    if (!s) return null;
+    const tooLarge = {
+      too_large: true as const,
+      last_sequence: s.last_sequence,
+      max_events: maxEvents,
+    };
+    if (s.last_sequence > maxEvents) return tooLarge;
+    // one extra row detects an over-long log even if `last_sequence` understates it
+    const rows = await loadEvents(tx, organizationId, queueId, 0, maxEvents + 1);
+    if (rows.length > maxEvents) return tooLarge;
+    return {
+      queue_id: s.id,
+      service_name: s.service_name,
+      operational_date: s.operational_date,
+      exported_at: new Date().toISOString(),
+      redacted: true as const,
+      last_sequence: s.last_sequence,
+      event_count: rows.length,
+      head_hash: rows[rows.length - 1]?.event_hash ?? null,
+      events: rows.map((r) => toAuditEvent(r, true)),
+    };
+  });
 }
 
 /** HMAC-SHA256 over the checkpoint message. The worker signs with the same construction. */

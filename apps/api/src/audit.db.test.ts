@@ -291,6 +291,44 @@ describe('verification under concurrent writes (no false failures)', () => {
   });
 });
 
+describe('audit export is all or nothing (PR #6 review)', () => {
+  it('a session larger than the export limit is refused (413), never returned truncated', async () => {
+    const small = await createTestApp({ AUDIT_EXPORT_MAX_EVENTS: '5' });
+    try {
+      const q = await busySession(small); // well over 5 events
+      const r = await q.org.admin.request('GET', `/api/v1/queues/${q.queueId}/audit/export`);
+      expect(r.status).toBe(413);
+      const body = r.body as { type?: string; detail?: string; events?: unknown };
+      expect(body.type).toMatch(/audit-export-too-large/);
+      expect(body.detail).toMatch(/at most 5/);
+      expect(body.events).toBeUndefined(); // no partial record at all
+      expect(String(r.headers['content-disposition'] ?? '')).not.toMatch(/attachment/);
+    } finally {
+      await small.close();
+    }
+  });
+
+  it('an export within the limit is complete and says so: every event, count = recorded head', async () => {
+    const q = await busySession(t);
+    const exp = await q.org.admin.request('GET', `/api/v1/queues/${q.queueId}/audit/export`);
+    expect(exp.status).toBe(200);
+    const body = exp.body as {
+      last_sequence: number;
+      event_count: number;
+      head_hash: string;
+      events: { sequence: number; event_hash: string }[];
+    };
+    const [s] = await t.db<{ last_sequence: number }[]>`
+      SELECT last_sequence FROM queue_sessions WHERE id = ${q.queueId}`;
+    expect(body.last_sequence).toBe(s?.last_sequence);
+    expect(body.event_count).toBe(body.last_sequence);
+    expect(body.events.map((e) => e.sequence)).toEqual(
+      Array.from({ length: body.event_count }, (_v, i) => i + 1),
+    );
+    expect(body.head_hash).toBe(body.events[body.events.length - 1]?.event_hash);
+  });
+});
+
 describe('verification outcomes (never a false success)', () => {
   it('a clean session verifies: chain, replayed decisions (across a policy change and an override), no checkpoints yet', async () => {
     const q = await busySession(t);

@@ -204,8 +204,14 @@ export async function fairnessRoutes(app: FastifyInstance, deps: RouteDeps): Pro
     { preHandler: authenticate, config: limited },
     async (req, reply) => {
       const { auth, queueId } = await authorizeAudit(req, req.params.id);
-      const data = await auditExport(db, auth.organizationId, queueId);
+      const data = await auditExport(db, auth.organizationId, queueId, env.AUDIT_EXPORT_MAX_EVENTS);
       if (!data) throw problems.notFound();
+      if ('too_large' in data) {
+        // Never a partial record presented as the whole: refuse, and say how to get all of it
+        throw new ApiProblem(413, 'audit-export-too-large', 'Audit export too large', {
+          detail: `This queue session has ${data.last_sequence} events; a single export holds at most ${data.max_events}. Use the paginated audit view (GET /api/v1/queues/${queueId}/audit?after_sequence=…) to read the whole record.`,
+        });
+      }
       return reply
         .header('Content-Disposition', `attachment; filename="queue-${queueId}-audit.json"`)
         .send(data);

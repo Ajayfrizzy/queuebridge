@@ -235,7 +235,7 @@ M4 adds (auditor, supervisor, facility admin; tenant-scoped, read-only):
 
 ```
 GET    /api/v1/queues/:id/audit?after_sequence&limit   # page ≤ 200, with override explanations
-GET    /api/v1/queues/:id/audit/export                 # redacted (no names / free text)
+GET    /api/v1/queues/:id/audit/export                 # redacted (no names / free text); whole session or 413
 GET    /api/v1/queues/:id/audit/verify                 # verified | failed | incomplete
 POST   /api/v1/tickets/:id/priority-override           # supervisor/facility_admin, reason required
 POST   /api/v1/tickets/:id/call-out-of-order           # supervisor/facility_admin, reason required
