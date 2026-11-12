@@ -1,7 +1,7 @@
 # QueueBridge — Spec Tasks
 
 **Spec version:** 1.0  
-**Status:** M0–M3 complete and merged into `staging` (PRs #1 M0, #2 M1, #3 F13 spec, #4 M2, #5 M3; `staging` at `f880abb`); M4 implemented on `feature/m4-fairness-routing-audit` (local gates pass — see `docs/testing/M4-evidence.md`; not yet committed, reviewed or merged); M5–M7 planned; MQ (Ask Que, F13) planned between M5 and M6  
+**Status:** M0–M3 complete and merged into `staging` (PRs #1 M0, #2 M1, #3 F13 spec, #4 M2, #5 M3; `staging` at `f880abb`); M4 implemented on `feature/m4-fairness-routing-audit` — PR #6 → `staging` open, CI green, manual acceptance 17/17, Codex no major issues; NOT merged; M5–M7 planned; MQ (Ask Que, F13) planned between M5 and M6  
 **Each task:** implement → test → validate → mark done
 
 ---
@@ -246,7 +246,7 @@ Deferred to M2 (not implemented here): routing-engine eligibility tests, visitor
 ## M4 — Fairness, Overrides, Audit, Routing (F3, F5, F8)
 
 > Implemented on `feature/m4-fairness-routing-audit` (from `staging` `f880abb`). Local gates pass;
-> NOT yet committed, reviewed or merged. Evidence: `docs/testing/M4-evidence.md`. Report:
+> Committed; PR #6 → `staging` (CI green; manual acceptance 17/17); NOT merged. Evidence: `docs/testing/M4-evidence.md`. Report:
 > `M4-completion.md`. Decisions: ADR-012. Each box below names the test that evidences it.
 
 ### M4.1 Fairness and priority

@@ -1,9 +1,9 @@
 # M4 Test Evidence — Fairness, Overrides, Audit and Adaptive Routing (F3, F5, F8)
 
 **Branch:** `feature/m4-fairness-routing-audit` (created from `staging` @ `f880abb`, M0–M3 merged).
-**Not committed, not pushed, no PR** — everything below was run locally on the working tree.
+**Committed; PR #6 → `staging` (https://github.com/Ajayfrizzy/queuebridge/pull/6), not merged.** Local gate results below; GitHub CI results in `M4-completion.md` → "Final state".
 **Date:** 2026-11-08 · **Node:** 24 · **pnpm:** 9 · **PostgreSQL:** 17.10 (disposable Docker container `queuebridge-pg`, port 55433)
-**GitHub CI:** not run (nothing pushed). The local runs reproduce every CI job.
+**GitHub CI:** all 11 jobs green on `014389d` (push and pull-request runs); counts identical to the local runs.
 
 ## Gate results (local, final run on the finished tree)
 
