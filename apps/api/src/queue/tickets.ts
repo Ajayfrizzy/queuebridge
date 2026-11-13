@@ -1,10 +1,9 @@
 import { PriorityClass, QueueAction, TicketState } from '@queuebridge/contracts';
-import { generateToken, hashToken } from '../auth/tokens.js';
 import type { Db } from '../db.js';
 import { appendEvent, type LockedSession } from './events.js';
 
-/** Validity of a ticket status token. Recovery of lost tokens is M5 (F4). */
-export const STATUS_TOKEN_TTL_HOURS = 24;
+// Status tokens and recovery keys live in the identity-plane credential service (M5.1)
+export { STATUS_TOKEN_TTL_HOURS, issueStatusToken } from '../recovery/credentials.js';
 
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
@@ -129,15 +128,4 @@ export async function issueTicket(
     transition: { ticketId, from: 'none', to: TicketState.WAITING },
   });
   return { ticketId, publicCode, issuedSequence, sequence: ev.sequence, waitSince };
-}
-
-/** Issue (or rotate) the status credential for a ticket; returns the raw token exactly once. */
-export async function issueStatusToken(tx: Db, ticketId: string): Promise<string> {
-  const token = generateToken();
-  await tx`
-    INSERT INTO ticket_recovery_credentials (ticket_id, credential_hash, expires_at)
-    VALUES (${ticketId}, ${hashToken(token)}, NOW() + make_interval(hours => ${STATUS_TOKEN_TTL_HOURS}))
-    ON CONFLICT (ticket_id) DO UPDATE
-      SET credential_hash = EXCLUDED.credential_hash, expires_at = EXCLUDED.expires_at, attempts = 0`;
-  return token;
 }

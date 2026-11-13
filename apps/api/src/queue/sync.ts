@@ -24,6 +24,8 @@ import { authoritySigningKey, verifyAuthority } from './authority.js';
 import { applyCommand, CommandRejected } from './commands.js';
 import { appendEvent, lockSessions, type LockedSession } from './events.js';
 import { assessTiming } from './timing.js';
+import { setRecoveryKey } from '../recovery/credentials.js';
+import { createRecoveryCrypto, type RecoveryCrypto } from '../recovery/crypto.js';
 import { issueStatusToken, issueTicket } from './tickets.js';
 
 // ---------------------------------------------------------------------------
@@ -96,7 +98,7 @@ export interface StoredResult {
 }
 
 type Evaluation =
-  | { kind: 'committed'; result: StoredResult; statusToken?: string }
+  | { kind: 'committed'; result: StoredResult; statusToken?: string; recoveryKey?: string }
   | { kind: 'needs_review' | 'rejected'; reason: string; message?: string };
 
 const nr = (reason: string, message?: string): Evaluation => ({
@@ -122,6 +124,8 @@ interface BatchContext {
   /** Verified coordinator tokens keyed `${queue}:${device}:${epoch}:${delivered_at}` */
   authorities: Map<string, CoordinatorAuth>;
   log: FastifyBaseLogger;
+  /** M5.1: recovery keys for tickets confirmed by this batch (null: recovery not configured) */
+  recovery?: RecoveryCrypto | null;
 }
 
 const tokenKey = (queue: string, device: string, epoch: number, delivered = ''): string =>
@@ -202,7 +206,13 @@ export async function processSyncBatch(
       authorities.set(tokenKey(a.queue_session_id, a.device_id, a.epoch, a.delivered_at ?? ''), a);
     }
   }
-  const ctx: BatchContext = { auth, devices, authorities, log };
+  const ctx: BatchContext = {
+    auth,
+    devices,
+    authorities,
+    log,
+    recovery: createRecoveryCrypto(env),
+  };
 
   // ---- Process in client_sequence order ------------------------------------------------------
   const results: CommandResult[] = new Array<CommandResult>(slots.length);
@@ -362,6 +372,8 @@ async function processInTx(
       existing.result_json.ticket_id
     ) {
       res.status_token = await issueStatusToken(tx, existing.result_json.ticket_id);
+      const key = await setRecoveryKey(tx, ctx.recovery ?? null, existing.result_json.ticket_id);
+      if (key) res.recovery_key = key;
     }
     return res;
   }
@@ -389,6 +401,7 @@ async function processInTx(
     return {
       ...fromStored(evaluation.result, env, index, 'committed'),
       ...(evaluation.statusToken ? { status_token: evaluation.statusToken } : {}),
+      ...(evaluation.recoveryKey ? { recovery_key: evaluation.recoveryKey } : {}),
     };
   }
 
@@ -488,7 +501,7 @@ export interface EvaluateOptions {
 
 export async function evaluate(
   tx: TransactionSql,
-  ctx: Pick<BatchContext, 'auth' | 'authorities'>,
+  ctx: Pick<BatchContext, 'auth' | 'authorities' | 'recovery'>,
   session: LockedSession,
   locked: Map<string, LockedSession>,
   roles: ReturnType<typeof queueActorRoles>,
@@ -537,9 +550,11 @@ export async function evaluate(
         createdBy: opts.originalActorId ?? ctx.auth.staffUserId,
       });
       const token = await issueStatusToken(tx, issued.ticketId);
+      const key = await setRecoveryKey(tx, ctx.recovery ?? null, issued.ticketId);
       return {
         kind: 'committed',
         statusToken: token,
+        ...(key ? { recoveryKey: key } : {}),
         result: {
           disposition: 'committed',
           server_revision: session.revision,

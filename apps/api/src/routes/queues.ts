@@ -123,6 +123,7 @@ export async function queueRoutes(app: FastifyInstance, deps: RouteDeps): Promis
         operationId: body.operation_id,
         proofHash: null,
         staffUserId: auth.staffUserId,
+        recovery: deps.recovery,
       });
       return reply.status(result.disposition === 'committed' ? 201 : 200).send({ ticket: result });
     },

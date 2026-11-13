@@ -8,6 +8,9 @@ const p = (priority_order: ServicePolicy['priority_order'], grace = 300): Servic
   grace_window_seconds: grace,
   override_reasons: ['accessibility_need'],
   transfer_placement: 'by_original_join_time',
+  rejoin_policy: 'staff_resume',
+  auto_miss: { enabled: false },
+  staff_recovery: true,
 });
 
 describe('service policy display', () => {

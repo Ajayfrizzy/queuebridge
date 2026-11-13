@@ -4,6 +4,7 @@ import type { Db } from '../db.js';
 import type { Env } from '../env.js';
 import { problems } from '../errors.js';
 import type { QueueNotifier } from '../queue/notifier.js';
+import type { RecoveryCrypto } from '../recovery/crypto.js';
 
 export interface RouteDeps {
   db: Db;
@@ -12,6 +13,8 @@ export interface RouteDeps {
   authenticate: (req: FastifyRequest, reply: FastifyReply) => Promise<void>;
   /** Live change-signal fan-out for SSE streams. */
   notifier: QueueNotifier;
+  /** M5.1 recovery cryptography; null when CONTACT_ENCRYPTION_KEY is absent (recovery disabled). */
+  recovery: RecoveryCrypto | null;
 }
 
 const uuid = z.string().uuid();

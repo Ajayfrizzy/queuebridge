@@ -309,25 +309,25 @@ Deferred to M2 (not implemented here): routing-engine eligibility tests, visitor
 
 Original tasks (unchanged):
 
-- [ ] Recovery credential generation and secure storage
-- [ ] Rate-limited recovery endpoint
-- [ ] Grace window and rejoin policy configuration
-- [ ] Recovery UI flow
+- [x] Recovery credential generation and secure storage
+- [x] Rate-limited recovery endpoint
+- [x] Grace window and rejoin policy configuration
+- [x] Recovery UI flow
 
 Design-derived tasks (revised 2026-11-12; ADR-015, design §15):
 
-- [ ] Contracts: recovery request/response (key or grant), staff assist/approve, policy additions (`rejoin_policy`, `auto_miss`, `staff_recovery`), error problem types; `JoinQueueResponse` gains the one-time `recovery_key`
-- [ ] M5.1 migration (additive; indicatively `0007`): `ticket_recovery_credentials` gains `source`, `revoked_at`, `revoked_reason`, `last_used_at` and the unique `ticket_id` index is replaced by a plain partial index; new `ticket_recovery_proofs` (no failure/lock columns), `ticket_recovery_grants` (basic assurance needs a different approver, enforced by CHECK), `recovery_throttle`, `auto_miss_sweeps`; migration guard and idempotency tests updated
-- [ ] Credential service: 160-bit CSPRNG recovery key (Crockford base32, 32 chars), HMAC-SHA-256 with an HKDF-derived pepper from `CONTACT_ENCRYPTION_KEY`, constant-time compare, tolerant input normalization; status tokens capped at 3 active with the rotation/invalidation matrix of design §15.6; join replay keeps its proof-based re-issue; "access granted elsewhere" notice to existing devices
-- [ ] Presentation: QR + link with the key in the URL fragment only (read, then removed with `history.replaceState`, sent in a POST body), readable 8×4 grouped text, Copy/Share/Save/Print; key never in `localStorage`, outbox or logs
-- [ ] `POST /tickets/recover` (key or grant): uniform failure and constant work; throttle layers L1–L5 keyed only on public identifiers and the source (never the guess), `RECOVERY_RATE_LIMIT_MAX` = 10 per minute, 5 failures per 15 min per ticket code per source, no lifetime lock, no unlock endpoint, clean sources always verified; atomic counters; `recovery_abuse` alert
-- [ ] `POST /tickets/:code/recovery-key`, `…/sessions/revoke-others`
-- [ ] Staff-assisted recovery per design §15.5a: `…/recovery/assist`, `…/recovery/approve`, `…/recovery/revoke-all`; assurance rules (no factor ⇒ restricted assistance and no credential; basic factor ⇒ second `QUEUE_MANAGE` approver; strong factor only from M6), single-use 10-minute grants redeemed on the visitor's device, reason code, rate limits, audit without values, `staff_recovery` policy switch, restricted-assistance script in the console
-- [ ] `rejoin_policy`: `POST /tickets/:code/rejoin` through the standard command path (`visitor_self` role for `missed → waiting` in `grace_window_active` only), idempotent, fenced while a coordinator holds the queue; default `staff_resume` leaves current behaviour unchanged; policy replay of earlier snapshots verified
-- [ ] Automatic no-show (opt-in, default off) per design §15.8: policy form with required seconds (60–3600) and visitor-facing rule text; API sweep (every `AUTO_MISS_SWEEP_SECONDS`, initial 15) that calls the standard command executor with a `system` role for `called → missed` only; per-candidate transaction (session then ticket lock, re-check with database time and current policy version); deterministic version-7-layout `operation_id`; refused while a coordinator is assigned; clock restarts after the last coordinator event and after a detected outage (`auto_miss_sweeps`); stateless restart; no import path to notification code
-- [ ] Web: recovery key display, `/recover` and fragment-link page (offline message, no CAPTCHA), "Sign out other devices", rejoin button with grace text, access-granted banner, staff console procedure, supervisor approval queue, admin policy fields, offline-ticket "recovery unavailable until confirmed" message
-- [ ] Retention job: tokens 24 h after expiry, `key_hmac` 24 h after ticket end, grants and throttle rows 24 h after expiry/window (idempotent; shares the §12.13 job)
-- [ ] Group 8 items 8.R1–8.R12 implemented on real PostgreSQL; Playwright for the visitor and staff flows; evidence in `docs/testing/M5-evidence.md`
+- [x] Contracts: recovery request/response (key or grant), staff assist/approve, policy additions (`rejoin_policy`, `auto_miss`, `staff_recovery`), error problem types; `JoinQueueResponse` gains the one-time `recovery_key`
+- [x] M5.1 migration (additive; indicatively `0007`): `ticket_recovery_credentials` gains `source`, `revoked_at`, `revoked_reason`, `last_used_at` and the unique `ticket_id` index is replaced by a plain partial index; new `ticket_recovery_proofs` (no failure/lock columns), `ticket_recovery_grants` (basic assurance needs a different approver, enforced by CHECK), `recovery_throttle`, `auto_miss_sweeps`; migration guard and idempotency tests updated
+- [x] Credential service: 160-bit CSPRNG recovery key (Crockford base32, 32 chars), HMAC-SHA-256 with an HKDF-derived pepper from `CONTACT_ENCRYPTION_KEY`, constant-time compare, tolerant input normalization; status tokens capped at 3 active with the rotation/invalidation matrix of design §15.6; join replay keeps its proof-based re-issue; "access granted elsewhere" notice to existing devices
+- [x] Presentation: QR + link with the key in the URL fragment only (read, then removed with `history.replaceState`, sent in a POST body), readable 8×4 grouped text, Copy/Share/Save/Print; key never in `localStorage`, outbox or logs
+- [x] `POST /tickets/recover` (key or grant): uniform failure and constant work; throttle layers L1–L5 keyed only on public identifiers and the source (never the guess), `RECOVERY_RATE_LIMIT_MAX` = 10 per minute, 5 failures per 15 min per ticket code per source, no lifetime lock, no unlock endpoint, clean sources always verified; atomic counters; `recovery_abuse` alert
+- [x] `POST /tickets/:code/recovery-key`, `…/sessions/revoke-others`
+- [x] Staff-assisted recovery per design §15.5a: `…/recovery/assist`, `…/recovery/approve`, `…/recovery/revoke-all`; assurance rules (no factor ⇒ restricted assistance and no credential; basic factor ⇒ second `QUEUE_MANAGE` approver; strong factor only from M6), single-use 10-minute grants redeemed on the visitor's device, reason code, rate limits, audit without values, `staff_recovery` policy switch, restricted-assistance script in the console
+- [x] `rejoin_policy`: `POST /tickets/:code/rejoin` through the standard command path (`visitor_self` role for `missed → waiting` in `grace_window_active` only), idempotent, fenced while a coordinator holds the queue; default `staff_resume` leaves current behaviour unchanged; policy replay of earlier snapshots verified
+- [x] Automatic no-show (opt-in, default off) per design §15.8: policy form with required seconds (60–3600) and visitor-facing rule text; API sweep (every `AUTO_MISS_SWEEP_SECONDS`, initial 15) that calls the standard command executor with a `system` role for `called → missed` only; per-candidate transaction (session then ticket lock, re-check with database time and current policy version); deterministic version-7-layout `operation_id`; refused while a coordinator is assigned; clock restarts after the last coordinator event and after a detected outage (`auto_miss_sweeps`); stateless restart; no import path to notification code
+- [x] Web: recovery key display, `/recover` and fragment-link page (offline message, no CAPTCHA), "Sign out other devices", rejoin button with grace text, access-granted banner, staff console procedure, supervisor approval queue, admin policy fields, offline-ticket "recovery unavailable until confirmed" message
+- [x] Retention job: tokens 24 h after expiry, `key_hmac` 24 h after ticket end, grants and throttle rows 24 h after expiry/window (idempotent; shares the §12.13 job)
+- [x] Group 8 items 8.R1–8.R12 implemented on real PostgreSQL; Playwright for the visitor and staff flows; evidence in `docs/testing/M5-evidence.md` (manual device passes still to be recorded; strong-factor tests arrive with M6)
 
 ### M5.2 Accessibility (F7; design §16; Group 11: 11.A1–11.A11)
 

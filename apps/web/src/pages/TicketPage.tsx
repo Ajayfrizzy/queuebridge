@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { api, apiUrl, TICKET_TOKEN_HEADER } from '../lib/api.js';
+import { uuidv7 } from '@queuebridge/contracts';
+import { useAnnounce } from '../components/Announcer.js';
+import { RecoveryKeyPanel } from '../components/RecoveryKeyPanel.js';
+import { api, apiUrl, ApiRequestError, TICKET_TOKEN_HEADER } from '../lib/api.js';
+import { discardRecoveryKey, peekRecoveryKey, stashRecoveryKey } from '../lib/recoveryKey.js';
 import { CONFIDENCE_LABEL, formatEstimate, formatTime, STATE_LABEL } from '../lib/format.js';
 import { useLiveUpdates } from '../lib/live.js';
 import {
@@ -47,7 +51,11 @@ function TicketView(): ReactElement {
   const navState = location.state as { token?: string; unsaved?: boolean } | null;
 
   const [initial] = useState(() => {
-    const explicit = takeTokenFromHash() ?? navState?.token ?? null;
+    // A staff walk-in link may also carry the recovery key (fragment only; kept in memory)
+    const explicit =
+      takeTokenFromHash((k) => stashRecoveryKey({ code, key: k, path: '' })) ??
+      navState?.token ??
+      null;
     if (explicit) return { token: explicit, ambiguous: [] as StoredTicket[] };
     const saved = resolveSaved(code, localId);
     if (saved === 'ambiguous') return { token: null, ambiguous: ticketsWithCode(code) };
@@ -70,7 +78,89 @@ function TicketView(): ReactElement {
 
   const s = status.data?.status;
   const [savedId, setSavedId] = useState<string | null>(localId);
+  const announce = useAnnounce();
+  // M5.1: a key shown once (after joining, a walk-in link, or a replacement); memory only
+  const [fresh, setFresh] = useState<{ key: string; path: string } | null>(null);
+  const [keyDismissed, setKeyDismissed] = useState(false);
+  const [recoveryNote, setRecoveryNote] = useState<{ text: string; error: boolean } | null>(null);
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
+  const [rejoinBusy, setRejoinBusy] = useState(false);
+  const joinKey = s ? peekRecoveryKey(s.public_code) : null;
+  const shownKey =
+    fresh ??
+    (joinKey && !keyDismissed
+      ? { key: joinKey.key, path: joinKey.path || (s?.recovery.recovery_path ?? '') }
+      : null);
 
+  async function runRecovery(
+    work: () => Promise<{ text: string; key?: { key: string; path: string } | null }>,
+  ): Promise<void> {
+    setRecoveryBusy(true);
+    setRecoveryNote(null);
+    try {
+      const r = await work();
+      if (r.key) setFresh(r.key);
+      setRecoveryNote({ text: r.text, error: false });
+      announce(r.text);
+      await reload();
+    } catch (e) {
+      const text =
+        e instanceof ApiRequestError && e.status === 404
+          ? 'This device no longer has access to the ticket.'
+          : e instanceof ApiRequestError
+            ? e.message
+            : 'The request could not be completed.';
+      setRecoveryNote({ text, error: true });
+      announce(text);
+    } finally {
+      setRecoveryBusy(false);
+    }
+  }
+  const newKey = (): Promise<void> =>
+    runRecovery(async () => {
+      const r = await api.newRecoveryKey(code, token ?? '');
+      discardRecoveryKey();
+      return {
+        text: 'A new recovery key was created. The old key no longer works.',
+        key: { key: r.recovery_key, path: r.recovery_path },
+      };
+    });
+  const signOutOthers = (): Promise<void> =>
+    runRecovery(async () => {
+      const r = await api.signOutOtherDevices(code, token ?? '');
+      discardRecoveryKey();
+      return {
+        text:
+          r.revoked_tokens > 0
+            ? `Signed out ${r.revoked_tokens} other ${r.revoked_tokens === 1 ? 'device' : 'devices'}. Their access to this ticket has ended.`
+            : 'No other device had access to this ticket.',
+        key: r.recovery_key ? { key: r.recovery_key, path: r.recovery_path } : null,
+      };
+    });
+  async function rejoin(): Promise<void> {
+    setRejoinBusy(true);
+    try {
+      const r = await api.rejoin(code, token ?? '', uuidv7());
+      const text =
+        r.outcome.disposition === 'rejected'
+          ? 'You could not be returned to the queue. Please speak to a member of staff.'
+          : 'You are back in the queue.';
+      setRecoveryNote({ text, error: r.outcome.disposition === 'rejected' });
+      announce(text);
+    } catch (e) {
+      const text =
+        e instanceof ApiRequestError
+          ? e.status === 409
+            ? 'The time to return to the queue has passed. Please join again or ask a member of staff.'
+            : e.message
+          : 'The request could not be completed.';
+      setRecoveryNote({ text, error: true });
+      announce(text);
+    } finally {
+      setRejoinBusy(false);
+      await reload();
+    }
+  }
   // Remember tickets opened from a staff walk-in link (or update the saved entry: a replayed
   // walk-in rotates the token, a transfer changes the code) and keep the URL on its local id.
   useEffect(() => {
@@ -141,6 +231,11 @@ function TicketView(): ReactElement {
           view it. Please speak to a member of staff.
         </p>
         <p>
+          <Link to="/recover" data-testid="recover-link">
+            I have a recovery key
+          </Link>
+        </p>
+        <p>
           <Link to="/">Back to start</Link>
         </p>
       </>
@@ -174,6 +269,28 @@ function TicketView(): ReactElement {
           </p>
         ) : null}
 
+        {s.recovery.access_granted_elsewhere_at ? (
+          <p role="status" className="alert alert-info" data-testid="access-elsewhere">
+            Access to this ticket was given to another device at{' '}
+            {formatTime(s.recovery.access_granted_elsewhere_at)}. If that was not you, use “Sign out
+            other devices” below.
+          </p>
+        ) : null}
+
+        {shownKey ? (
+          <RecoveryKeyPanel
+            facilityName={s.facility_name}
+            code={s.public_code}
+            recoveryKey={shownKey.key}
+            path={shownKey.path}
+            onDone={() => {
+              setFresh(null);
+              setKeyDismissed(true);
+              discardRecoveryKey();
+            }}
+          />
+        ) : null}
+
         <section
           aria-labelledby="status-heading"
           className={`card status-card${called ? ' status-called' : ''}`}
@@ -198,6 +315,37 @@ function TicketView(): ReactElement {
             <p>
               Counter: <strong data-testid="ticket-counter">{s.counter_name}</strong>
             </p>
+          ) : null}
+          {called && s.recovery.auto_miss_after_seconds !== null ? (
+            <p data-testid="auto-miss-rule">
+              If you do not respond within {s.recovery.auto_miss_after_seconds} seconds of being
+              called, this ticket may be marked as missed.
+            </p>
+          ) : null}
+          {s.state === 'missed' ? (
+            <div data-testid="missed-help">
+              {s.recovery.rejoin_available ? (
+                <>
+                  <p>
+                    You can still return to the queue
+                    {s.recovery.grace_ends_at
+                      ? ` until ${formatTime(s.recovery.grace_ends_at)}`
+                      : ' for a short time'}
+                    .
+                  </p>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={rejoinBusy}
+                    onClick={() => void rejoin()}
+                  >
+                    {rejoinBusy ? 'Returning…' : 'I am here, return me to the queue'}
+                  </button>
+                </>
+              ) : (
+                <p>Your turn was missed. Please ask a member of staff, or join the queue again.</p>
+              )}
+            </div>
           ) : null}
           {s.transferred_from_code ? (
             <p data-testid="transfer-note">
@@ -247,6 +395,51 @@ function TicketView(): ReactElement {
           </h2>
           <p data-testid="policy-summary">{s.policy_summary}</p>
         </section>
+
+        {s.recovery.self_service_available ? (
+          <section aria-labelledby="keep-heading" className="card" data-testid="keep-safe">
+            <h2 id="keep-heading" className="card-title">
+              Keep this ticket safe
+            </h2>
+            <p>
+              If you lose this device you can get your ticket back with your recovery key. If your
+              key is lost or someone else may have it, make a new one. Your place in the queue does
+              not change.
+            </p>
+            <div className="btn-row">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={recoveryBusy}
+                onClick={() => void newKey()}
+              >
+                Get a new recovery key
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={recoveryBusy}
+                onClick={() => void signOutOthers()}
+              >
+                Sign out other devices
+              </button>
+            </div>
+            {recoveryNote ? (
+              <p
+                role={recoveryNote.error ? 'alert' : 'status'}
+                className={recoveryNote.error ? 'alert alert-error' : 'alert alert-success'}
+                data-testid="recovery-note"
+              >
+                {recoveryNote.text}
+              </p>
+            ) : null}
+          </section>
+        ) : (
+          <p className="muted" data-testid="recovery-unavailable">
+            Self-service recovery is not available here. If you lose this device, ask a member of
+            staff.
+          </p>
+        )}
 
         <p className="btn-row">
           <button

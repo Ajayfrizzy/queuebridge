@@ -63,6 +63,10 @@ export default defineConfig({
         JOIN_RATE_LIMIT_MAX: '10000',
         PUBLIC_READ_RATE_LIMIT_MAX: '10000',
         COMMAND_RATE_LIMIT_MAX: '10000',
+        // M5.1: TEST-ONLY recovery key material (never a real secret); the throttle itself is
+        // covered by the PostgreSQL tests, so the browser suite raises its per-source limit
+        CONTACT_ENCRYPTION_KEY: 'e2e0'.repeat(16),
+        RECOVERY_RATE_LIMIT_MAX: '1000',
         LOG_LEVEL: 'warn',
       },
     },

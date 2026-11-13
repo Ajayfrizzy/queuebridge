@@ -156,12 +156,35 @@ export const JoinQueueResponseSchema = z.object({
   status_path: z.string(),
   service_name: z.string(),
   facility_name: z.string(),
+  /**
+   * M5.1: shown once, never stored by the client. Exchanged (with the facility and ticket code)
+   * for a new status token on another device. Null when recovery is not configured.
+   */
+  recovery_key: z.string().nullable(),
+  /** Public path where the recovery key is entered (no secret in it). */
+  recovery_path: z.string(),
 });
 export type JoinQueueResponse = z.infer<typeof JoinQueueResponseSchema>;
 
 // ---------------------------------------------------------------------------
 // Visitor ticket status (token-protected, no internal IDs, no PII)
 // ---------------------------------------------------------------------------
+/** Visitor-facing recovery information on the ticket status (no secret, no internal id). */
+export const TicketRecoveryInfoSchema = z.object({
+  /** False when this deployment has no recovery pepper configured */
+  self_service_available: z.boolean(),
+  /** Public path where the recovery key is entered: /recover/:org/:facility/:code */
+  recovery_path: z.string(),
+  /** True when the visitor may press "I'm here" on a missed ticket right now */
+  rejoin_available: z.boolean(),
+  /** End of the grace window for a missed ticket (server time), when known */
+  grace_ends_at: z.string().nullable(),
+  /** Published automatic no-show rule; null when the service does not use it */
+  auto_miss_after_seconds: z.number().int().nullable(),
+  /** When another device was last given access to this ticket after this one */
+  access_granted_elsewhere_at: z.string().nullable(),
+});
+export type TicketRecoveryInfo = z.infer<typeof TicketRecoveryInfoSchema>;
 
 export const TicketStatusSchema = z.object({
   public_code: z.string(),
@@ -182,6 +205,8 @@ export const TicketStatusSchema = z.object({
   /** Present when the visitor's original ticket was transferred */
   transferred_from_code: z.string().nullable(),
   revision: z.number().int().nonnegative(),
+  /** M5.1 recovery, rejoin and access information (no secret) */
+  recovery: TicketRecoveryInfoSchema,
 });
 export type TicketStatus = z.infer<typeof TicketStatusSchema>;
 

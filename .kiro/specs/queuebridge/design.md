@@ -1442,8 +1442,8 @@ ALTER TABLE ticket_recovery_credentials
   ADD COLUMN IF NOT EXISTS revoked_reason TEXT,
   ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMPTZ;
 DROP INDEX IF EXISTS ticket_recovery_creds_ticket_idx;          -- unique(ticket_id) -> plain partial index
-CREATE INDEX IF NOT EXISTS ticket_recovery_creds_ticket_idx2 ON ticket_recovery_credentials (ticket_id)
-  WHERE revoked_at IS NULL;
+CREATE INDEX IF NOT EXISTS ticket_recovery_creds_active_idx ON ticket_recovery_credentials (ticket_id, created_at)
+  WHERE revoked_at IS NULL;   -- as implemented; revoked rows are KEPT and purged by retention (15.14), not deleted
 -- `attempts` (M0, unused) stays, documented as legacy. Only a superseded index is dropped.
 
 CREATE TABLE IF NOT EXISTS ticket_recovery_proofs (          -- one recovery key per ticket
@@ -1462,15 +1462,22 @@ CREATE TABLE IF NOT EXISTS ticket_recovery_grants (          -- staff hand-off, 
   grant_hmac      TEXT NOT NULL UNIQUE,
   assurance       TEXT NOT NULL CHECK (assurance IN ('basic', 'strong')),
   created_by      UUID NOT NULL REFERENCES staff_users (id),
-  approved_by     UUID REFERENCES staff_users (id),          -- required when assurance = 'basic'
+  approved_by     UUID REFERENCES staff_users (id),          -- required to REDEEM when assurance = 'basic' (see the CHECKs below)
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   expires_at      TIMESTAMPTZ NOT NULL,                      -- created_at + 10 minutes
   redeemed_at     TIMESTAMPTZ,
-  CHECK (assurance <> 'basic' OR (approved_by IS NOT NULL AND approved_by <> created_by))
+  -- As implemented (0007). The original single CHECK would reject a PENDING request (created, not yet
+  -- approved), so the rule is split: a different approver is always required once approved, and a
+  -- 'basic' grant can never be redeemed without that approval. Also added: reason_code, approved_at,
+  -- revoked_at, facility_id.
+  CONSTRAINT ticket_recovery_grants_second_person_chk CHECK (approved_by IS NULL OR approved_by <> created_by),
+  CONSTRAINT ticket_recovery_grants_approval_pair_chk CHECK ((approved_by IS NULL) = (approved_at IS NULL)),
+  CONSTRAINT ticket_recovery_grants_redeem_requires_approval_chk
+    CHECK (redeemed_at IS NULL OR assurance <> 'basic' OR approved_by IS NOT NULL)
 );
 
 CREATE TABLE IF NOT EXISTS recovery_throttle (               -- self-expiring counters; keys never contain the guess
-  scope             TEXT NOT NULL CHECK (scope IN ('source', 'target_source', 'target', 'facility')),
+  scope             TEXT NOT NULL CHECK (scope IN ('source', 'target_source', 'target', 'facility', 'facility_source')),   -- 'facility_source' added at implementation: lets L4 refuse only sources that already failed in this facility
   key_hash          TEXT NOT NULL,          -- HMAC(pepper, scope | public identifiers | source); no PII, no secret
   window_started_at TIMESTAMPTZ NOT NULL,
   attempts          INTEGER NOT NULL DEFAULT 0,

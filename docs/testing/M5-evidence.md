@@ -159,3 +159,106 @@ The three simultaneous wave-2 setup hangs (13:46–13:50 UTC on 2026-11-13) were
 - `.kiro/specs/queuebridge/tasks.md`: M5.0 boxes checked
 
 The temporary reproduction harnesses (`e2e/zz-m50-repro*.spec.ts`) were deleted. Raw logs are kept outside the repository under `/tmp/qb-m50/`.
+
+---
+
+## M5.1 — Secure ticket recovery (F4; design §15; ADR-015; Group 8: 8.R1–8.R12)
+
+Status: implemented and verified locally; **not committed, not pushed**. Everything below was run on the working tree on top of the M5.0 checkpoint (`87ec587`).
+
+### What was built
+
+- **Credentials.** A 160-bit CSPRNG recovery key (Crockford base32, 32 characters), shown once at join and on staff walk-ins. Stored only as HMAC-SHA-256 with an HKDF-derived pepper from `CONTACT_ENCRYPTION_KEY` (separate derivations for key, grant and throttle), compared in constant time, bound to the root ticket (it follows transfers). Without the environment key recovery is **disabled**, never weakened (join returns `recovery_key: null`, `/tickets/recover` answers 503).
+- **Status tokens.** At most 3 active; the oldest is revoked on the 4th. A replayed join revokes earlier join tokens; "sign out other devices" and staff revoke-all revoke the rest. Revoked rows are kept and purged by retention.
+- **Throttling.** Keys are HMACs of public identifiers and the source only, never the guess. L1 10 attempts/min/source (every attempt counts, malformed ones included); L2 5 failures/15 min per ticket per source; L3 50 failures per ticket and L4 100 per facility refuse only sources that already failed and raise an audited abuse event; L5 caps concurrent verifications per process (503). No lockout state and no unlock action exists: all windows expire within 15 minutes, a clean source with the right key always succeeds.
+- **Staff-assisted recovery.** No verified factor ⇒ restricted assistance, no credential. Basic factor ⇒ request needing a **different** `QUEUE_MANAGE` approver (API and table CHECKs). Single-use grant, 10 minutes, redeemed only on the visitor device from a QR, never shown to staff as text. Limits 3 per ticket/hour and 5 per staff/10 min; auditors and visitors refused; `staff_recovery=false` switches the path off; audit events carry no values.
+- **Rejoin and auto no-show.** `rejoin_policy` (`staff_resume` default, `self_resume`) through the standard command path with a `visitor_self` transition actor, inside the existing `grace_window_seconds` only. Automatic no-show is off by default, needs explicit seconds (60–3600), runs as an API sweep through `executeSystemTransition` (session lock, deduplication, M3 coordinator fence, ticket lock, domain transition table, hash-chained event, `client_operations` record), deterministic UUID-v7-layout operation id, database time, clock restart after the last coordinator event and after a detected outage, no import path to notification code.
+- **Web.** Recovery key panel (readable groups, QR, Copy/Share/Save/Print), `/recover` pages (fragment read once then removed, POST body, uniform failure, offline message, no CAPTCHA), ticket-page actions (new key, sign out others, rejoin, access-granted notice, published auto no-show rule), staff recovery panel with supervisor approval list, admin policy fields, retention job in the worker.
+- **Migration `0007_ticket_recovery.sql`** (additive; the only drop is the superseded unique `ticket_id` index).
+
+### Deviations from the design (recorded; design §15.4 updated)
+
+1. **Grant CHECK split.** The design's single `CHECK (assurance <> 'basic' OR (approved_by IS NOT NULL AND approved_by <> created_by))` would reject a pending request. It became three CHECKs: approver differs from creator, approval pair, and "no redemption of a basic grant without approval". The API also checks the second person and returns 403 `second-person-required`.
+2. **Throttle scope `facility_source`** added to the four in the design, so L4 can refuse only sources that already failed in that facility.
+3. **Grant minted at assist time.** The secret is created with the request and returned to the requester, but cannot be redeemed until approved.
+4. **Revoked tokens are retained** (marked, purged 24 h later) instead of being deleted at once.
+5. **`testClockOffsetSeconds`** on the sweep: `queue_events` is append-only, so tests cannot backdate a call; they move the sweep's clock. Production always uses the database clock.
+6. **Staff revoke-all also removes the recovery key** (the phone may have been stolen with it). The visitor needs the assisted procedure to regain access. The UI says so.
+
+### Test evidence
+
+| Suite                                                     | Result                                                                                                                                                                                                                                                                                                    |
+| --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `recovery.db.test.ts` (real PostgreSQL; 8.R1–R8, R11, L5) | 44 / 44, three consecutive runs (the 44th, added at checkpoint review: replacement key, sign-out-others and the ticket routes are 404 with a public code alone, a malformed, unknown, another tenant's or a revoked token; a token acts only on its own ticket even when two tenants share a public code) |
+| `auto-miss.db.test.ts` (8.R9, 8.R12)                      | 21 / 21, three consecutive runs                                                                                                                                                                                                                                                                           |
+| `apps/worker/src/retention.db.test.ts` (8.R10)            | 7 / 7 (own throwaway database)                                                                                                                                                                                                                                                                            |
+| `policies.test.ts`, `recovery.test.ts`, domain additions  | pass                                                                                                                                                                                                                                                                                                      |
+| `recoveryKey.test.ts` (web unit)                          | 5 / 5                                                                                                                                                                                                                                                                                                     |
+| Playwright `recovery.spec.ts`                             | 15 / 15 across 1280, 1440, 375 and 320 px (axe, overflow, keyboard-only, offline, two staff)                                                                                                                                                                                                              |
+
+Coverage by requirement (all on real state, nothing mocked):
+
+- **8.R1** a code alone, a code with a wrong key, a bare status read and a guessed grant yield nothing; the QR/link path holds no secret outside the fragment.
+- **8.R2** unknown ticket, wrong key, ended ticket and cross-facility attempts return identical status and body; the browser shows one message for all failures.
+- **8.R3** 1,000-style distinct wrong guesses count against the same keys; L1–L4 each exercised; no lock state; clean-source holder succeeds during an attack; counters exact under parallel guesses.
+- **8.R4** length, alphabet, uniqueness, HMAC-only storage, normalization, cap of 3, rotation matrix, no key in `localStorage`, `sessionStorage`, URLs requested by the browser or the address bar.
+- **8.R5** the whole staff flow in the UI with two different people; requester cannot approve (button disabled, API 403, table CHECK); grant single-use and unusable before approval.
+- **8.R6** no recovery action appends a `queue_events` row or changes state, position or waiting age; works while a coordinator holds the queue.
+- **8.R7** concurrent correct recoveries, recovery vs new key, vs sign-out-others, grant redeemed twice, vs completion.
+- **8.R8** `self_resume` inside the window only; refused after it, under `staff_resume` and while a coordinator holds the queue; idempotent by `operation_id`.
+- **8.R9 / 8.R12** (a)–(f) as listed in the testing steering, including four concurrent sweepers on separate connections producing exactly one miss per ticket, a ticket the coordinator served offline not being missed, outage detection restarting the clock, a fresh process behaving identically, and a static import-graph check.
+- **8.R10** retention windows, bounded batches, idempotence, transfer chains and closed sessions.
+- **8.R11** cross-tenant 404, CSRF, no secret in events, audit, grants, throttle rows or error bodies.
+
+### Mutation checks (the tests fail against the wrong implementation)
+
+| Mutation                                      | Result                                                                            |
+| --------------------------------------------- | --------------------------------------------------------------------------------- |
+| Token lookup ignores `revoked_at`             | 6 failures (cap, sign-out-others, join replay, staff revoke-all, 2 sync-handover) |
+| Throttle keys include the guess               | 7 failures (L1, L2 ×2, L3, L4, no-lockout, parallel counting)                     |
+| Unapproved basic grant usable                 | 1 failure                                                                         |
+| Requester may approve own request             | 1 failure                                                                         |
+| System executor ignores the coordinator fence | 2 failures (auto no-show fence, rejoin fence)                                     |
+| Old `samePolicy` (earlier check)              | `policies.test.ts` fails                                                          |
+
+Every mutation was reverted and the files compared byte for byte with the backup.
+
+### Gates (final tree)
+
+| Gate                                                 | Result                                                                                                                                                                                                                                                                                |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm format:check` / `lint` / `typecheck` / `build` | PASS (lint `--max-warnings 0`)                                                                                                                                                                                                                                                        |
+| `pnpm test` (no DB)                                  | PASS: contracts 116, domain 103, channels 18, continuity 64, ui 6, worker 10, api 56, web 49                                                                                                                                                                                          |
+| `pnpm test:db`                                       | PASS: api 28 files / 543 tests, worker 2 files / 20 tests                                                                                                                                                                                                                             |
+| Playwright full suite, all projects                  | PASS: 147 passed, 4 skipped (opt-in screenshot capture), 0 failed. A first run found 2 real regressions from a staff button labelled "Sign out all…" colliding with existing "Sign out" locators; the button was renamed ("End access on all…") and no existing assertion was changed |
+| Fresh migration + re-run                             | PASS: 7 migrations apply to an empty database; a second run skips all                                                                                                                                                                                                                 |
+
+### Remaining risks and limits (stated, not hidden)
+
+- **The basic factor is a human check.** Service and approximate join time are things a person who watched the visitor could also know. The second-person approval and audit trail raise the cost of abuse but cannot prove identity. The stronger contact-based factor arrives with M6.
+- **KNOWN LIMITATION: the per-staff assist limit (5 per 10 minutes) is not atomic.** `staffAssist` counts the staff member's recent grants and then inserts, inside a transaction that locks only the TICKET's proof row. The per-ticket limit (3 per hour) is therefore exact, but several simultaneous requests by one staff member for DIFFERENT tickets can each read the same count and together exceed 5. The overshoot is bounded by the number of concurrent requests that member can make, and every request is still audited, needs a second person's approval, and yields a single-use 10-minute grant. It is not covered by a concurrency test (the exact-limit behaviour is tested sequentially). A fix needs a per-staff advisory lock or a counter row, and is left for a later milestone; it is not hidden by any test.
+- **Shared addresses.** Throttling is per source (IPv4 address, IPv6 /64). Many visitors behind one NAT share L1; a shared source that fails repeatedly on one ticket is slowed for 15 minutes, never locked out for good.
+- **Automatic no-show is late by up to a sweep interval** and by design never earlier than the deadline; while a coordinator is assigned it does not run at all.
+- **The key lives in page memory only.** A reload before the visitor saves it loses it (they can make a new one from the ticket page). This is the intended trade-off.
+- **Environment stall (M5.0, open).** Not observed during any M5.1 run (db suite, Playwright full suite ×2, mutation runs). Still unexplained; remains open.
+- **Not verified here:** real-device camera scanning of the QR codes, screen readers on the recover and staff panels, print output of the key page, native share sheets and clipboard on iOS. These need the manual passes below.
+
+### Manual acceptance (ALL OUTSTANDING: none has been performed; to be recorded before M5 closes)
+
+1. On a phone, scan the key QR from another phone and confirm the ticket opens and the address bar shows no key.
+2. VoiceOver (iOS) and TalkBack or NVDA: complete the recover form, hear the failure message and the "ticket recovered" announcement; use the staff panel's approval list.
+3. Print the key panel: only the key text and ticket code print (the buttons and hints are hidden by the print rule).
+4. At 200 % zoom and extra-large text, confirm the 32-character key wraps without horizontal scrolling.
+5. With two real staff accounts at a desk, run the assisted recovery end to end and check that the requester cannot approve.
+
+### Files (M5.1)
+
+Added: `infra/migrations/0007_ticket_recovery.sql`; `packages/contracts/src/recovery.ts` (+test); `apps/api/src/recovery/{crypto,credentials,throttle,service}.ts`; `apps/api/src/routes/recovery.ts`; `apps/api/src/queue/auto-miss.ts`; `apps/api/src/queue/policies.test.ts`; `apps/api/src/{recovery,auto-miss}.db.test.ts`; `apps/worker/src/retention.ts` (+db test); web `RecoverPage`, `RecoveryKeyPanel`, `StaffRecoveryPanel`, `lib/recoveryKey.ts` (+test); `e2e/recovery.spec.ts`.
+Modified: contracts (`admin`, `queue`, `schemas`, `enums`), domain state machine, API commands/tickets/joins/sync/views/policies/app/env/routes, test harness, worker, `db-identity.js`, web API client, tickets lib, JoinPage, TicketPage, StaffConsole, FacilityServices, App, styles, Playwright config, `.env.example`, `docs/local-environment.md`, design §15.4, tasks.
+
+### Checkpoint review (before the M5.1 commit)
+
+- Diff reviewed file by file: 61 files, all inside M5.1 scope (no M5.2–M5.4 code). `.env` is git-ignored and not staged; `.env.example` holds placeholders only. A scan of changed files found no private keys, provider tokens or committed secrets. The only fixed key strings are the two TEST-ONLY values (`harness.ts`, `playwright.config.ts`), which are labelled as such. No log call in the API or worker mentions keys, grants, tokens or hashes. The only `unsafe()` uses interpolate constant SQL fragments, never request data.
+- Tenant isolation: staff routes resolve the ticket through `organization_id` and facility; visitor routes resolve through the token. Cross-tenant requests return 404 (covered in 8.R11 and the new test).
+- The replacement-key workflow (`POST /tickets/:code/recovery-key`) requires the ticket's status token; the public code alone is refused (new test).
+- M5.0 checkpoint `87ec587` is the parent of the M5.1 checkpoint; history is not rewritten.

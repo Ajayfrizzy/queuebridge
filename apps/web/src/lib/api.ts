@@ -35,6 +35,14 @@ import type {
   CounterTransferRequest,
   PolicyVersion,
   PriorityOverrideRequest,
+  RecoveredTicket,
+  RecoveryAssistRequest,
+  RecoveryAssistResponse,
+  RecoveryKeyResponse,
+  RecoveryRequestStatus,
+  RecoveryRequestSummary,
+  RecoveryRevokeAllRequest,
+  RevokeOtherDevicesResponse,
 } from '@queuebridge/contracts';
 
 const BASE: string =
@@ -203,7 +211,7 @@ export interface CoordinatorResult {
 }
 
 export const TICKET_TOKEN_HEADER = 'X-QB-Ticket-Token';
-
+const tokenHeader = (token: string): Record<string, string> => ({ [TICKET_TOKEN_HEADER]: token });
 export const api = {
   signupOrganization: (body: CreateOrganizationRequest): Promise<{ user: SessionUser }> =>
     request('POST', '/organizations', body),
@@ -336,6 +344,64 @@ export const api = {
     request('GET', `/tickets/${encodeURIComponent(code)}/status`, undefined, {
       [TICKET_TOKEN_HEADER]: token,
     }),
+
+  // ---- M5.1: ticket recovery (visitor) ----
+  /** Exchange the recovery key (with the PUBLIC identifiers) or a staff grant for a new token. */
+  recoverTicket: (
+    body:
+      | { org_slug: string; facility_slug: string; ticket_code: string; recovery_key: string }
+      | { grant: string },
+  ): Promise<{ ticket: RecoveredTicket }> => request('POST', '/tickets/recover', body),
+  newRecoveryKey: (code: string, token: string): Promise<RecoveryKeyResponse> =>
+    request('POST', `/tickets/${encodeURIComponent(code)}/recovery-key`, {}, tokenHeader(token)),
+  signOutOtherDevices: (code: string, token: string): Promise<RevokeOtherDevicesResponse> =>
+    request(
+      'POST',
+      `/tickets/${encodeURIComponent(code)}/sessions/revoke-others`,
+      {},
+      tokenHeader(token),
+    ),
+  rejoin: (
+    code: string,
+    token: string,
+    operationId: string,
+  ): Promise<{ outcome: { disposition: string; reason_code: string | null } }> =>
+    request(
+      'POST',
+      `/tickets/${encodeURIComponent(code)}/rejoin`,
+      { operation_id: operationId },
+      tokenHeader(token),
+    ),
+
+  // ---- M5.1: staff-assisted recovery (restricted procedure) ----
+  recoveryAssist: (
+    queueId: string,
+    ticketId: string,
+    body: RecoveryAssistRequest,
+  ): Promise<RecoveryAssistResponse> =>
+    request('POST', `/queues/${queueId}/tickets/${ticketId}/recovery/assist`, body),
+  recoveryApprove: (
+    queueId: string,
+    ticketId: string,
+    requestId: string,
+  ): Promise<{ status: RecoveryRequestStatus }> =>
+    request('POST', `/queues/${queueId}/tickets/${ticketId}/recovery/approve`, {
+      request_id: requestId,
+    }),
+  recoveryRequestStatus: (
+    queueId: string,
+    ticketId: string,
+    requestId: string,
+  ): Promise<{ status: RecoveryRequestStatus }> =>
+    request('GET', `/queues/${queueId}/tickets/${ticketId}/recovery/requests/${requestId}`),
+  recoveryRequests: (queueId: string): Promise<{ requests: RecoveryRequestSummary[] }> =>
+    request('GET', `/queues/${queueId}/recovery/requests`),
+  recoveryRevokeAll: (
+    queueId: string,
+    ticketId: string,
+    body: RecoveryRevokeAllRequest,
+  ): Promise<{ revoked_tokens: number }> =>
+    request('POST', `/queues/${queueId}/tickets/${ticketId}/recovery/revoke-all`, body),
 
   // ---- M3: continuity engine ----
   registerDevice: (facilityId: string, label?: string): Promise<{ device: Device }> =>

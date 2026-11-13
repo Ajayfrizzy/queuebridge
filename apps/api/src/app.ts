@@ -25,7 +25,10 @@ import { serviceRoutes } from './routes/services.js';
 import { staffRoutes } from './routes/staff.js';
 import { syncRoutes } from './routes/sync.js';
 import { fairnessRoutes } from './routes/fairness.js';
+import { recoveryRoutes } from './routes/recovery.js';
+import { startAutoMissSweeper } from './queue/auto-miss.js';
 import type { RouteDeps } from './routes/deps.js';
+import { createRecoveryCrypto } from './recovery/crypto.js';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
@@ -236,6 +239,8 @@ export async function buildApp(
     env,
     authenticate: makeAuthenticate(db),
     notifier,
+    // M5.1: without CONTACT_ENCRYPTION_KEY recovery is disabled (never weakened)
+    recovery: createRecoveryCrypto(env),
   };
 
   await app.register(
@@ -252,9 +257,21 @@ export async function buildApp(
       await api.register(syncRoutes, deps);
       await api.register(fairnessRoutes, deps);
       await api.register(publicRoutes, deps);
+      await api.register(recoveryRoutes, deps);
     },
     { prefix: '/api/v1' },
   );
+
+  // M5.1 automatic no-show sweep (the feature is off for every service unless enabled)
+  if (env.AUTO_MISS_SWEEP_SECONDS > 0) {
+    let stopSweeper: (() => void) | null = null;
+    app.addHook('onReady', async () => {
+      stopSweeper = startAutoMissSweeper(db, app.log, env.AUTO_MISS_SWEEP_SECONDS);
+    });
+    app.addHook('onClose', async () => {
+      stopSweeper?.();
+    });
+  }
 
   return app;
 }

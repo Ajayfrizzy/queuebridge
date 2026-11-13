@@ -134,6 +134,11 @@ export const CommandResultSchema = z.object({
    * Returned to the capturing staff device only; never stored in the outbox or in result_json.
    */
   status_token: z.string().optional(),
+  /**
+   * One-time recovery key for that ticket (M5.1), handed over with the status link. Same
+   * handling as `status_token`: capturing staff device only, never stored.
+   */
+  recovery_key: z.string().optional(),
 });
 export type CommandResult = z.infer<typeof CommandResultSchema>;
 

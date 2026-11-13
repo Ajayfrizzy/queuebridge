@@ -47,6 +47,13 @@ export const SENTINELS = {
     'tickets.wait_since',
     'counters.availability',
   ],
+  '0007_ticket_recovery.sql': [
+    'ticket_recovery_proofs',
+    'ticket_recovery_grants',
+    'recovery_throttle',
+    'auto_miss_sweeps',
+    'ticket_recovery_credentials.revoked_at',
+  ],
 };
 
 /** Migration files of this checkout, in apply order. */

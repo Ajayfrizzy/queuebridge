@@ -977,3 +977,20 @@ legend {
 .form-grid > .field {
   min-width: 0;
 }
+
+/* M5.1 recovery key: large, wrapping, selectable; never truncated at 320 px or 200 % zoom */
+.recovery-key-text {
+  font-size: 1.25rem;
+  line-height: 1.6;
+  letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  user-select: all;
+}
+
+@media print {
+  .recovery-key-panel .btn-row,
+  .recovery-key-panel .hint {
+    display: none;
+  }
+}

@@ -3,6 +3,8 @@ import { QueueAction, QueueSessionState, type JoinQueueResponse } from '@queuebr
 import { hashToken } from '../auth/tokens.js';
 import type { Db } from '../db.js';
 import { isUniqueViolation, problems } from '../errors.js';
+import { recoveryPath, setRecoveryKey } from '../recovery/credentials.js';
+import type { RecoveryCrypto } from '../recovery/crypto.js';
 import { lockSessions } from './events.js';
 import { issueStatusToken, issueTicket } from './tickets.js';
 
@@ -29,6 +31,20 @@ export interface JoinInput {
   proofHash: string | null;
   /** Staff walk-ins: the staff user. Visitor joins: null. */
   staffUserId: string | null;
+  /** M5.1 recovery-key cryptography; null when recovery is not configured. */
+  recovery: RecoveryCrypto | null;
+}
+
+/** Facility name and the public slugs used in the recovery path. */
+async function facilityInfo(
+  tx: Db,
+  facilityId: string,
+): Promise<{ name: string; facility_slug: string; org_slug: string }> {
+  const rows = await tx<{ name: string; facility_slug: string; org_slug: string }[]>`
+    SELECT f.name, f.slug AS facility_slug, o.slug AS org_slug
+      FROM facilities f JOIN organizations o ON o.id = f.organization_id
+     WHERE f.id = ${facilityId}`;
+  return rows[0] ?? { name: '', facility_slug: '', org_slug: '' };
 }
 
 const statusPath = (code: string): string => `/ticket/${code}`;
@@ -66,7 +82,11 @@ export async function joinQueue(db: Db, input: JoinInput): Promise<JoinQueueResp
             : existing.actor_id !== null && existing.actor_id === input.staffUserId);
         if (!owner)
           throw problems.conflict('This request could not be completed. Start a new join.');
+        // The original requester lost the response: re-issue BOTH secrets (the earlier ones,
+        // possibly seen by nobody, stop working)
         const token = await issueStatusToken(tx, existing.result_json.ticket_id);
+        const key = await setRecoveryKey(tx, input.recovery, existing.result_json.ticket_id);
+        const info = await facilityInfo(tx, session.facility_id);
         return {
           disposition: 'duplicate' as const,
           public_code: existing.result_json.public_code,
@@ -74,6 +94,12 @@ export async function joinQueue(db: Db, input: JoinInput): Promise<JoinQueueResp
           status_path: statusPath(existing.result_json.public_code),
           service_name: existing.result_json.service_name,
           facility_name: existing.result_json.facility_name,
+          recovery_key: key,
+          recovery_path: recoveryPath(
+            info.org_slug,
+            info.facility_slug,
+            existing.result_json.public_code,
+          ),
         };
       }
 
@@ -95,14 +121,13 @@ export async function joinQueue(db: Db, input: JoinInput): Promise<JoinQueueResp
         createdBy: input.staffUserId,
       });
       const token = await issueStatusToken(tx, issued.ticketId);
-      const facility = await tx<
-        { name: string }[]
-      >`SELECT name FROM facilities WHERE id = ${session.facility_id}`;
+      const key = await setRecoveryKey(tx, input.recovery, issued.ticketId);
+      const info = await facilityInfo(tx, session.facility_id);
       const result: JoinResultJson = {
         ticket_id: issued.ticketId,
         public_code: issued.publicCode,
         service_name: session.service_name,
-        facility_name: facility[0]?.name ?? '',
+        facility_name: info.name,
       };
       await tx`
         INSERT INTO client_operations
@@ -118,6 +143,8 @@ export async function joinQueue(db: Db, input: JoinInput): Promise<JoinQueueResp
         status_path: statusPath(issued.publicCode),
         service_name: result.service_name,
         facility_name: result.facility_name,
+        recovery_key: key,
+        recovery_path: recoveryPath(info.org_slug, info.facility_slug, issued.publicCode),
       };
     });
 

@@ -112,7 +112,8 @@ test.describe('M2 exit journey: online join → call → serve → complete (web
     // Open the exact link the QR encodes, the way the visitor's phone would
     await page.getByText('Show status link').click();
     const link = await page.getByTestId('walkin-link').innerText();
-    expect(link).toMatch(/\/ticket\/G001#t=[A-Za-z0-9_-]{43}$/);
+    // M5.1: the fragment also carries the recovery key (never sent to a server)
+    expect(link).toMatch(/\/ticket\/G001#t=[A-Za-z0-9_-]{43}&k=[0-9A-Z]{32}$/);
     const visitor = await freshContext(browser);
     await visitor.page.goto(link);
     await expect(visitor.page.getByTestId('ticket-code')).toHaveText('G001');

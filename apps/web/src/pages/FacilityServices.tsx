@@ -24,6 +24,8 @@ const PLACEMENT_LABEL: Record<ServicePolicy['transfer_placement'], string> = {
 function policyFromForm(form: FormData, current?: ServicePolicy): ServicePolicy {
   const extra = (['urgent', 'priority'] as const).filter((c) => form.get(`class-${c}`) === 'on');
   const reasons = form.getAll('override_reason').map(String);
+  const autoMiss = form.get('auto_miss') === 'on';
+  const afterRaw = String(form.get('auto_miss_seconds') ?? '').trim();
   return {
     version: current?.version ?? 'v1',
     priority_order: [...extra, 'normal'],
@@ -31,6 +33,15 @@ function policyFromForm(form: FormData, current?: ServicePolicy): ServicePolicy 
     override_reasons: reasons.length > 0 ? reasons : [...DEFAULT_OVERRIDE_REASONS],
     transfer_placement:
       form.get('transfer_placement') === 'end_of_queue' ? 'end_of_queue' : 'by_original_join_time',
+    rejoin_policy: form.get('rejoin_policy') === 'self_resume' ? 'self_resume' : 'staff_resume',
+    // Automatic no-show is off unless ticked, and then the seconds must be typed (no default)
+    auto_miss:
+      autoMiss && afterRaw !== ''
+        ? { enabled: true, after_seconds: Number(afterRaw) }
+        : autoMiss
+          ? { enabled: true }
+          : { enabled: false },
+    staff_recovery: form.get('staff_recovery') === 'on',
   };
 }
 
@@ -126,6 +137,62 @@ function PolicyFields({
           />
         )}
       </Field>
+      <fieldset>
+        <legend>Missed turns and recovery</legend>
+        <Field
+          id={`${idPrefix}-rejoin`}
+          label="Visitors who missed their turn"
+          hint="The grace window above is how long they have. With “staff decide”, only staff can return a missed visitor to the queue."
+          error={errors['policy.rejoin_policy']}
+        >
+          {(aria) => (
+            <select
+              {...aria}
+              name="rejoin_policy"
+              defaultValue={policy?.rejoin_policy ?? 'staff_resume'}
+            >
+              <option value="staff_resume">Staff decide (default)</option>
+              <option value="self_resume">
+                Visitor may return themselves inside the grace window
+              </option>
+            </select>
+          )}
+        </Field>
+        <label className="check">
+          <input
+            type="checkbox"
+            name="auto_miss"
+            defaultChecked={policy?.auto_miss.enabled ?? false}
+          />{' '}
+          Automatically mark an unanswered call as missed (off by default)
+        </label>
+        <Field
+          id={`${idPrefix}-auto-miss`}
+          label="Seconds before an unanswered call is marked missed"
+          hint="Between 60 and 3600. Required when the option above is on. Visitors are shown this rule. It never runs while an offline coordinator is in charge."
+          error={errors['policy.auto_miss.after_seconds'] ?? errors['policy.auto_miss']}
+        >
+          {(aria) => (
+            <input
+              {...aria}
+              name="auto_miss_seconds"
+              type="number"
+              min={60}
+              max={3600}
+              inputMode="numeric"
+              defaultValue={policy?.auto_miss.after_seconds ?? ''}
+            />
+          )}
+        </Field>
+        <label className="check">
+          <input
+            type="checkbox"
+            name="staff_recovery"
+            defaultChecked={policy?.staff_recovery ?? true}
+          />{' '}
+          Allow staff-assisted ticket recovery (needs a second supervisor to approve)
+        </label>
+      </fieldset>
     </>
   );
 }

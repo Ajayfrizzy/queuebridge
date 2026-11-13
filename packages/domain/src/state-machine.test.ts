@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PriorityClass, QueueAction, Role, TicketState } from '@queuebridge/contracts';
+import { PriorityClass, QueueAction, Role, SystemActor, TicketState } from '@queuebridge/contracts';
 import { comparePriority, transition, validatePriorityOverride } from './state-machine.js';
 
 // ---------------------------------------------------------------------------
@@ -306,5 +306,88 @@ describe('comparePriority', () => {
 
   it('normal has lower priority than urgent', () => {
     expect(comparePriority(PriorityClass.NORMAL, PriorityClass.URGENT)).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M5.1: transition-only actors (never roles)
+// ---------------------------------------------------------------------------
+
+describe('M5.1 visitor rejoin and automatic no-show actors', () => {
+  const allActions = Object.values(QueueAction);
+  const allStates = Object.values(TicketState);
+
+  it('a visitor may rejoin their own missed ticket only inside the grace window AND with self_resume', () => {
+    const base = {
+      currentState: TicketState.MISSED,
+      action: QueueAction.TICKET_RESUME,
+      actorRole: SystemActor.VISITOR_SELF,
+    };
+    expect(
+      transition({ ...base, satisfiedPolicies: ['grace_window_active', 'self_resume_allowed'] }),
+    ).toMatchObject({ success: true, newState: TicketState.WAITING });
+    expect(transition({ ...base, satisfiedPolicies: ['grace_window_active'] }).success).toBe(false);
+    expect(transition({ ...base, satisfiedPolicies: ['self_resume_allowed'] }).success).toBe(false);
+    expect(transition({ ...base, satisfiedPolicies: [] }).success).toBe(false);
+  });
+
+  it('automatic no-show applies only to a called ticket whose call window elapsed', () => {
+    const base = {
+      currentState: TicketState.CALLED,
+      action: QueueAction.TICKET_MISS,
+      actorRole: SystemActor.SYSTEM,
+    };
+    expect(transition({ ...base, satisfiedPolicies: ['auto_miss_due'] })).toMatchObject({
+      success: true,
+      newState: TicketState.MISSED,
+    });
+    expect(transition({ ...base, satisfiedPolicies: [] }).success).toBe(false);
+    // never from serving: a visitor being served is never auto-missed
+    expect(
+      transition({
+        ...base,
+        currentState: TicketState.SERVING,
+        satisfiedPolicies: ['auto_miss_due'],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('neither actor can do anything else, whatever policies are claimed', () => {
+    const allowed = new Set([
+      `${SystemActor.VISITOR_SELF}|${TicketState.MISSED}|${QueueAction.TICKET_RESUME}`,
+      `${SystemActor.SYSTEM}|${TicketState.CALLED}|${QueueAction.TICKET_MISS}`,
+    ]);
+    const every = ['grace_window_active', 'self_resume_allowed', 'auto_miss_due'];
+    for (const actor of [SystemActor.VISITOR_SELF, SystemActor.SYSTEM]) {
+      for (const state of allStates) {
+        for (const action of allActions) {
+          const r = transition({
+            currentState: state,
+            action,
+            actorRole: actor,
+            satisfiedPolicies: every,
+          });
+          expect(r.success, `${actor} ${state} ${action}`).toBe(
+            allowed.has(`${actor}|${state}|${action}`),
+          );
+        }
+      }
+    }
+  });
+
+  it('the new actors are not roles (they can never be granted)', () => {
+    expect(Object.values(Role)).not.toContain(SystemActor.VISITOR_SELF);
+    expect(Object.values(Role)).not.toContain(SystemActor.SYSTEM);
+  });
+
+  it('staff resume of a missed ticket is unchanged (no self_resume needed for staff)', () => {
+    expect(
+      transition({
+        currentState: TicketState.MISSED,
+        action: QueueAction.TICKET_RESUME,
+        actorRole: Role.STAFF_COUNTER,
+        satisfiedPolicies: ['grace_window_active'],
+      }),
+    ).toMatchObject({ success: true, newState: TicketState.WAITING });
   });
 });

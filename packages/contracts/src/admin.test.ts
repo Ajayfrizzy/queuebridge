@@ -71,6 +71,10 @@ describe('facility / service / counter schemas', () => {
         'administrative_error',
       ],
       transfer_placement: 'by_original_join_time',
+      // M5.1: recovery-related fields default to the M2–M4 behaviour
+      rejoin_policy: 'staff_resume',
+      auto_miss: { enabled: false },
+      staff_recovery: true,
     });
   });
 

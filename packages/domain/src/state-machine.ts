@@ -1,4 +1,11 @@
-import { PriorityClass, QueueAction, Role, TicketState } from '@queuebridge/contracts';
+import {
+  PriorityClass,
+  QueueAction,
+  Role,
+  SystemActor,
+  TicketState,
+  type TransitionActor,
+} from '@queuebridge/contracts';
 
 // ---------------------------------------------------------------------------
 // Transition table
@@ -12,7 +19,7 @@ import { PriorityClass, QueueAction, Role, TicketState } from '@queuebridge/cont
 export interface TransitionRule {
   from: TicketState;
   action: QueueAction;
-  allowedRoles: Role[];
+  allowedRoles: TransitionActor[];
   to: TicketState;
   /** Additional policy preconditions (validated at runtime) */
   requiresPolicy?: string[];
@@ -133,12 +140,30 @@ export const TRANSITION_RULES: TransitionRule[] = [
     to: TicketState.WAITING,
     requiresPolicy: ['grace_window_active'],
   },
+  // M5.1 (REQ-F4.13): with the `self_resume` policy, the visitor holding the ticket's status
+  // token may return their OWN missed ticket to the queue, inside the grace window only.
+  {
+    from: TicketState.MISSED,
+    action: QueueAction.TICKET_RESUME,
+    allowedRoles: [SystemActor.VISITOR_SELF],
+    to: TicketState.WAITING,
+    requiresPolicy: ['grace_window_active', 'self_resume_allowed'],
+  },
   // missed → cancelled
   {
     from: TicketState.MISSED,
     action: QueueAction.TICKET_CANCEL,
     allowedRoles: [Role.STAFF_RECEPTION, Role.STAFF_COUNTER, Role.SUPERVISOR],
     to: TicketState.CANCELLED,
+  },
+  // M5.1 (REQ-F4.14): automatic no-show, opt-in per service, driven only by the elapsed time
+  // since the committed call. Never by a notification outcome.
+  {
+    from: TicketState.CALLED,
+    action: QueueAction.TICKET_MISS,
+    allowedRoles: [SystemActor.SYSTEM],
+    to: TicketState.MISSED,
+    requiresPolicy: ['auto_miss_due'],
   },
   // M4 routing: hand a called/serving ticket to another counter of the same service
   {
@@ -203,7 +228,7 @@ export function validatePriorityOverride(params: PriorityOverrideParams): string
 export interface TransitionInput {
   currentState: TicketState;
   action: QueueAction;
-  actorRole: Role;
+  actorRole: TransitionActor;
   /** Policy conditions satisfied for this transition (e.g. 'grace_window_active') */
   satisfiedPolicies?: string[];
 }

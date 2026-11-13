@@ -15,6 +15,20 @@ export const Role = {
 } as const;
 export type Role = (typeof Role)[keyof typeof Role];
 
+/**
+ * M5.1: actors that may appear in the TRANSITION table but are NOT roles. They can never be
+ * granted, assigned or claimed by a client: the server uses them only for the exact transitions
+ * listed in the domain table (a visitor rejoining their own missed ticket inside the grace
+ * window; the automatic no-show sweep).
+ */
+export const SystemActor = {
+  VISITOR_SELF: 'visitor_self',
+  SYSTEM: 'system',
+} as const;
+export type SystemActor = (typeof SystemActor)[keyof typeof SystemActor];
+/** Anyone a transition rule can name. */
+export type TransitionActor = Role | SystemActor;
+
 /** Primary ticket states — see architecture §4 for full transition table. */
 export const TicketState = {
   WAITING: 'waiting',

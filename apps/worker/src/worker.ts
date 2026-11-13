@@ -1,12 +1,15 @@
 import postgres from 'postgres';
 import { assertQueueBridgeDatabase, auditKeyFingerprint, runCheckpointJob } from './checkpoints.js';
 import { parseEnv } from './env.js';
+import { runRecoveryRetention } from './retention.js';
 
 /**
  * QueueBridge worker.
  *
  * Jobs:
  * - audit checkpoints (M4): verify each session's hash chain and sign checkpoint ranges
+ * - recovery-data retention (M5.1): expired/revoked credentials, ended tickets' keys, grants,
+ *   throttle windows (counts are logged, never values)
  * - notification outbox (M6): not implemented yet — SMS/USSD delivery is milestone M6
  *
  * Logs are structured JSON; they never contain event payloads, tokens or keys.
@@ -44,6 +47,17 @@ if (checkpointsEnabled) {
 }
 
 async function runOnce(): Promise<void> {
+  try {
+    const purged = await runRecoveryRetention(sql);
+    if (purged.tokens + purged.keys + purged.grants + purged.throttle > 0) {
+      log('info', 'Recovery data purged', { ...purged });
+    }
+  } catch (err) {
+    // Retention is housekeeping: a failure never stops the checkpoint job
+    log('error', 'Recovery retention failed', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
   if (checkpointsEnabled) {
     const r = await runCheckpointJob(sql, {
       keyId: env.AUDIT_SIGNING_KEY_ID as string,

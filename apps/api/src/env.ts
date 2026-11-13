@@ -48,6 +48,16 @@ const EnvSchema = z
     PUBLIC_READ_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(240),
     /** Max staff queue commands / walk-ins per minute per client IP. */
     COMMAND_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(240),
+    /**
+     * M5.1 (REQ-F4.10, L1): ticket-recovery attempts per request source per minute. Every
+     * attempt counts, including malformed ones. Shared by all API instances (stored in the DB).
+     */
+    RECOVERY_RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(1000).default(10),
+    /**
+     * M5.1 (REQ-F4.14): interval of the automatic no-show sweep. The feature itself is off for
+     * every service unless enabled in its policy. 0 disables the sweep in this process.
+     */
+    AUTO_MISS_SWEEP_SECONDS: z.coerce.number().int().min(0).max(3600).default(15),
     /** Set true only when running behind a trusted reverse proxy (honours X-Forwarded-For). */
     TRUST_PROXY: z
       .enum(['true', 'false'])

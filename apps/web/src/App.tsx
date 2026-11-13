@@ -22,6 +22,7 @@ import { StaffConsole } from './pages/StaffConsole.js';
 import { AuditTrail } from './pages/AuditTrail.js';
 import { StaffFacility, StaffHome } from './pages/StaffHome.js';
 import { TicketPage } from './pages/TicketPage.js';
+import { RecoverPage } from './pages/RecoverPage.js';
 
 /**
  * Root application router.
@@ -54,6 +55,10 @@ export function App(): ReactElement {
                 {/* Visitor routes (M2) — no account needed */}
                 <Route path="/join/:orgSlug/:facilitySlug" element={<JoinPage />} />
                 <Route path="/ticket/:code" element={<TicketPage />} />
+                {/* Ticket recovery (M5.1): key or grant in the URL fragment only */}
+                <Route path="/recover" element={<RecoverPage />} />
+                <Route path="/recover/:orgSlug/:facilitySlug" element={<RecoverPage />} />
+                <Route path="/recover/:orgSlug/:facilitySlug/:code" element={<RecoverPage />} />
                 {/* Public display board (M2) */}
                 <Route path="/display/:orgSlug/:facilitySlug" element={<DisplayBoard />} />
 

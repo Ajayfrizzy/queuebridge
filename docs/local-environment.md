@@ -41,12 +41,19 @@ To set a value by hand instead, generate it straight into your editor's clipboar
 (`node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))" | pbcopy`)
 and paste it into `.env`; do not echo it in a terminal you share or record.
 
-| Variable                 | Rule                                                                       |
-| ------------------------ | -------------------------------------------------------------------------- |
-| `SESSION_SECRET`         | ≥ 32 characters, random                                                    |
-| `CONTACT_ENCRYPTION_KEY` | exactly 64 hex characters (32 bytes)                                       |
-| `AUDIT_SIGNING_KEY`      | ≥ 32 characters, random; placeholders refused by API and worker            |
-| `AUDIT_SIGNING_KEY_ID`   | required whenever the key is set (and vice versa); letters, digits, `._:-` |
+| Variable                  | Rule                                                                       |
+| ------------------------- | -------------------------------------------------------------------------- |
+| `SESSION_SECRET`          | ≥ 32 characters, random                                                    |
+| `CONTACT_ENCRYPTION_KEY`  | exactly 64 hex characters (32 bytes)                                       |
+| `AUDIT_SIGNING_KEY`       | ≥ 32 characters, random; placeholders refused by API and worker            |
+| `RECOVERY_RATE_LIMIT_MAX` | optional, 1–1000 (default 10): recovery attempts per minute per source     |
+| `AUTO_MISS_SWEEP_SECONDS` | optional, 0–3600 (default 15; 0 disables the sweep in this process)        |
+| `AUDIT_SIGNING_KEY_ID`    | required whenever the key is set (and vice versa); letters, digits, `._:-` |
+
+Since M5.1, `CONTACT_ENCRYPTION_KEY` also seeds the ticket-recovery secrets (HKDF-derived, one per
+purpose: recovery key, staff grant, throttle). Without it self-service recovery is disabled rather
+than weakened. **Rotating it invalidates every outstanding recovery key and grant** (visitors can
+make a new key from their ticket page; staff can use the assisted procedure).
 
 The API and the worker must use the SAME id and key: the worker signs checkpoints, the API
 verifies them. Using one `.env` for both guarantees it; section 4 proves it.
