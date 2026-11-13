@@ -24,6 +24,21 @@ All ten core feature groups (F1–F10) plus SMS (F11) and USSD (F12) are **in sc
 with an optional zero-cost AI layer), milestone MQ between M5 and M6. See PRD Addendum A, REQ-F13
 and ADR-011. Do not implement before MQ.
 
+**Planned additions (approved 2026-11-12, PRD Addendum B):**
+
+- **F14 — Smart Turn Alerts (M5):** in-app notification when a visitor is called, optional sound,
+  supported foreground vibration, opt-in Web Push, accessible visual fallbacks. Background vibration
+  and push delivery are **never** assumed or promised; a failed notification never blocks queue
+  progression and never marks a visitor missed. REQ-F14, design §12, ADR-013.
+- **SMS Turn Alerts (M6, extends F11):** through the existing channel-adapter architecture; real
+  provider support preserved, subject to the zero-personal-spending rule. REQ-F11.8–F11.13, design §13.
+- **F15 — Final UI/UX, branding and animated public landing page (M7):** responsive redesign,
+  organizational onboarding path, accessibility/performance/security/cross-browser verification.
+  REQ-F15, design §14, ADR-014.
+
+**Milestone status (2026-11-12):** M0–M4 are implemented and merged into `staging` (PRs #1–#6).
+Order from here: **M5 → MQ → M6 → M7**. Do not implement a later milestone's scope early.
+
 ---
 
 ## 2. Repository structure
@@ -74,22 +89,23 @@ queuebridge/
 
 ## 3. Technology stack (mandatory — do not substitute without ADR)
 
-| Layer              | Choice                                           | Notes                                    |
-| ------------------ | ------------------------------------------------ | ---------------------------------------- |
-| Runtime            | Node.js 24                                       | LTS stream                               |
-| Package manager    | pnpm workspaces                                  | `pnpm-workspace.yaml` at root            |
-| Language           | TypeScript 5.x strict mode                       | `strict: true`, no `any` without comment |
-| Frontend framework | React 19                                         | Mobile-first, PWA                        |
-| Build (web)        | Vite                                             | Fast HMR, static output                  |
-| API framework      | Fastify 5                                        | Type-safe routes, plugin ecosystem       |
-| Database           | PostgreSQL 16+                                   | Transactional event sequencing           |
-| DB client          | `postgres` (pg) or `@vercel/postgres`-compatible | Raw SQL preferred over heavy ORM         |
-| Schema validation  | Zod 3                                            | Shared across frontend and backend       |
-| Testing            | Vitest                                           | All packages                             |
-| Linting            | ESLint 9 flat-config                             | With TypeScript plugin                   |
-| Formatting         | Prettier                                         | 2-space indent, single quotes            |
-| CI                 | GitHub Actions                                   | Free tier                                |
-| Env validation     | `zod` (no dotenv: env comes from the shell)      | `docs/local-environment.md`              |
+| Layer              | Choice                                           | Notes                                                 |
+| ------------------ | ------------------------------------------------ | ----------------------------------------------------- |
+| Runtime            | Node.js 24                                       | LTS stream                                            |
+| Package manager    | pnpm workspaces                                  | `pnpm-workspace.yaml` at root                         |
+| Language           | TypeScript 5.x strict mode                       | `strict: true`, no `any` without comment              |
+| Frontend framework | React 19                                         | Mobile-first, PWA                                     |
+| Build (web)        | Vite                                             | Fast HMR, static output                               |
+| API framework      | Fastify 5                                        | Type-safe routes, plugin ecosystem                    |
+| Database           | PostgreSQL 16+                                   | Transactional event sequencing                        |
+| DB client          | `postgres` (pg) or `@vercel/postgres`-compatible | Raw SQL preferred over heavy ORM                      |
+| Schema validation  | Zod 3                                            | Shared across frontend and backend                    |
+| Testing            | Vitest                                           | All packages                                          |
+| Linting            | ESLint 9 flat-config                             | With TypeScript plugin                                |
+| Formatting         | Prettier                                         | 2-space indent, single quotes                         |
+| CI                 | GitHub Actions                                   | Free tier                                             |
+| Env validation     | `zod` (no dotenv: env comes from the shell)      | `docs/local-environment.md`                           |
+| Web Push (from M5) | `web-push` (MIT), VAPID, exact-pinned            | Free open standard; ADR-013; `packages/channels` only |
 
 **Paid services:** explicitly prohibited. Do not add any dependency with a paid tier requirement for local or CI use.
 
@@ -143,6 +159,12 @@ queuebridge/
 - Idempotency key on every outbound notification — same key must not re-trigger a send.
 - SMS/USSD adapters must expose a `ChannelAdapter` interface and a sandbox/test double.
 - Mark sandbox traffic unmistakably as test-only in all UI and logs.
+- Turn alerts (from M5, ADR-013): enqueue inside a savepoint with no network I/O so alert code cannot
+  fail a queue command; alert only for server-committed events; the worker never writes ticket or
+  queue tables; no alert outcome may change ticket state or mark a visitor missed; `sent` is not
+  `delivered`; never promise background vibration or push delivery in code, UI or docs.
+- Push subscriptions are secrets: encrypted at rest, never logged or returned. VAPID private key is
+  worker-only environment configuration.
 
 ---
 
@@ -160,6 +182,7 @@ queuebridge/
 - Session tokens must be cryptographically random, HttpOnly, Secure, SameSite=Strict.
 - Recovery credentials: high-entropy random secret, SHA-256 hash stored, original never logged.
 - Rate limit recovery attempts: max 5 per 15 minutes per ticket code.
+- M5 clarification (ADR-015): recovery keys have at least 128 bits (160-bit design), are stored as HMAC-SHA-256 and shown once; the public ticket code is never a credential; throttle keys never include the submitted secret; there is no irreversible lockout; staff-assisted recovery is a restricted, audited procedure; automatic no-show executes only through the authoritative command path.
 
 ### 5.3 Input validation
 
@@ -188,7 +211,7 @@ queuebridge/
 ```
 main          ← protected; only accepts PRs from staging
 staging       ← integration; accepts PRs from feature branches
-feature/*     ← implementation work (current: feature/m0-foundation)
+feature/*     ← implementation work (one branch per milestone, e.g. feature/m5-recovery-accessibility-alerts)
 fix/*         ← bug fixes
 chore/*       ← tooling, docs, CI changes
 ```
@@ -214,7 +237,7 @@ Scope examples: `api`, `web`, `worker`, `domain`, `contracts`, `continuity`, `ch
 - **Never force-push** any branch.
 - **Never merge without a passing CI run** (lint + typecheck + tests + build).
 - Keep commits atomic — one logical change per commit.
-- Reference the relevant feature ID (F1–F12) or milestone (M0–M7) in PR descriptions.
+- Reference the relevant feature ID (F1–F15) or milestone (M0–M7, MQ) in PR descriptions.
 
 ---
 
@@ -222,7 +245,7 @@ Scope examples: `api`, `web`, `worker`, `domain`, `contracts`, `continuity`, `ch
 
 Before marking any milestone complete, ALL of the following must pass:
 
-### M0 gate (current)
+### M0 gate (baseline; met at M0 and re-run for every milestone)
 
 - [ ] `pnpm typecheck` — zero TypeScript errors across all packages and apps
 - [ ] `pnpm lint` — zero ESLint errors (warnings allowed, zero errors)
@@ -232,7 +255,7 @@ Before marking any milestone complete, ALL of the following must pass:
 - [ ] `pnpm db:migrate` — migrations apply to a fresh PostgreSQL database without errors
 - [ ] CI workflow passes on push to `feature/m0-foundation`
 
-### M1–M7 gates (future milestones)
+### M1–M7 gates (M1–M4 met and merged; M5–M7 and MQ pending)
 
 Each milestone adds its own domain-specific acceptance criteria defined in `.kiro/specs/queuebridge/tasks.md`.
 
