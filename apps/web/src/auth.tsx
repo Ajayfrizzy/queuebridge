@@ -25,15 +25,16 @@ interface AuthState {
    * reached. The session is re-verified as soon as the server answers.
    */
   offlineIdentity: boolean;
-  /** True right after a confirmed, user-initiated sign out (so guards send them home, not to /login). */
-  signedOut: boolean;
-  /** Called once the post-sign-out landing page is shown. */
-  acknowledgeSignedOut: () => void;
   /**
    * Ends the server session. Resolves only after the server CONFIRMS invalidation (or reports
    * that no session exists). On any other failure it rejects and the user stays signed in.
+   *
+   * `afterConfirmed` runs once the sign-out is confirmed and local data is erased, and BEFORE
+   * the user state is cleared. The caller navigates home there, so the browser URL has already
+   * left the protected page by the time any route guard sees "no user" (M5.0: a guard that won
+   * that race left a blank protected URL after Back).
    */
-  logout: () => Promise<void>;
+  logout: (afterConfirmed?: () => void) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -42,7 +43,6 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
   const [user, setUser] = useState<SessionUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [sessionEnded, setSessionEnded] = useState(false);
-  const [signedOut, setSignedOut] = useState(false);
   const [offlineIdentity, setOfflineIdentity] = useState(false);
   const [sessionExpiry, setSessionExpiry] = useState<string | null>(null);
 
@@ -131,24 +131,27 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
     return (): void => setUnauthenticatedHandler(null);
   }, []);
 
-  const logout = useCallback(async (): Promise<void> => {
-    try {
-      await api.logout();
-    } catch (e) {
-      // 401 = the server has no such session: it is already invalid, so signing out is true.
-      // Anything else (network failure, 5xx, 403/CSRF) is NOT confirmation: stay signed in.
-      if (!(e instanceof ApiRequestError && e.status === 401)) throw e;
-    }
-    // Confirmed sign-out: erase everything cached on this device (the UI has already made the
-    // person sync or explicitly discard unsent actions). Stop accepting cache writes first.
-    offlineDb.setActiveUser(null);
-    if (user) await offlineDb.clearSensitive({ discardOutboxOf: user.id }).catch(() => undefined);
-    await forgetIdentity();
-    setSessionEnded(false);
-    setSignedOut(true);
-    setUser(null);
-    setOfflineIdentity(false);
-  }, [user]);
+  const logout = useCallback(
+    async (afterConfirmed?: () => void): Promise<void> => {
+      try {
+        await api.logout();
+      } catch (e) {
+        // 401 = the server has no such session: it is already invalid, so signing out is true.
+        // Anything else (network failure, 5xx, 403/CSRF) is NOT confirmation: stay signed in.
+        if (!(e instanceof ApiRequestError && e.status === 401)) throw e;
+      }
+      // Confirmed sign-out: erase everything cached on this device (the UI has already made the
+      // person sync or explicitly discard unsent actions). Stop accepting cache writes first.
+      offlineDb.setActiveUser(null);
+      if (user) await offlineDb.clearSensitive({ discardOutboxOf: user.id }).catch(() => undefined);
+      await forgetIdentity();
+      afterConfirmed?.();
+      setSessionEnded(false);
+      setUser(null);
+      setOfflineIdentity(false);
+    },
+    [user],
+  );
 
   const value = useMemo(
     () => ({
@@ -156,18 +159,13 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
       loading,
       sessionEnded,
       offlineIdentity,
-      signedOut,
-      acknowledgeSignedOut: (): void => setSignedOut(false),
       setUser: (u: SessionUser | null): void => {
-        if (u) {
-          setSessionEnded(false);
-          setSignedOut(false);
-        }
+        if (u) setSessionEnded(false);
         setUser(u);
       },
       logout,
     }),
-    [user, loading, sessionEnded, offlineIdentity, signedOut, logout],
+    [user, loading, sessionEnded, offlineIdentity, logout],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

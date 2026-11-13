@@ -7,7 +7,7 @@ import { ConnectivityBar } from './ConnectivityBar.js';
 
 /** Page shell: skip link, banner, navigation, and route-change focus management. */
 export function Layout(): ReactElement {
-  const { user, logout, signedOut, acknowledgeSignedOut } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const mainRef = useRef<HTMLElement>(null);
@@ -28,9 +28,9 @@ export function Layout(): ReactElement {
     setSigningOut(true);
     setLogoutError(null);
     try {
-      // Local state is cleared only after the server confirmed; guards then send the user home
-      await logout();
-      void navigate('/');
+      // Local state is cleared only after the server confirmed. Home is navigated to first (inside
+      // logout, before the user is cleared) so route guards never act on a stale protected URL.
+      await logout(() => void navigate('/'));
     } catch (e) {
       setLogoutError(
         e instanceof ApiRequestError && e.status > 0
@@ -41,11 +41,6 @@ export function Layout(): ReactElement {
       setSigningOut(false);
     }
   }
-
-  // After a confirmed sign out lands on home, later visits to protected pages go to sign-in again
-  useEffect(() => {
-    if (signedOut && location.pathname === '/') acknowledgeSignedOut();
-  }, [signedOut, location.pathname, acknowledgeSignedOut]);
 
   // A stale failure notice must not outlive the session it refers to
   useEffect(() => {
