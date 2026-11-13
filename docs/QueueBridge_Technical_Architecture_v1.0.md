@@ -396,7 +396,7 @@ milestone table below is the reconciled plan; milestone order is M5, MQ, M6, M7.
 
 ```text
 committed event (call-next / out-of-order call / counter transfer, online or via sync)
-   └─ same DB transaction ── SAVEPOINT ── enqueue notifications + notification_outbox (web_push)
+   └─ same DB transaction ── SAVEPOINT ── enqueue one notifications + notification_outbox entry per subscribed device (web_push)
                                  └─ error ⇒ ROLLBACK TO SAVEPOINT, log, count; queue command still commits
 apps/worker ── re-check ticket still `called` ── PushTransport.send (VAPID, TTL) ── record sent/failed/…
 visitor page ── SSE/poll of committed state ── TurnAlert (banner + live region [+ sound, vibration])
@@ -411,6 +411,7 @@ service worker ── push event ── focused window? hand off : showNotificat
   endpoints. No package-boundary change.
 - Persistence: additive M5.4 migration (numbered after the M5.1 and M5.3 migrations; `push_subscriptions`, delivery detail code, widened
   `notifications` CHECK constraints). Subscription endpoints/keys are encrypted at rest.
+- Idempotency key per device: `web_push:ticket.called:<ticket_id>:<event_sequence>:<subscription_id>` (`dedup_key` is globally unique). Notification tag, `Topic` and click destination use the non-secret `subscription_id`, resolved on the device through the existing saved-ticket identity (`pushRef`), never the public code alone; an unmatched reference opens a neutral screen without a status request.
 - Delivery states: `sent` ≠ `delivered`; `delivered` only from a first-party acknowledgement or a
   provider receipt (consistent with §10 and AGENTS §4.6).
 

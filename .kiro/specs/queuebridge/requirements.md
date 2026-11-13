@@ -318,17 +318,20 @@
 
 - REQ-F14.5.1: Web Push SHALL be offered only where `serviceWorker`, `PushManager` and `Notification` exist and the server capability is configured; otherwise the UI SHALL explain plainly that push is unavailable and rely on the in-app alert.
 - REQ-F14.5.2: Notification permission SHALL be requested only from an explicit visitor action on the ticket page, never on page load; a denied permission SHALL be respected without repeated prompting, with instructions to re-enable.
-- REQ-F14.5.3: A push subscription SHALL be bound to one ticket, removable by the visitor at any time, and revoked automatically when the ticket is completed, cancelled, missed beyond rejoin, or expired.
+- REQ-F14.5.3: A push subscription SHALL be bound to one ticket, removable by the visitor at any time, and revoked automatically when the ticket is completed, cancelled, missed beyond rejoin, or expired. A service transfer SHALL re-bind the ticket's active subscriptions to the destination ticket rather than revoke them.
 - REQ-F14.5.4: Where the platform requires installation for push (e.g. iOS), the UI SHALL say so; it SHALL NOT imply push will work without it.
-- REQ-F14.5.5: The push payload SHALL contain only a type, the ticket code, the counter label and a timestamp; it SHALL NOT contain names, phone numbers, internal IDs or tenant configuration.
+- REQ-F14.5.5: The push payload SHALL contain only a type, a non-secret subscription reference, the ticket code, the counter label, the committed call sequence, a public recovery path (public identifiers only) and a timestamp. It SHALL NOT contain a status token, recovery key, grant, push endpoint, key material, names, phone numbers, tenant configuration or any internal identifier other than the subscription reference.
 - REQ-F14.5.6: Each push SHALL carry a short TTL and SHALL be suppressed by the worker if, at send time, the ticket is no longer `called` at that counter.
-- REQ-F14.5.8: The push TTL SHALL default to 120 seconds (configurable) and bound all retries; at most 3 active push subscriptions SHALL exist per ticket (configurable). Subscriptions SHALL be retained and deleted as specified in design §12.13: ciphertext removed on revoke, tombstones kept 24 hours, notification rows kept 30 days.
 - REQ-F14.5.7: A push received while a QueueBridge window is focused SHALL be handed to that window instead of showing a duplicate system notification.
+- REQ-F14.5.8: The push TTL SHALL default to 120 seconds (configurable) and bound all retries; at most 3 active push subscriptions SHALL exist per ticket (configurable). Subscriptions SHALL be retained and deleted as specified in design §12.13: ciphertext removed on revoke, tombstones kept 24 hours, notification rows kept 30 days.
+- REQ-F14.5.9: Notification identity SHALL be the push subscription, never the public ticket code alone. Each subscription SHALL have a server-minted, random, non-secret `subscription_id` (unique per ticket and device, stable under idempotent re-subscription, not derived from the endpoint, accepted by no endpoint without the ticket's status token). The notification `tag`, the push `Topic` and the click destination SHALL be derived from it, so tickets that share a public code (different facilities or queue sessions) on one device never share a tag or destination.
+- REQ-F14.5.10: The web client SHALL map a subscription to a saved ticket through the existing saved-ticket identity architecture: the page stores the returned subscription reference as a non-secret field on the saved ticket, and a notification opens `/ticket/<code>?ref=<ref>`, resolved by that field. When both the device-local ticket id and the reference are present they SHALL agree. A bare public code SHALL NOT be used to guess a ticket when a reference is present.
+- REQ-F14.5.11: When a notification is opened on a device that has no saved ticket for its reference, the client SHALL show a neutral message that the ticket is not saved on this device, SHALL make no status request, SHALL NOT open another ticket sharing the public code, and SHALL offer credential-based recovery paths (saved link or QR, recovery key, ask staff). Notifications SHALL never carry a bearer credential that would let the receiving device bypass this.
 
 ### REQ-F14.6 No guarantee, honest states
 
 - REQ-F14.6.1: No UI text, knowledge-base article or documentation SHALL promise that a visitor will be alerted. Wording SHALL describe push, sound and vibration as best effort and SHALL keep the public board and staff calling as the reliable fallback.
-- REQ-F14.6.2: Push delivery state SHALL be recorded as `sent` (accepted by the push service), `delivered` (only on a first-party acknowledgement from the visitor's device or a provider receipt), `failed` (definitive rejection or retries exhausted) or `unknown`; `delivered` SHALL NOT be inferred from `sent`.
+- REQ-F14.6.2: Push delivery state SHALL be recorded as `sent` (accepted by the push service), `delivered` (only on a first-party acknowledgement sent by the visitor's page (the service worker holds no credential) or a provider receipt), `failed` (definitive rejection or retries exhausted) or `unknown`; `delivered` SHALL NOT be inferred from `sent`.
 - REQ-F14.6.3: Authorized staff SHALL see the alert state for a called ticket as plain text (for example "push sent, not confirmed") together with a reminder that the public board is the fallback.
 
 ### REQ-F14.7 Non-blocking and fairness
@@ -340,9 +343,10 @@
 
 ### REQ-F14.8 Idempotency and retries
 
-- REQ-F14.8.1: There SHALL be at most one push alert per (ticket, call event); the idempotency key is derived from the ticket and the committed event sequence, and a replayed key SHALL NOT re-send.
+- REQ-F14.8.1: Each subscribed device SHALL receive its own notification and outbox entry for a call event. The idempotency key SHALL include the ticket, the committed event sequence and the subscription identifier (`web_push:ticket.called:<ticket_id>:<event_sequence>:<subscription_id>`), SHALL be unique per outbound notification, and a replayed key SHALL NOT re-send. A conflicting (replayed) row SHALL be skipped without discarding the entries of other devices or the savepoint.
 - REQ-F14.8.2: Retries SHALL be bounded, SHALL back off, and SHALL stop when the TTL has elapsed.
 - REQ-F14.8.3: A push endpoint answering 404/410 SHALL revoke that subscription and stop further sends to it.
+- REQ-F14.8.4: Concurrent workers SHALL claim outbox rows without double-claiming (row locks with a lease). Delivery SHALL be described as at-least-once with collapse (same `Topic` and notification tag), never exactly-once, and one device's failure SHALL NOT affect another device's entry.
 
 ### REQ-F14.9 Accessibility
 
@@ -354,7 +358,7 @@
 
 ### REQ-F14.10 Security, privacy and cost
 
-- REQ-F14.10.1: Push subscription data (endpoint and keys) SHALL be encrypted at rest with an environment-injected key, never logged, never returned by any API, and treated as a secret.
+- REQ-F14.10.1: Push subscription data (endpoint and keys) SHALL be encrypted at rest with an environment-injected key, never returned by any API, and treated as a secret. The endpoint, its hash, the keys and every bearer credential SHALL NOT appear in logs, audit records, URLs, notification tags, payloads or deduplication keys; the non-secret `subscription_id` MAY appear in logs and metrics.
 - REQ-F14.10.2: Subscribe/unsubscribe endpoints SHALL require the ticket's status credential, enforce tenant scope, be CSRF-protected and rate-limited, and cap active subscriptions per ticket.
 - REQ-F14.10.3: VAPID keys SHALL be provided by environment variables only; when absent, the web-push capability SHALL report `disabled` and the UI SHALL not offer it.
 - REQ-F14.10.4: The feature SHALL use only free, open-standard components (Web Push protocol, VAPID, an MIT-licensed library); no paid push service or SaaS.
@@ -429,10 +433,10 @@
 | REQ-F14.1        | §12.3 in-app alert                                | ADR-013          | M5.4               | Group 14.1, 14.8; Group 11                       |
 | REQ-F14.2        | §12.4 triggers and outbox                         | ADR-013          | M5.4               | Group 14.2 (committed-only), Group 6 interaction |
 | REQ-F14.3, F14.4 | §12.3.2 sound, §12.3.3 vibration                  | ADR-013          | M5.4               | Group 14.1, 14.8                                 |
-| REQ-F14.5        | §12.5 Web Push                                    | ADR-013          | M5.4               | Group 14.3, 14.5, 14.6                           |
+| REQ-F14.5        | §12.5 Web Push, §12.5.7 notification identity     | ADR-013          | M5.4               | Group 14.3, 14.5, 14.6, 14.13, 14.14             |
 | REQ-F14.6        | §12.6 delivery states                             | ADR-013          | M5.4               | Group 14.4                                       |
 | REQ-F14.7        | §12.4 savepoint, §12.7 failure behaviour          | ADR-013          | M5.4               | Group 14.2 (isolation), 14.7 (no state change)   |
-| REQ-F14.8        | §12.4, §12.5.4 worker                             | ADR-013          | M5.4               | Group 14.4                                       |
+| REQ-F14.8        | §12.4.2 per-device enqueue, §12.5.4 worker        | ADR-013          | M5.4               | Group 14.2, 14.4                                 |
 | REQ-F14.9        | §12.3 accessibility                               | ADR-013          | M5.2, M5.4         | Group 11, Group 14.8                             |
 | REQ-F14.10       | §12.5, §12.8 security                             | ADR-013          | M5.4               | Group 14.5, 14.6; Group 8                        |
 | REQ-F14.11       | §12.11 verification                               | ADR-013          | M5 exit            | Group 14, `docs/testing/M5-evidence.md`          |

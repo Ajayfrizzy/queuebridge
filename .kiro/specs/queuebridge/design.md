@@ -923,30 +923,52 @@ shared command code that commits `ticket.call_next`, out-of-order call and `tick
 (`applyCommand`). Because the sync path commits through the same code, an offline-coordinated call
 alerts the visitor only after the server commits it.
 
-**12.4.2 Savepoint isolation.** Inside the open transaction:
+**12.4.2 Savepoint isolation and one outbox entry per subscribed device.** Inside the open
+transaction:
 
 ```
 SAVEPOINT turn_alert;
-  -- look up active push subscriptions for the ticket
-  -- INSERT notifications (channel 'web_push', template 'ticket.called') and notification_outbox
-  --   (dedup_key 'web_push:ticket.called:<ticket_id>:<event_sequence>', payload: minimal)
+  -- active = SELECT id FROM push_subscriptions
+  --           WHERE ticket_id = $ticket AND revoked_at IS NULL AND expires_at > NOW() ORDER BY id
+  -- for EACH subscription S in active (one device = one subscription = one outbound notification):
+  --   one statement (CTE) creating the pair together or not at all:
+  --     notifications     (channel 'web_push', template 'ticket.called', ticket_id, push_subscription_id = S.id)
+  --     notification_outbox (notification_id, payload = { subscription_id, event_sequence },
+  --        dedup_key = 'web_push:ticket.called:<ticket_id>:<event_sequence>:<subscription_id>')
+  --     ON CONFLICT (dedup_key) DO NOTHING   -- a duplicate key skips that one row, never raises
 RELEASE SAVEPOINT turn_alert;
 -- on ANY error: ROLLBACK TO SAVEPOINT turn_alert; log + count; the queue command continues
 ```
 
-The helper does no network I/O. A defect or constraint failure in alert code therefore cannot fail a
-queue command, and the unique `dedup_key` makes a replayed command (idempotent `duplicate`
-disposition) produce no second alert.
+`notification_outbox.dedup_key` is globally unique (`notification_outbox_dedup_idx`, migration `0001`),
+so a key that does not identify the **device** would make the second subscription's insert collide
+with the first. Including the subscription id in the key gives every device its own entry, keeps the
+key unique per outbound notification (AGENTS §4.6), and makes the conflict clause a pure replay guard:
+it can only fire for a replay of the same (ticket, call event, subscription), and when it does it
+skips that one row without disturbing the other devices' entries or the savepoint. The helper does no
+network I/O. A defect or constraint failure in alert code cannot fail a queue command, and a replayed
+command (idempotent `duplicate` disposition) produces no second alert. A subscription added after the
+call event is not retro-alerted (it has no row for that sequence).
 
 **12.4.3 Suppression on state change.** A release/recall (`called → waiting`), a completed or missed
 ticket, or a transfer to another counter makes the outbox consumer drop the pending alert at send
 time (§12.5.4). The in-app banner clears on the next state update.
 
+**12.4.4 Subscription identity (`subscription_id`).** The primary key of `push_subscriptions`
+(random UUID, `gen_random_uuid()`). It is unique per (ticket, push endpoint): a device that
+re-subscribes the same ticket gets the same id (idempotent on `endpoint_hash`); the same device
+subscribing two tickets gets two ids; two devices on one ticket get two ids. It is **not derived from
+the endpoint, not a credential, and grants nothing**: every endpoint that accepts it also requires the
+ticket's status token. It is returned to the owning client as `subscription_ref`, and it is the one
+identifier used for the outbox deduplication key, the push `Topic`, the notification `tag`, the click
+destination (§12.5.7) and the aggregate counters. The endpoint URL, the endpoint hash, the keys and
+every bearer credential never appear in a payload, URL, tag, `dedup_key`, log line or audit record.
+
 ### 12.5 Web Push
 
 **12.5.1 Client subscribe flow.** Ticket page → "Get a push alert (optional)" button → feature check
 → `Notification.requestPermission()` (only inside this click) → `registration.pushManager.subscribe`
-with the server's VAPID public key → `POST /api/v1/tickets/:publicCode/push-subscription`.
+with the server's VAPID public key → `POST /api/v1/tickets/:publicCode/push-subscription`, which returns the non-secret `subscription_ref` that the page saves as `pushRef` on that saved ticket (§12.5.7).
 "Turn off" calls `DELETE` and unsubscribes locally. Unsupported, denied, and iOS-not-installed states
 each have specific plain-language text and no nagging. Nothing is requested on page load.
 
@@ -955,13 +977,13 @@ header; rate limited; Zod strict):
 
 ```
 GET    /api/v1/push/capability                          -> { web_push: 'live' | 'disabled', public_key? }
-POST   /api/v1/tickets/:publicCode/push-subscription   -> 201 | 200 (idempotent on endpoint hash)
+POST   /api/v1/tickets/:publicCode/push-subscription   -> 201 | 200 { subscription_ref }  (idempotent on endpoint hash: same ref)
 DELETE /api/v1/tickets/:publicCode/push-subscription    -> 204
-POST   /api/v1/tickets/:publicCode/alerts/ack           -> 204   (first-party "seen on device" acknowledgement)
+POST   /api/v1/tickets/:publicCode/alerts/ack           -> 204   { subscription_ref, event_sequence }  (page-sent "seen on device")
 GET    /api/v1/queues/:id/alerts                        -> staff: per-called-ticket alert state (plain codes)
 ```
 
-A fourth active subscription for a ticket is refused with 409 and the message "Push is already on for 3 devices. Turn it off on one first." (unlike status tokens, push subscriptions are never evicted silently). No endpoint ever returns endpoint URLs or keys. Cross-tenant and wrong-credential requests are 404.
+A fourth active subscription for a ticket is refused with 409 and the message "Push is already on for 3 devices. Turn it off on one first." (unlike status tokens, push subscriptions are never evicted silently). No endpoint ever returns endpoint URLs or keys. The public code in these paths is only a consistency check (as for ticket status): the status token header decides which ticket is meant, and a `subscription_ref` that does not belong to that ticket is 404. Cross-tenant and wrong-credential requests are 404.
 
 **12.5.3 Storage.** The M5.4 migration (additive; constraint replacement only; numbered after the M5.1 and M5.3 migrations, so indicatively `0009`):
 
@@ -983,57 +1005,128 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
   UNIQUE (ticket_id, endpoint_hash)
 );
 -- notification_deliveries: add detail_code TEXT (e.g. 'accepted', 'gone', 'ttl_elapsed', 'client_ack', 'cap')
--- notifications: widen CHECKs: channel adds 'web_push'; status adds 'suppressed'
+-- notifications: widen CHECKs: channel adds 'web_push'; status adds 'suppressed';
+--   add push_subscription_id UUID REFERENCES push_subscriptions (id) ON DELETE SET NULL (per-device state)
 ```
 
 Revocation, tombstones and hard deletion follow §12.13. No existing column or table is dropped.
 
-**12.5.4 Worker consumer (`apps/worker`).** Picks due `web_push` outbox rows with
-`FOR UPDATE SKIP LOCKED`; re-reads the ticket: if it is not `called` at the same counter and call
-sequence, records `suppressed` and stops; if `now > created_at + TTL`, records `failed`/`ttl_elapsed`;
-otherwise decrypts the subscription and calls `PushTransport.send`. Outcomes: 2xx → `sent`
-(`accepted`); 404/410 → revoke subscription, `failed`/`gone`; 429/5xx/network → exponential backoff
-to at most 3 attempts inside the TTL, then `failed`; any unexpected error → `unknown`. Nothing the
-worker does updates `tickets`, `queue_sessions` or `queue_events`.
+**12.5.4 Worker consumer (`apps/worker`).** Each outbox row is one device. A worker claims due
+`web_push` rows with `FOR UPDATE SKIP LOCKED` in a short transaction that also increments
+`attempt_count` and moves `next_attempt_at` forward by a lease (so concurrent workers never take the
+same row and a crashed worker's row becomes due again), then works outside the transaction:
+re-reads the ticket: if it is not `called` at the same counter and call sequence, records `suppressed`
+and stops; if `now > created_at + TTL`, records `failed`/`ttl_elapsed`; otherwise decrypts that one
+subscription and calls `PushTransport.send` with `Topic = subscription_id` (32 hex characters,
+non-secret) so the push service collapses a retried or duplicated message for that device. Outcomes:
+2xx → `sent` (`accepted`); 404/410 → revoke that subscription only, `failed`/`gone`; 429/5xx/network →
+exponential backoff to at most 3 attempts inside the TTL, then `failed`; any unexpected error →
+`unknown`. One device failing never affects another device's row. Delivery is **at-least-once with
+collapse** (a crash between sending and recording can re-send after the lease expires; the identical
+`Topic` and notification `tag` replace rather than stack), and exactly-once delivery is never
+claimed. Nothing the worker does updates `tickets`, `queue_sessions` or `queue_events`.
 
 **12.5.5 Payload and service worker.**
 
 ```json
 {
-  "v": 1,
+  "v": 2,
   "type": "ticket.called",
-  "code": "A-012",
+  "ref": "6f1c0a52-7d0e-4b0d-9a77-2d0c5f6f4b11",
+  "code": "A012",
   "counter": "Counter 2",
+  "seq": 41,
+  "rp": "/recover/acme/city-clinic/A012",
   "ts": "2026-11-12T10:00:00Z"
 }
 ```
 
-TTL = `TURN_ALERT_TTL_SECONDS`, `Urgency: high`, `Topic` per ticket to collapse duplicates. The
-service worker handler is added through the existing `generateSW` configuration
+`ref` is the `subscription_id` (§12.4.4); `seq` is the committed call event sequence; `rp` is the
+public recovery path (public identifiers only, no key). The payload is encrypted end to end to the
+device by the Web Push protocol and contains **no status token, recovery key, grant, endpoint, key
+material or personal data**. TTL = `TURN_ALERT_TTL_SECONDS`, `Urgency: high`, `Topic = subscription_id`.
+The service worker handler is added through the existing `generateSW` configuration
 (`workbox.importScripts: ['push-handler.js']`), leaving the M3 offline shell and caching rules
-untouched. On `push`: if a focused QueueBridge window exists, `postMessage` it and show no system
-notification (REQ-F14.5.7); otherwise `showNotification` with `tag = ticket-<code>`, `renotify`,
-best-effort `vibrate`, and `data.url = /ticket/<code>`. On `notificationclick`: focus an existing
-window or open the ticket page. On display it posts the first-party acknowledgement.
+untouched. The service worker has no `localStorage` and holds no bearer credential; it needs only the
+payload. On `push`: if a focused QueueBridge window exists, `postMessage` the payload to it and show no
+system notification (REQ-F14.5.7); the page shows the in-app alert only if `ref` resolves to the
+ticket it is displaying (§12.5.7). Otherwise `showNotification` with `tag = qb-call-<ref>`,
+`renotify: true`, best-effort `vibrate`, and `data = { ref, code, rp }`. **Neither the tag nor the
+destination is built from the public code alone.** On `notificationclick`: focus an existing window
+and navigate it, or open, `/ticket/<code>?ref=<ref>` (§12.5.7). The first-party acknowledgement is sent
+by the **page** (which holds the status token) when it receives the hand-off or is opened from the
+notification, as `POST …/alerts/ack { subscription_ref, event_sequence }`; a notification that was
+shown but never opened therefore stays `sent`, which is the honest state.
 
 **12.5.6 Platform notes (stated in the UI and KB).** Android Chrome: works with the browser
 closed, subject to battery settings. Desktop Chrome/Edge/Firefox: needs the browser running. iOS
 Safari: requires the app to be added to the Home Screen (iOS 16.4+) and permission granted from that
 installed app. Vibration from a system notification is device- and OS-dependent and is not relied on.
 
+**12.5.7 Ticket identity, notification mapping and opening a notification safely.**
+
+_Why the public code is not enough._ Public codes repeat across queue sessions and facilities (each
+numbers from `001`; two facilities can both issue `A012`). The existing web architecture already
+handles this: a saved ticket has a device-local `id` (`StoredTicket.id`, UUID v7, never sent to the
+server), `ticketPath` builds `/ticket/:code?k=<id>`, and `TicketPage.resolveSaved` returns
+`ambiguous` for a bare `/ticket/:code` that matches several saved tickets. Push reuses that
+architecture instead of adding a parallel one.
+
+_Mapping._ The device-local `id` stays device-local. The server's `subscription_ref` is the shared,
+non-secret key between a notification and the saved ticket:
+
+1. When the visitor enables push on a saved ticket, the server returns `subscription_ref`; the page
+   stores it on that `StoredTicket` as a new non-secret field `pushRef` (same `localStorage` record as
+   the token, no new store; the service worker needs no copy).
+2. A notification carries `ref` (§12.5.5). Its tag `qb-call-<ref>` and `Topic` are unique per
+   ticket-and-device, so two tickets with the same public code never collapse into one notification.
+3. The click destination is `/ticket/<code>?ref=<ref>`. A new `resolveByPushRef(ref)` in the saved-ticket
+   helpers returns the saved ticket whose `pushRef === ref`, and `resolveSaved` is extended: **`ref` (or
+   the existing `k`) wins; a bare code is never used to guess when a `ref` is present.** If both `k` and
+   `ref` are present they must refer to the same saved ticket, otherwise the result is "not found".
+4. The page then reads the token from `localStorage` as it does today and calls the ordinary
+   token-protected status endpoint. The `ref` in the URL is only a lookup key; it is not accepted by the
+   server on its own.
+
+_A device without the corresponding saved credential._ A push subscription belongs to the browser
+profile that created it, so a notification normally arrives where the ticket was saved. It can still be
+opened where the saved ticket is gone: the visitor chose "forget ticket", cleared site data, or
+storage failed when `pushRef` was saved. In every such case (`ref` resolves to no saved ticket):
+
+- The page shows a neutral screen: "This alert is for ticket A012. That ticket is not saved on this
+  device." It makes **no status request** and shows nothing about the ticket.
+- It offers recovery paths that need a credential the visitor holds: the saved link or QR, `rp`
+  (`/recover/<org>/<facility>/<code>`, where the recovery key is entered), or "Ask staff" (design §15.5a).
+- It does **not** open another saved ticket that merely has the same public code. A separate "My saved
+  tickets" link lists saved tickets (the existing chooser) clearly marked as not necessarily the one
+  from the alert.
+- It never receives or displays a bearer credential from the notification, because none is in it.
+
+_Focused window._ The hand-off message carries `ref`; the page raises the in-app alert only when that
+`ref` equals the `pushRef` of the ticket it is showing, otherwise it shows a non-blocking notice with a
+link to `/ticket/<code>?ref=<ref>`.
+
+_Recovery on another device._ Push subscriptions belong to the browser profile that created them and do not move with recovery. A ticket recovered on a new device has no subscription there; the visitor opts in again on that device, which yields a new `subscription_ref` and `pushRef` for that device.
+
+_Transfers._ A service transfer creates a new destination ticket row. The transfer transaction (inside
+the same alert-isolation savepoint) re-binds the transferred ticket's active subscriptions to the
+destination ticket, keeping the same `subscription_id`. Saved-ticket `pushRef` therefore stays valid,
+and the token chain already followed by the status endpoint continues to resolve. A counter transfer
+within one ticket changes nothing.
+
 ### 12.6 Delivery state model
 
-| Layer    | Recorded as                     | Meaning                                                    |
-| -------- | ------------------------------- | ---------------------------------------------------------- |
-| In-app   | nothing server-side             | Derived from state; no delivery claim                      |
-| Web Push | `sent` / `accepted`             | The push service accepted it; the device may never show it |
-| Web Push | `delivered` / `client_ack`      | The visitor's device acknowledged showing it (first-party) |
-| Web Push | `failed` / `gone` `ttl_elapsed` | Definitive failure or window elapsed                       |
-| Web Push | `suppressed`                    | No longer relevant when sending (state changed)            |
-| Web Push | `unknown`                       | Unexpected error; outcome not known                        |
+| Layer    | Recorded as                     | Meaning                                                                                |
+| -------- | ------------------------------- | -------------------------------------------------------------------------------------- |
+| In-app   | nothing server-side             | Derived from state; no delivery claim                                                  |
+| Web Push | `sent` / `accepted`             | The push service accepted it; the device may never show it                             |
+| Web Push | `delivered` / `client_ack`      | The visitor's page confirmed display or open (first-party, sent with the status token) |
+| Web Push | `failed` / `gone` `ttl_elapsed` | Definitive failure or window elapsed                                                   |
+| Web Push | `suppressed`                    | No longer relevant when sending (state changed)                                        |
+| Web Push | `unknown`                       | Unexpected error; outcome not known                                                    |
 
 Staff see: `No push` · `Push sent, not confirmed` · `Seen on device` · `Push failed` · `Alert not
-sent (ticket changed)`, always with "The public board and calling aloud remain the reliable fallback."
+sent (ticket changed)`, per device where a ticket has several, always with "The public board and calling aloud remain the reliable fallback."
 
 ### 12.7 Failure behaviour (required)
 
@@ -1051,10 +1144,10 @@ sent (ticket changed)`, always with "The public board and calling aloud remain t
 ### 12.8 Security and privacy
 
 Subscription endpoint and keys are encrypted (AES-256-GCM, derived key), never logged, never
-returned. Payloads contain the ticket code and counter label only. Subscription routes require the
+returned. Payloads contain the type, `subscription_id` (`ref`), ticket code, counter label, call sequence, public recovery path and timestamp, and never a status token, recovery key, grant or endpoint. `subscription_id` is a non-secret internal id and may appear in logs and metrics; the endpoint, `endpoint_hash`, keys and credentials never appear in logs, audit records, URLs, tags or deduplication keys. Subscription routes require the
 ticket status credential, are rate limited (per IP and per ticket), cap active subscriptions
 (`PUSH_MAX_SUBSCRIPTIONS_PER_TICKET`), and are tenant scoped. VAPID private key lives only in the
-worker environment. Logs record counts and outcome codes, never endpoints, keys or payload bodies.
+worker environment. Logs record counts, outcome codes and `subscription_id`, never endpoints, keys or payload bodies.
 Retention: subscriptions expire with the ticket or at `expires_at`, whichever is earlier.
 
 ### 12.9 Observability and dashboard
@@ -1073,13 +1166,13 @@ no personal data.
 - **Device health (F9):** unchanged; the alert panel in §12.9 is additive and separate from device
   sync health.
 
-### 12.11 Verification plan (Group 14, items 14.1–14.12)
+### 12.11 Verification plan (Group 14, items 14.1–14.14)
 
 Savepoint isolation test: a deliberately failing alert helper (forced constraint error) while a
 real `call_next` runs — the call still commits with the expected event and sequence. State-neutrality
 test: for every failure path in §12.7, ticket state, queue revision and event chain are unchanged and
 no `ticket.miss` exists. Committed-only: an offline-applied call produces no alert until sync
-commits it. Idempotency: replayed command and retried outbox row yield one send. Stale suppression:
+commits it. Idempotency: replayed command and retried outbox row yield one send per subscription; a ticket with three subscriptions gets three outbox entries with distinct deduplication keys, and a replay adds none. Identity: two saved tickets sharing a public code (different facilities) get distinct tags and each notification opens its own ticket; an unmatched `ref` opens the neutral screen and makes no status call. Stale suppression:
 release before send yields `suppressed`. State honesty: `sent` never becomes `delivered` without an
 ack. Minimal payload and encrypted storage verified by DB inspection. Tenant isolation and
 credential tests. Playwright: keyboard-only enable/disable flows, banner, live region, reduced
@@ -1104,17 +1197,17 @@ versions are available at no cost for the manual checks in Group 14.10.
 
 ### 12.13 Push subscription retention and deletion (specified before implementation)
 
-| Moment                                                                                                                    | What happens                                                                                                                                                                |
-| ------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Subscribe                                                                                                                 | `expires_at = created_at + 24 hours` (the status-token lifetime) or earlier terminal event, whichever is first                                                              |
-| Visitor turns push off                                                                                                    | Revoked immediately: `endpoint_ct` and `keys_ct` are set to NULL (columns are nullable for this), `revoked_at` and `revoke_reason = 'visitor'` recorded                     |
-| Ticket reaches a terminal state (`completed`, `cancelled`, final `transferred`), or `missed` and the grace window elapsed | Revoked within one worker cycle (same nulling), reason `ticket_ended`                                                                                                       |
-| Push service answers 404/410                                                                                              | Revoked at once, reason `gone`                                                                                                                                              |
-| Queue session closes                                                                                                      | All subscriptions of that session revoked, reason `session_closed`                                                                                                          |
-| Staff "sign out visitor devices" or recovery revocation (design §15.6)                                                    | Subscriptions of that ticket revoked, reason `credentials_revoked`                                                                                                          |
-| Revoked or expired row                                                                                                    | Ciphertext already gone; a tombstone (ids, `endpoint_hash`, reason, timestamps) is kept 24 hours for idempotency and abuse counting, then hard-deleted by the retention job |
-| `notification_deliveries` / `notifications` for push                                                                      | No endpoint or key material is ever stored; rows kept 30 days for aggregate counts, then deleted                                                                            |
-| Ticket row deleted (cascade)                                                                                              | Subscriptions deleted with it                                                                                                                                               |
+| Moment                                                                                                                                                                                         | What happens                                                                                                                                                                |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Subscribe                                                                                                                                                                                      | `expires_at = created_at + 24 hours` (the status-token lifetime) or earlier terminal event, whichever is first                                                              |
+| Visitor turns push off                                                                                                                                                                         | Revoked immediately: `endpoint_ct` and `keys_ct` are set to NULL (columns are nullable for this), `revoked_at` and `revoke_reason = 'visitor'` recorded                     |
+| Ticket reaches a terminal state (`completed`, `cancelled`), or `missed` and the grace window elapsed (a service transfer re-binds the subscription to the destination ticket instead, §12.5.7) | Revoked within one worker cycle (same nulling), reason `ticket_ended`                                                                                                       |
+| Push service answers 404/410                                                                                                                                                                   | Revoked at once, reason `gone`                                                                                                                                              |
+| Queue session closes                                                                                                                                                                           | All subscriptions of that session revoked, reason `session_closed`                                                                                                          |
+| Staff "sign out visitor devices" or recovery revocation (design §15.6)                                                                                                                         | Subscriptions of that ticket revoked, reason `credentials_revoked`                                                                                                          |
+| Revoked or expired row                                                                                                                                                                         | Ciphertext already gone; a tombstone (ids, `endpoint_hash`, reason, timestamps) is kept 24 hours for idempotency and abuse counting, then hard-deleted by the retention job |
+| `notification_deliveries` / `notifications` for push                                                                                                                                           | No endpoint or key material is ever stored; rows kept 30 days for aggregate counts, then deleted                                                                            |
+| Ticket row deleted (cascade)                                                                                                                                                                   | Subscriptions deleted with it                                                                                                                                               |
 
 The retention job (`purgeAlertData`) runs in the worker at least every 15 minutes, is idempotent, and
 logs only counts. No code path decrypts a subscription except the send step. Backups follow the
@@ -1133,7 +1226,9 @@ recoverable from the live database.
 SMS rides the outbox and worker built in M5. A committed `called` event enqueues an `sms` outbox
 row (same savepoint helper) only when the ticket has a contact with recorded consent and SMS is
 enabled for the facility. The worker sends through `ChannelAdapter.sendMessage` with
-`idempotencyKey = sms:ticket.called:<ticket_id>:<event_sequence>`. Provider receipts arrive on
+`idempotencyKey = sms:ticket.called:<ticket_id>:<event_sequence>` (a ticket has at most one consented
+contact, so this identifies one recipient; any future multi-recipient channel must put the recipient in
+the key, as push does with `subscription_id`). Provider receipts arrive on
 `POST /webhooks/sms/:provider` (signature verified, replay defended) and update
 `notification_deliveries` idempotently. `delivered` is recorded only from a provider receipt.
 
@@ -1643,7 +1738,8 @@ Properties (each has a test):
 **Visitor:** ticket page ("Keep your recovery key": QR, link, readable groups, Copy/Share/Save/Print,
 "Get a new recovery key", "Sign out other devices", rejoin button with grace text; a banner when access
 is granted on another device); `/recover` and `/recover/:org/:facility/:ticketCode#k=…` (reads and
-strips the fragment, single column, error summary, inline errors, no CAPTCHA, offline message, works at
+strips the fragment; without a fragment, as when opened from a push notification's `rp`, it
+prefills facility and ticket code from the public path and asks for the key, single column, error summary, inline errors, no CAPTCHA, offline message, works at
 320 px, announces the outcome); "Lost your ticket and your key? Ask staff" explaining what staff will
 ask and why. **Staff console:** ticket row action "Help visitor get their ticket back" that walks
 through §15.5a (factor questions, assurance outcome, restricted-assistance script when no factor

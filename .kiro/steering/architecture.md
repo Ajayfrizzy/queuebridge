@@ -235,7 +235,8 @@ Before implementing offline queue advancement, code AND tests must answer:
 - The worker sends; the API only enqueues and serves subscription endpoints. The worker never writes to `tickets`, `queue_sessions` or `queue_events`.
 - Web Push uses a separate narrow `PushTransport` in `packages/channels` (sandbox double + `web-push`/VAPID). `ChannelAdapter` stays SMS/USSD-shaped. No new package; no boundary change.
 - In-app alert derives from server-confirmed ticket state; no outbox row, no delivery claim.
-- Idempotency key `web_push:ticket.called:<ticket_id>:<event_sequence>`; stale alerts are suppressed at send time; TTL bounds retries.
+- One `notifications` + outbox entry **per subscribed device**; idempotency key `web_push:ticket.called:<ticket_id>:<event_sequence>:<subscription_id>` (`notification_outbox.dedup_key` is globally unique, so the subscription must be in the key); stale alerts are suppressed at send time; TTL bounds retries; at-least-once with collapse.
+- Notification identity is the non-secret `subscription_id` (tag, `Topic`, click destination `/ticket/<code>?ref=<ref>` resolved through the saved ticket's `pushRef`), never the public ticket code alone; the service worker and payloads hold no bearer credential; an unmatched reference opens a neutral screen with no status request.
 - States: `sent` (push service accepted) ≠ `delivered` (first-party ack or provider receipt only) · `failed` · `suppressed` · `unknown`.
 - No alert outcome may change ticket state or cause a `missed` transition.
 - The M5.4 migration is additive (new table, new column, widened CHECK constraints); nothing dropped.

@@ -40,13 +40,19 @@ decision:
 3. **Web Push is opt-in, per ticket, best effort.** It is requested only from an explicit button on
    the ticket page, only where `serviceWorker`, `PushManager` and `Notification` exist. The
    subscription is bound to the ticket, encrypted at rest, revoked when the ticket ends, and
-   removable by the visitor. The payload is minimal (ticket code and counter label; no names, phone
-   numbers or internal ids), carries a short TTL, and is suppressed if the ticket is no longer
-   `called` when the worker sends it.
+   removable by the visitor. The payload is minimal: type, a non-secret
+   `subscription_id` reference, ticket code, counter label, call sequence and a public recovery path.
+   It never contains a status token, recovery key, grant, push endpoint, key material, names, phone
+   numbers or other internal identifiers. It carries a short TTL, and is suppressed if the ticket is
+   no longer `called` when the worker sends it.
 4. **Alerts are produced from committed events through the outbox (ADR-008).** After a committed
    event leaves a ticket `called` (call-next, out-of-order call, counter transfer), one outbox row
    per active subscription is written in the same transaction with
-   `dedup_key = web_push:ticket.called:<ticket_id>:<event_sequence>`. The enqueue runs inside a
+   `dedup_key = web_push:ticket.called:<ticket_id>:<event_sequence>:<subscription_id>`; the key must
+   contain the subscription because `notification_outbox.dedup_key` is globally unique (migration
+   `0001`), so a key that identifies only the ticket would reject the second device's insert. Each
+   device is one outbound notification with its own `notifications` row, outbox row, delivery state
+   and retries; a conflict skips only a replayed row. The enqueue runs inside a
    **savepoint**: if it fails for any reason the savepoint is rolled back, the failure is logged and
    the queue command still commits. Offline-applied actions create no alert until the server commits
    them.
@@ -56,16 +62,26 @@ decision:
    configured F4 policy (time- and staff-driven). Automatic miss, if offered, is opt-in per service,
    time-based only, and recorded with the reason `call_window_elapsed`, never an alert reason.
 6. **Honest delivery states.** For push: `sent` means the push service accepted the message;
-   `delivered` is recorded only on a first-party acknowledgement from the visitor's device (service
-   worker or page) or a provider receipt; `failed` on definitive rejection (404/410 revokes the
+   `delivered` is recorded only on a first-party acknowledgement from the visitor's page (which holds
+   the status token; the service worker holds no credential) or a provider receipt; `failed` on definitive rejection (404/410 revokes the
    subscription); otherwise `unknown`. Staff see these as plain text and are told the public board
    and calling aloud remain the fallback.
-7. **Transport lives behind a narrow interface in `packages/channels`.** `ChannelAdapter` is
+7. **Notification identity is the subscription, not the public code.** Public codes repeat across
+   facilities and queue sessions, and the web app already resolves this with a device-local saved-ticket
+   `id` and `/ticket/:code?k=<id>`. The server-minted `subscription_id` (random, non-secret, unique per
+   ticket and device, grants nothing without the status token) is returned to the page as
+   `subscription_ref` and saved on the saved ticket as `pushRef`. It is the notification `tag`
+   (`qb-call-<ref>`), the push `Topic`, and the click destination key (`/ticket/<code>?ref=<ref>`
+   resolved by `pushRef`, never by code alone). If no saved ticket matches, a neutral "not saved on this
+   device" screen makes no status request and offers recovery paths; it never opens another ticket with
+   the same code. Push subscriptions follow a service transfer by re-binding to the destination ticket.
+   Details: `design.md` §12.4.4 and §12.5.7.
+8. **Transport lives behind a narrow interface in `packages/channels`.** `ChannelAdapter` is
    SMS/USSD-shaped, so Web Push uses a separate `PushTransport` interface with a
    `SandboxPushTransport` (labelled test-only, no network) and a `WebPushTransport` using the
    MIT-licensed `web-push` library with VAPID keys from environment variables. The worker owns
    sending; the API only enqueues. The capability is `disabled` when VAPID keys are absent.
-8. **SMS turn alerts (M6) use the same pipeline.** SMS stays under `ChannelAdapter` (ADR-009), with
+9. **SMS turn alerts (M6) use the same pipeline.** SMS stays under `ChannelAdapter` (ADR-009), with
    explicit consent, opt-out, hard spending caps, sandbox by default and live only with approved
    free or sponsored credits. In-app, push and SMS are independent: failure of one never affects the
    others or the queue.
