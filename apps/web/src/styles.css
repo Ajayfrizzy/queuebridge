@@ -365,8 +365,10 @@ select:disabled {
   }
 }
 input[type='checkbox'] {
-  width: 1.4rem;
-  min-height: 1.4rem;
+  width: 1.5rem; /* 24 CSS px: WCAG 2.5.8 minimum target */
+  min-width: 1.5rem; /* never shrinks inside a narrow flex row */
+  flex: none;
+  min-height: 1.5rem;
   vertical-align: middle;
 }
 input[aria-invalid='true'] {
@@ -993,4 +995,128 @@ legend {
   .recovery-key-panel .hint {
     display: none;
   }
+}
+
+/* ===== M5.2 device-local display preferences (data-* set on <html> before first render) ===== */
+
+/* Focus is never hidden under the fixed notification at the bottom of the screen (WCAG 2.4.11) */
+html {
+  scroll-padding-top: 1rem;
+  scroll-padding-bottom: 6rem;
+}
+h1:focus {
+  outline: none; /* the focused heading is a landmark for the new page, not a control */
+}
+
+/* Text size: every size in the app is rem-based, so the root size scales everything and the
+   layout reflows instead of scrolling sideways. */
+html[data-text-size='large'] {
+  font-size: 125%;
+}
+html[data-text-size='xlarge'] {
+  font-size: 150%;
+}
+
+/* High contrast: text 7:1 or better, strong borders, no reliance on tints.
+   Explicit choice always wins; `system` only follows prefers-contrast (above). */
+html[data-contrast='high'] {
+  --bg: #ffffff;
+  --fg: #000000;
+  --muted: #000000;
+  --border: #000000;
+  --surface: #ffffff;
+  --primary: #00008b;
+  --primary-fg: #ffffff;
+  --danger: #8b0000;
+  --danger-bg: #ffffff;
+  --ok: #004d2e;
+  --ok-bg: #ffffff;
+  --info-bg: #ffffff;
+  --focus: #000000;
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 6l4.5 4.5L12.5 6' fill='none' stroke='%23000000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+@media (prefers-color-scheme: dark) {
+  html[data-contrast='high'] {
+    --bg: #000000;
+    --fg: #ffffff;
+    --muted: #ffffff;
+    --border: #ffffff;
+    --surface: #000000;
+    --primary: #9ec5ff;
+    --primary-fg: #000000;
+    --danger: #ffb4b4;
+    --danger-bg: #000000;
+    --ok: #7ee2b8;
+    --ok-bg: #000000;
+    --info-bg: #000000;
+    --focus: #ffff00;
+    --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 6l4.5 4.5L12.5 6' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+}
+html[data-contrast='high'] .card,
+html[data-contrast='high'] .alert,
+html[data-contrast='high'] .toast {
+  border-width: 2px;
+  border-style: solid;
+  border-color: var(--border);
+}
+html[data-contrast='high'] a {
+  text-decoration-thickness: 2px;
+}
+html[data-contrast='high'] :focus-visible {
+  outline-width: 4px;
+}
+
+/* Reduced motion chosen in the app: same effect as the operating-system setting */
+html[data-motion='reduce'] *,
+html[data-motion='reduce'] *::before,
+html[data-motion='reduce'] *::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+
+/* Header: the "Display and alerts" control sits with the navigation on every screen */
+.header-tools {
+  display: flex;
+  align-items: center;
+}
+@media (max-width: 40rem) {
+  .header-tools .btn {
+    width: 100%;
+  }
+}
+
+/* Settings dialog: a native modal <dialog>; scrolls inside itself so it fits 320 px and large text */
+.settings-dialog {
+  width: min(32rem, calc(100vw - 1rem));
+  max-height: calc(100dvh - 1rem);
+  padding: 0;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--fg);
+  overflow: auto;
+}
+.settings-dialog::backdrop {
+  background: rgb(0 0 0 / 0.6);
+}
+.settings-body {
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+}
+.settings-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.settings-title {
+  margin: 0;
+  font-size: 1.3rem;
+}
+.settings-title:focus {
+  outline: none;
 }

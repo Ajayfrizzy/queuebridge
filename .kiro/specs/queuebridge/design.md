@@ -1839,7 +1839,8 @@ every control has a visible label and hint, changes apply immediately, and "Rese
 - Logical order follows the visual order; landmarks (`banner`, `nav`, `main`, `contentinfo`) and one
   `h1` per route; the skip link targets `main`.
 - **Route change rule:** on navigation, the document title updates and focus moves to the route's
-  `h1` (tabindex -1), and the title is announced politely once. The browser Back button restores
+  `h1` (tabindex -1). _As implemented:_ the focused heading is what a screen reader reads, so no second
+  live announcement is made (it would be heard twice); the manual pass verifies it is heard once. The browser Back button restores
   position sensibly.
 - **Dialogs and panels** (settings, confirmations, staff hand-off): focus moves in on open, is
   contained, Escape closes, and focus returns to the opener. Toasts never take focus.

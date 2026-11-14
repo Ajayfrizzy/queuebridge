@@ -262,3 +262,125 @@ Modified: contracts (`admin`, `queue`, `schemas`, `enums`), domain state machine
 - Tenant isolation: staff routes resolve the ticket through `organization_id` and facility; visitor routes resolve through the token. Cross-tenant requests return 404 (covered in 8.R11 and the new test).
 - The replacement-key workflow (`POST /tickets/:code/recovery-key`) requires the ticket's status token; the public code alone is refused (new test).
 - M5.0 checkpoint `87ec587` is the parent of the M5.1 checkpoint; history is not rewritten.
+
+---
+
+## M5.2 — Accessibility (F7; design §16; Group 11: 11.A1–11.A9, 11.A11)
+
+Status: implemented and verified locally; **not committed** (awaiting review). Base: `e0214c5` (M5.1). These are automated checks and recorded manual requirements. **They do not establish WCAG conformance**; conformance needs the manual passes and expert review listed below.
+
+### What was built
+
+- **Device-local preferences** (`lib/a11yPrefs.ts`, key `qb.a11y.v1`): contrast (system/high), text size (100/125/150 %), motion (system/reduce), quiet, sound (off by default), vibration (on where supported). Validated field by field, stored in `localStorage` only (six fields, no personal data, never sent, never in the outbox), applied as `data-*` attributes on `<html>` in `main.tsx` before React renders, followed across tabs, reset to defaults, and kept for the page session if storage fails (the dialog says so).
+- **"Display and alerts" dialog** (native modal `<dialog>`; header on every page and on the ticket page): focus moves in, Tab wraps inside, Escape or Close closes, focus returns to the opener; works offline; at 320 px it scrolls inside itself. Sound and vibration are disabled with a text reason when unsupported or when quiet mode is on. **Test alert** runs only the enabled cues (at most one short tone, one short vibration), is labelled "Test" and announced.
+- **Cue rule shared with M5.4** (`cuesFor`): visual alert always on; sound and vibration only if chosen, supported and not quiet. The existing foreground vibration on the ticket page now obeys it. **No notification delivery was added**; the settings text says alerts are never promised when the page is closed.
+- **High contrast / text size / reduced motion** through the existing CSS custom properties and root font size; high contrast has a light and a dark palette (text 7:1 or better) and thicker borders and focus rings. The app has no animations or transitions of its own (verified in the built CSS), and the OS or in-app reduced-motion setting also removes any others.
+- **Announcement policy** (`lib/announcePolicy.ts`, `Announcer`): identical messages inside 2 s are dropped; position announcements are throttled to one per 15 s (later changes skipped, not queued); the polite region and a new assertive region exist at page load. The ticket page announces position changes (polite, throttled) and keeps its assertive "called" alert (once per call). Sync-state changes are announced in words ("No unsent actions remain on this device", "N actions need a supervisor to review").
+- **Route-change focus** (`lib/routeFocus.ts`): after in-app navigation focus goes to the page `h1` (to `<main>` first while data loads, then to the heading if the person has not moved focus) and the title becomes "Heading — QueueBridge". Closing the recovery-key panel keeps focus on the heading instead of dropping it.
+- **Offline ticket view:** the ticket page stores its last confirmed status per saved ticket (`qb.ticketView.v1`: exactly what the page shows, no token or key) and, when the server cannot be reached, shows it labelled "You are offline. This is the last information we confirmed at …". Refusals (404/401) are never masked by it.
+- **PWA manifest:** `orientation: 'portrait'` removed.
+- **Targets:** checkboxes are 24 CSS px and no longer shrink in narrow rows.
+- Offline-recover page text, outbox panel and connectivity bar already existed (M5.1/M3) and are now covered by Group 11 tests.
+
+### Deviations and decisions (recorded)
+
+1. **Title announcement.** The design says the title is "announced once". Moving focus to the `h1` already makes a screen reader read it, so a separate live announcement would read it twice. The title is updated and focus moves; no extra live message is made (tested: the polite region does not repeat it). **The manual screen-reader pass must confirm it is heard exactly once.**
+2. **Focus target.** REQ-F7.11 says the heading, so the old behaviour (focus `<main>` on every navigation) changed. Two existing assertions were updated to the heading (`accessibility.spec.ts` after sign-up, `queue-journey.spec.ts` after joining). The skip-link-to-`#main` assertion is unchanged. No assertion was weakened: the new target is stricter.
+3. **Header test.** The header gained a control, so `ui-layout.spec.ts` now includes it in its overlap/size/clipping checks and in the keyboard order. The row and size assertions are unchanged.
+4. **Assertive region has no `role="alert"`** (only `aria-live="assertive"`): an always-present empty `role="alert"` broke the single-alert locators of existing tests and adds nothing for assistive technology. The called alert on the ticket page keeps `role="alert"`.
+5. **Sync announcement wording.** "No unsent actions remain on this device" is deliberately neutral: the same count drops to zero when work is discarded on purpose, so the message never says "confirmed".
+6. **Dialog containment** uses the native modal (page behind is inert) plus Tab wrapping, because native modals let focus leave to browser chrome in some browsers.
+7. **200 % zoom** is equivalent to 320 CSS px on a 640 px window (and 400 % on a 1280 px window), so the 320 px tests cover reflow; real zoom is part of the manual pass.
+
+### Test evidence
+
+| Suite                                                                                                               | Result                                                                                        |
+| ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `a11yPrefs.test.ts`, `announcePolicy.test.ts`, `routeFocus.test.ts`, `Announcer.test.tsx`, ticket-copy tests (unit) | pass (web unit total 78)                                                                      |
+| `e2e/accessibility-m52.spec.ts` (Group 11), 49 tests across 1280, 1440, 375 and 320 px                              | 49 / 49, **three consecutive full runs** after the checkpoint-review fixes (five before them) |
+| Full Playwright suite, all projects                                                                                 | 194 passed, 4 skipped (opt-in screenshot capture), 0 failed                                   |
+| `pnpm test:db` (PostgreSQL)                                                                                         | api 543, worker 20 (unchanged; no API change in M5.2)                                         |
+
+Group 11 coverage: **11.A1** keyboard-only join → ticket → settings → recover and rejoin; **11.A2** heading focus, title, dialog trap/Escape/return, focus preserved when the person has moved, visible focus ring, 24 px / 44 px targets, scroll padding; **11.A3** live regions exist at load, called alert assertive and once, position announcements 1 per burst; **11.A4** applied before first render (observed at first render), persistence, reset, offline change, cross-tab, no network traffic, six fields only; **11.A5** 7:1 in high contrast, axe (WCAG 2.1 A/AA incl. contrast) on join, recover, ticket, key panel, settings and test-alert banner in normal and high contrast, extra-large text without horizontal scrolling at 320/375; **11.A6** OS and in-app reduced motion remove transitions and animation (control case proves the probe), no keyframes in the shipped CSS; **11.A7** defaults, unsupported controls disabled with an associated reason, quiet mode, Test alert counts (one tone, one vibration), real call vibrates once and never in quiet mode, no delivery promises; **11.A8** recover page offline, ticket offline copy, no masking of refusals, staff offline announcements (each exactly once), outbox labels and axe; **11.A9** manifest has no orientation, viewport allows zoom, every visitor route fits in portrait and landscape.
+
+A first run of the staff-offline test failed intermittently (2 of 3 repeats). Cause, found by reading the traces: the test read the announcement log before the 30 ms write, and, more importantly, the announcer could **cancel a message announced within 30 ms of another**. Fixed in the product (distinct messages now replace the text immediately; only an identical repeat is cleared and re-written) and in the test (it waits for the message). 5/5 consecutive runs since.
+
+### Bundle size (REQ-F7.7)
+
+| Build           | Raw      | gzip     |
+| --------------- | -------- | -------- |
+| M5.1 checkpoint | 552.9 kB | 166.8 kB |
+| M5.2            | 565.6 kB | 170.7 kB |
+
+M5.2 adds about 3.9 kB gzip (+2.3 %). **The app ships as one chunk that was already above the 100 kB visitor-flow target before M5.2.** That is a pre-existing gap, not fixed here; route-level code splitting belongs with M7 (F15.5 budgets in CI). Recorded as unresolved.
+
+### Limitations (stated, not hidden)
+
+- axe finds only a subset of problems. Passing it, and the checks above, is **not** WCAG conformance.
+- Sound and vibration are verified through stubs for call counts; real tone audibility and real vibration need real devices. Vibration is unsupported on iOS Safari, and the control says so.
+- The `qb.ticketView.v1` copy is trusted only for display and is labelled with when it was confirmed; it is not a source of truth.
+- Position announcements are skipped (not queued) inside the 15 s window, so a rapid burst reports the first value; the visible position is always current.
+- Public display board audio (F7.6) is unchanged.
+- The unexplained M5.0 environment stall did not recur.
+
+### Manual acceptance (ALL OUTSTANDING: recorded here, none performed)
+
+1. **Screen readers:** VoiceOver (iOS Safari) and TalkBack or NVDA: join, ticket status, called alert (heard once, assertively), position updates (not chatty), recover page and failure message, the settings dialog (name, state of each control, disabled reasons), and the route-change behaviour: the new page title must be heard **once**.
+2. **Zoom and text:** 200 % browser zoom and OS extra-large text on a real phone: no clipped or overlapping content, no horizontal scrolling, the settings dialog usable.
+3. **Contrast and colour:** high-contrast setting in light and dark OS themes; Windows forced-colors; confirm status never relies on colour.
+4. **Reduced motion:** OS setting on iOS and Android, and the in-app setting.
+5. **Orientation:** installed PWA in landscape and portrait on Android and iOS.
+6. **Vibration and sound:** a real Android device (Chrome) for vibration and the test tone (device volume, silent mode); iOS for the "not supported" explanations.
+7. **Keyboard:** hardware keyboard on a tablet or desktop across all visitor routes, including the focus ring over the fixed notification.
+8. Expert accessibility review before any conformance statement.
+
+### Unresolved
+
+- Visitor-flow bundle above the 100 kB target (pre-existing; M7).
+- The non-atomic per-staff recovery limit (below; M5.4 hardening, not part of M5.2).
+- Staff-console pages were checked for the new header control, focus rule and the existing axe suite, but no new staff-specific accessibility journeys were added (M5.3 adds the device-health surfaces, 11.A10).
+
+### Security follow-up: database-atomic per-staff assist limit (proposal for final M5 hardening; NOT implemented)
+
+**Problem.** `staffAssist` counts a staff member's grants in the last 10 minutes and then inserts, holding only the **ticket's** proof-row lock. One staff member's simultaneous requests for different tickets can each read the same count and together exceed 5.
+
+**Proposed fix: a per-staff transaction-scoped advisory lock, taken first.**
+
+1. At the start of the transaction, before the ticket lock: `SELECT pg_advisory_xact_lock(hashtextextended('qb:recovery:assist:' || <organization_id> || ':' || <staff_user_id>, 0))`.
+2. Then lock the ticket proof row (unchanged), count per ticket and per staff, insert.
+3. **Lock order is always staff, then ticket**, and no other code path takes a ticket's proof lock and then a staff lock (approve, revoke-all and recovery take only the ticket lock), so no cycle and no deadlock.
+4. Add `SET LOCAL lock_timeout = '3s'` and map a timeout to 503 `retryable` so a stuck holder cannot hang requests.
+
+**Why this fits the constraints.**
+
+- _Tenant isolation:_ the key contains the organization and staff ids; staff of other organizations never share a lock.
+- _No global lock:_ different staff never contend; the same staff member's requests serialize, which is exactly the invariant.
+- _No schema change or migration;_ the sliding-window semantics stay (the existing `COUNT` is correct once it is serialized). A hash collision only causes harmless extra waiting.
+- _Alternative considered:_ a counter table with `INSERT … ON CONFLICT DO UPDATE … WHERE n < 5`. Atomic without locks, but it needs a migration and fixed windows instead of a sliding one. Not chosen.
+
+**Regression tests (real PostgreSQL, concurrent):**
+
+1. 20 parallel assists by ONE staff member for 20 different tickets: exactly 5 `approval_required`, 15 × 429, exactly 5 grant rows. (Fails today by design: the count is exceeded.)
+2. Two staff members in one facility: while staff A's transaction is held open (a second connection holds A's advisory lock), staff B's request completes within the timeout, and A's request waits (proves no global lock).
+3. The lock key embeds the organization: same-numbered ids in two tenants never block each other.
+4. The per-ticket limit (3 per hour) stays exact; sequential behaviour is unchanged.
+5. Mutation check: removing the lock fails test 1; swapping the lock order in a test harness path is checked for deadlock by running 50 mixed assist/approve/revoke-all requests concurrently with no deadlock error.
+
+Status: proposal recorded; to be implemented and tested in the final M5 hardening pass.
+
+### Files (M5.2)
+
+Added: `apps/web/src/lib/{a11yPrefs,alertCues,announcePolicy,routeFocus}.ts` (+ tests for prefs, policy, route title); `apps/web/src/components/DisplaySettings.tsx`; `apps/web/e2e/accessibility-m52.spec.ts`.
+Modified: `apps/web/src/{main.tsx,App.tsx,styles.css}`, `components/{Announcer,Layout,ConnectivityBar}.tsx`, `pages/TicketPage.tsx`, `lib/tickets.ts`, `apps/web/vite.config.ts` (orientation); e2e `accessibility.spec.ts`, `queue-journey.spec.ts`, `ui-layout.spec.ts` (updated as described above); this document, `tasks.md`, design §16.
+
+### Checkpoint review (before the M5.2 commit)
+
+Findings and what was done about them:
+
+1. **Diff scope.** 26 files, all in `apps/web`, the M5 evidence document, `tasks.md` and design §16. No API, database, worker or package change; no M5.3/M5.4 code. No secrets, keys, `.env` values or build artifacts (scan of every changed file).
+2. **Offline last-confirmed ticket copy.** It is written only after a successful token-authenticated status read, keyed by the device-local id of the saved ticket, and shown only for that saved ticket. It contains what the page shows (no token, key or contact data; unit test). **Finding fixed:** before the review, a copy survived a server refusal and would have been shown again if the device later went offline. Now a 401/403/404 removes it at once (e2e: staff "end access on all devices", then reload online shows the no-access screen, then offline shows nothing). "Forget this ticket" removes it too. It never reaches the server or the outbox. Staff sign-out does not touch it, exactly as for the existing saved-ticket list (`qb.tickets.v1`): visitor tickets on a device are not part of any staff session. Tenant isolation is unaffected because nothing new is requested from the server.
+3. **Modal, route focus and live regions.** No route change can happen while the modal is open (the page behind is inert), and closing the modal returns focus to its opener without a route change, so the route-focus rule and focus restoration never compete. **Finding fixed:** an inert page also hides its live regions and alerts, so a turn alert or a blocking device/session problem arriving while the settings dialog was open would not have been heard. Both now raise an "urgent alert" event that closes the dialog first. The called banner still never takes focus; the device-problem alert takes focus after the dialog is gone (e2e: a call while the dialog is open closes it and the alert is the only `role="alert"` with the counter).
+4. **Announcer scheduling.** **Finding fixed:** the first revision wrote distinct messages immediately, but React batches state updates made in the same instant, so of two messages sent together only the last reached the region (proved by a new fake-timer unit test). The announcer now keeps an ordered queue per level (polite and assertive are independent) and writes each message at least 300 ms after the previous one in that region, never dropping a distinct message (up to 8 waiting, the oldest discarded beyond that). The called alert on the ticket page keeps its own `role="alert"` region, unaffected by the queue. Unit tests cover: two messages at once, a message 10 ms after another, assertive not displaced by polite, a burst in order, dedupe and re-announce after 2 s, and the position throttle letting an offline message through. One e2e test was changed to wait for the announcement instead of reading it immediately (synchronization only; its assertions are unchanged).
+5. **M5.0 and M5.1 commits** are unchanged (`87ec587`, `e0214c5`).
+
+The bundle-size gap and every manual check above remain **outstanding**.

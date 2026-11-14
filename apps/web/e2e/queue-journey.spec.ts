@@ -325,9 +325,9 @@ test.describe('@responsive M2 screens: accessibility and layout at 320/375/deskt
     await expect(button).toBeFocused();
     await visitor.page.keyboard.press('Enter');
     await expect(visitor.page.getByTestId('ticket-code')).toHaveText('G001');
-    // Status message is a polite live region; focus moved to main on navigation
+    // Status message is a polite live region; focus moved to the page heading on navigation
     await expect(visitor.page.getByTestId('status-message')).toHaveAttribute('role', 'status');
-    await expect(visitor.page.locator('#main')).toBeFocused();
+    await expect(visitor.page.locator('#main h1')).toBeFocused();
     const box = await visitor.page
       .getByRole('button', { name: 'Forget this ticket on this device' })
       .boundingBox();

@@ -333,23 +333,23 @@ Design-derived tasks (revised 2026-11-12; ADR-015, design §15):
 
 Original tasks (unchanged):
 
-- [ ] Keyboard navigation for all visitor flows
-- [ ] ARIA live regions for status updates
-- [ ] High-contrast and large-text modes
-- [ ] `prefers-reduced-motion` support
-- [ ] Mobile viewport testing at 320px and 375px
+- [x] Keyboard navigation for all visitor flows
+- [x] ARIA live regions for status updates
+- [x] High-contrast and large-text modes
+- [x] `prefers-reduced-motion` support
+- [x] Mobile viewport testing at 320px and 375px
 
 Design-derived tasks:
 
-- [ ] Preferences module (`qb.a11y.v1`) applied before first render via `data-contrast`, `data-text-size`, `data-motion`; "Display and alerts" panel in the shared header and on the ticket page; reset; no server copy
-- [ ] High-contrast and text-size (100/125/150 %) styles on the existing CSS custom properties; 4.5:1 / 3:1 normal and 7:1 high-contrast; reflow at 320 px and 200 % zoom; forced-colors kept
-- [ ] Route-change focus and title announcement; dialog focus handling; scroll-padding for sticky bars; target-size audit (24 px minimum, 44 px primary)
-- [ ] Announcement policy implemented in `Announcer` (assertive vs polite, 15 s position throttle, 2 s dedup, catalog strings)
-- [ ] Reduced-motion override (system or app) across toasts, banners, spinners and the alert banner
-- [ ] Vibration/audio preference controls with feature detection, explanations, quiet mode and "Test alert" (shared with M5.4)
-- [ ] Offline accessibility: preferences and shell precached; recover page and outbox panel verified offline; connectivity/sync text announcements
-- [ ] Remove `orientation: 'portrait'` from the PWA manifest; verify installed/portrait/landscape layouts
-- [ ] Group 11 items 11.A1–11.A9 automated; 11.A11 manual screen-reader, zoom, contrast and motion passes recorded with limits stated (no conformance claim)
+- [x] Preferences module (`qb.a11y.v1`) applied before first render via `data-contrast`, `data-text-size`, `data-motion`; "Display and alerts" panel in the shared header and on the ticket page; reset; no server copy
+- [x] High-contrast and text-size (100/125/150 %) styles on the existing CSS custom properties; 4.5:1 / 3:1 normal and 7:1 high-contrast; reflow at 320 px and 200 % zoom; forced-colors kept
+- [x] Route-change focus and title announcement; dialog focus handling; scroll-padding for sticky bars; target-size audit (24 px minimum, 44 px primary)
+- [x] Announcement policy implemented in `Announcer` (assertive vs polite, 15 s position throttle, 2 s dedup, catalog strings)
+- [x] Reduced-motion override (system or app) across toasts, banners, spinners and the alert banner
+- [x] Vibration/audio preference controls with feature detection, explanations, quiet mode and "Test alert" (shared with M5.4)
+- [x] Offline accessibility: preferences and shell precached; recover page and outbox panel verified offline; connectivity/sync text announcements
+- [x] Remove `orientation: 'portrait'` from the PWA manifest; verify installed/portrait/landscape layouts
+- [x] Group 11 items 11.A1–11.A9 automated (`accessibility-m52.spec.ts`); **11.A11 manual passes are OUTSTANDING** (listed in `M5-evidence.md`; no conformance claim)
 
 ### M5.3 Device health dashboard (F9; design §17; Group 8: 8.D1–8.D6; Group 11: 11.A10)
 

@@ -15,7 +15,7 @@ export default defineConfig({
         theme_color: '#1a56db',
         background_color: '#ffffff',
         display: 'standalone',
-        orientation: 'portrait',
+        // No `orientation`: the app must work in portrait and landscape (WCAG 1.3.4, REQ-F7.17)
         icons: [
           {
             src: '/icons/icon-192.png',

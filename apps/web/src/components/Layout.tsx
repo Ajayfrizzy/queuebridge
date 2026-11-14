@@ -4,6 +4,8 @@ import { useAuth } from '../auth.js';
 import { ApiRequestError } from '../lib/api.js';
 import { useOffline } from '../offline/OfflineProvider.js';
 import { ConnectivityBar } from './ConnectivityBar.js';
+import { DisplaySettingsButton } from './DisplaySettings.js';
+import { useRouteFocus } from '../lib/routeFocus.js';
 
 /** Page shell: skip link, banner, navigation, and route-change focus management. */
 export function Layout(): ReactElement {
@@ -11,7 +13,6 @@ export function Layout(): ReactElement {
   const navigate = useNavigate();
   const location = useLocation();
   const mainRef = useRef<HTMLElement>(null);
-  const first = useRef(true);
   const alertRef = useRef<HTMLDivElement>(null);
   const [signingOut, setSigningOut] = useState(false);
   const [logoutError, setLogoutError] = useState<string | null>(null);
@@ -52,15 +53,8 @@ export function Layout(): ReactElement {
     if (logoutError) alertRef.current?.focus();
   }, [logoutError]);
 
-  // Move focus to the main landmark after client-side navigation so keyboard and
-  // screen-reader users start at the new content instead of the old position.
-  useEffect(() => {
-    if (first.current) {
-      first.current = false;
-      return;
-    }
-    mainRef.current?.focus();
-  }, [location.pathname]);
+  // Route change (REQ-F7.11): title updated, focus moved to the new page's heading
+  useRouteFocus(mainRef, location.pathname);
 
   return (
     <>
@@ -95,6 +89,9 @@ export function Layout(): ReactElement {
               )}
             </ul>
           </nav>
+          <div className="header-tools">
+            <DisplaySettingsButton />
+          </div>
           {user ? (
             <div className="account" role="group" aria-label="Account">
               <span className="who" data-testid="whoami">

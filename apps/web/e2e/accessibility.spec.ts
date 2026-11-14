@@ -93,8 +93,8 @@ test('signup and facility creation are completable with the keyboard alone', asy
   await page.keyboard.type('correct-horse-battery-1');
   await page.keyboard.press('Enter'); // submit from the last field
   await expect(page).toHaveURL(/\/admin$/);
-  // Focus moved to the new page's main landmark after navigation
-  await expect(page.locator('#main')).toBeFocused();
+  // Focus moved to the new page's heading after navigation (M5.2, REQ-F7.11)
+  await expect(page.locator('#main h1')).toBeFocused();
 
   await page.getByLabel('Facility name').focus();
   await page.keyboard.type('Keyboard Clinic');

@@ -1,4 +1,4 @@
-import { randomSecret, uuidv7 } from '@queuebridge/contracts';
+import { randomSecret, uuidv7, type TicketStatus } from '@queuebridge/contracts';
 
 /**
  * Visitor tickets remembered on THIS device (REQ-F4.2: survive refresh/restart). Stores only the
@@ -101,7 +101,55 @@ export function saveTicket(t: NewStoredTicket): StoredTicket | null {
   return write(TICKETS_KEY, [entry, ...others].slice(0, MAX_TICKETS)) ? entry : null;
 }
 
+/**
+ * Last-known status of a saved ticket, for viewing when the server cannot be reached
+ * (REQ-F7.16). It holds exactly what the ticket page already shows (code, state, position,
+ * service and facility names): no token, no recovery key, no contact data. It is always shown
+ * labelled with the time it was last confirmed, never as current.
+ */
+const SNAPSHOT_KEY = 'qb.ticketView.v1';
+export interface TicketSnapshot {
+  status: TicketStatus;
+  /** When the server last confirmed it (ISO, from this device's clock: display only) */
+  at: string;
+}
+function snapshots(): Record<string, TicketSnapshot> {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(SNAPSHOT_KEY) ?? '{}');
+    return v !== null && typeof v === 'object' && !Array.isArray(v)
+      ? (v as Record<string, TicketSnapshot>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+export function saveSnapshot(id: string, status: TicketStatus): void {
+  try {
+    localStorage.setItem(
+      SNAPSHOT_KEY,
+      JSON.stringify({ ...snapshots(), [id]: { status, at: new Date().toISOString() } }),
+    );
+  } catch {
+    // Storage full or disabled: the live view still works, only the offline copy is lost
+  }
+}
+export function loadSnapshot(id: string): TicketSnapshot | null {
+  const s = snapshots()[id];
+  return s && typeof s.at === 'string' && s.status ? s : null;
+}
+export function dropSnapshot(id: string): void {
+  const all = snapshots();
+  if (!(id in all)) return;
+  delete all[id];
+  try {
+    localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(all));
+  } catch {
+    // nothing to do
+  }
+}
+
 export function forgetTicket(id: string): void {
+  dropSnapshot(id);
   write(
     TICKETS_KEY,
     storedTickets().filter((t) => t.id !== id),

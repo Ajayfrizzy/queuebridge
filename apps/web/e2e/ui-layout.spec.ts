@@ -361,7 +361,7 @@ test.describe('@responsive site header', () => {
   async function headerItems(page: Page): Promise<(Box & { name: string; kind: string })[]> {
     return page
       .locator(
-        '.site-header .brand, .site-header nav a, .site-header .account .who, .site-header .account button',
+        '.site-header .brand, .site-header nav a, .site-header .header-tools button, .site-header .account .who, .site-header .account button',
       )
       .evaluateAll((els) =>
         els.map((e) => {
@@ -396,7 +396,7 @@ test.describe('@responsive site header', () => {
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       const vw = page.viewportSize()?.width ?? 0;
       const items = await headerItems(page);
-      expect(items.length).toBe(signedIn ? 5 : 3);
+      expect(items.length).toBe(signedIn ? 6 : 4); // M5.2 adds "Display and alerts"
 
       for (const it of items) {
         expect(it.x, `${it.name} not clipped left`).toBeGreaterThanOrEqual(0);
@@ -443,8 +443,8 @@ test.describe('@responsive site header', () => {
       await page.keyboard.press('Tab');
       await expect(page.getByRole('link', { name: 'Skip to main content' })).toBeFocused();
       const expected = signedIn
-        ? ['QueueBridge', 'Staff console', 'Administration', 'Sign out']
-        : ['QueueBridge', 'Sign in', 'Create organization'];
+        ? ['QueueBridge', 'Staff console', 'Administration', 'Display and alerts', 'Sign out']
+        : ['QueueBridge', 'Sign in', 'Create organization', 'Display and alerts'];
       for (const name of expected) {
         await page.keyboard.press('Tab');
         const focused = await page.evaluate(() =>

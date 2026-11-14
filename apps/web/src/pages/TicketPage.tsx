@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { uuidv7 } from '@queuebridge/contracts';
+import { uuidv7, type TicketStatus } from '@queuebridge/contracts';
 import { useAnnounce } from '../components/Announcer.js';
+import {
+  DisplaySettingsButton,
+  raiseUrgentAlert,
+  useA11yPrefs,
+} from '../components/DisplaySettings.js';
 import { RecoveryKeyPanel } from '../components/RecoveryKeyPanel.js';
+import { cuesFor } from '../lib/a11yPrefs.js';
+import { POSITION_THROTTLE_MS } from '../lib/announcePolicy.js';
 import { api, apiUrl, ApiRequestError, TICKET_TOKEN_HEADER } from '../lib/api.js';
 import { discardRecoveryKey, peekRecoveryKey, stashRecoveryKey } from '../lib/recoveryKey.js';
 import { CONFIDENCE_LABEL, formatEstimate, formatTime, STATE_LABEL } from '../lib/format.js';
@@ -11,6 +18,9 @@ import {
   findTicketById,
   findTicketByToken,
   forgetTicket,
+  dropSnapshot,
+  loadSnapshot,
+  saveSnapshot,
   saveTicket,
   takeTokenFromHash,
   ticketPath,
@@ -64,10 +74,38 @@ function TicketView(): ReactElement {
   const token = initial.token;
   const [storageWarning, setStorageWarning] = useState(Boolean(navState?.unsaved));
 
+  // The saved ticket this page shows (the offline copy is kept per saved ticket)
+  const snapshotId =
+    (localId ? findTicketById(localId) : undefined)?.id ??
+    (token ? findTicketByToken(token)?.id : undefined);
   const status = useLoad(
-    () => (token ? api.ticketStatus(code, token) : Promise.reject(new Error('no token'))),
+    async (): Promise<{ status: TicketStatus; cachedAt: string | null }> => {
+      if (!token) throw new Error('no token');
+      try {
+        const r = await api.ticketStatus(code, token);
+        if (snapshotId) saveSnapshot(snapshotId, r.status);
+        return { status: r.status, cachedAt: null };
+      } catch (e) {
+        // A refusal means this device no longer has access: the stored copy goes too, so it can
+        // never be shown (even offline, later) after the server withdrew access
+        if (
+          snapshotId &&
+          e instanceof ApiRequestError &&
+          (e.status === 401 || e.status === 403 || e.status === 404)
+        ) {
+          dropSnapshot(snapshotId);
+        }
+        // Only an unreachable server falls back to the last copy; refusals are never masked
+        if (e instanceof ApiRequestError && e.status === 0 && snapshotId) {
+          const snap = loadSnapshot(snapshotId);
+          if (snap) return { status: snap.status, cachedAt: snap.at };
+        }
+        throw e;
+      }
+    },
     `${code}:${token ?? ''}`,
   );
+  const cachedAt = status.data?.cachedAt ?? null;
   const reload = status.reload;
   const headers = useMemo(() => (token ? { [TICKET_TOKEN_HEADER]: token } : null), [token]);
   const live = useLiveUpdates(
@@ -79,6 +117,7 @@ function TicketView(): ReactElement {
   const s = status.data?.status;
   const [savedId, setSavedId] = useState<string | null>(localId);
   const announce = useAnnounce();
+  const { prefs, support } = useA11yPrefs();
   // M5.1: a key shown once (after joining, a walk-in link, or a replacement); memory only
   const [fresh, setFresh] = useState<{ key: string; path: string } | null>(null);
   const [keyDismissed, setKeyDismissed] = useState(false);
@@ -192,17 +231,44 @@ function TicketView(): ReactElement {
     }
   }, [s, token, code, localId, savedId, navigate]);
 
-  // Assertive announcement when it is the visitor's turn (in addition to the polite status region)
+  // Assertive announcement when it is the visitor's turn (in addition to the polite status region).
+  // Once per call: refreshes and live-update replays with the same state change nothing here.
+  // Vibration follows the device-local preferences (quiet mode, the vibration switch, support).
   const lastState = useRef<string | null>(null);
   const [turnAlert, setTurnAlert] = useState('');
   useEffect(() => {
     if (!s) return;
     if (s.state === 'called' && lastState.current && lastState.current !== 'called') {
+      raiseUrgentAlert(); // never hidden behind the settings dialog
       setTurnAlert(s.status_message);
-      if ('vibrate' in navigator) navigator.vibrate?.([200, 100, 200]);
+      if (cuesFor(prefs, support).vibration) navigator.vibrate?.([200, 100, 200]);
     }
     lastState.current = s.state;
-  }, [s]);
+  }, [s, prefs, support]);
+
+  // Position changes are announced politely, at most once every 15 seconds, only when the value
+  // actually changed (never on the first load, never for a refresh that changed nothing).
+  const lastPosition = useRef<number | null | undefined>(undefined);
+  const position = s?.position;
+  useEffect(() => {
+    if (s === undefined) return;
+    const prev = lastPosition.current;
+    lastPosition.current = position ?? null;
+    if (
+      prev === undefined ||
+      prev === (position ?? null) ||
+      position === null ||
+      position === undefined
+    ) {
+      return;
+    }
+    announce(
+      position === 0
+        ? 'You are next in line.'
+        : `You are now number ${position + 1} in line, ${position} ahead of you.`,
+      { throttleKey: 'position', throttleMs: POSITION_THROTTLE_MS },
+    );
+  }, [s, position, announce]);
 
   if (!token && initial.ambiguous.length > 1) {
     return (
@@ -259,6 +325,9 @@ function TicketView(): ReactElement {
         <p className="muted">
           {s.service_name} · {s.facility_name}
         </p>
+        <p>
+          <DisplaySettingsButton />
+        </p>
       </div>
 
       <div className="stack">
@@ -266,6 +335,13 @@ function TicketView(): ReactElement {
           <p role="alert" className="alert alert-error" data-testid="storage-warning">
             This browser could not save your ticket. Keep this page open, or write down your ticket
             code {s.public_code} and ask staff if you lose it.
+          </p>
+        ) : null}
+
+        {cachedAt ? (
+          <p role="status" className="alert alert-info" data-testid="ticket-offline-copy">
+            You are offline. This is the last information we confirmed at {formatTime(cachedAt)}. It
+            may be out of date. It will update when you are back online.
           </p>
         ) : null}
 
@@ -287,6 +363,9 @@ function TicketView(): ReactElement {
               setFresh(null);
               setKeyDismissed(true);
               discardRecoveryKey();
+              // The button that had focus is about to disappear: keep focus on this page's heading
+              // instead of dropping it to the top of the document (WCAG 2.4.3)
+              requestAnimationFrame(() => document.querySelector<HTMLElement>('#main h1')?.focus());
             }}
           />
         ) : null}

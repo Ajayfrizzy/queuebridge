@@ -3,6 +3,7 @@ import type { ReactElement } from 'react';
 import { AuthProvider } from './auth.js';
 import { OfflineProvider } from './offline/OfflineProvider.js';
 import { AnnouncerProvider } from './components/Announcer.js';
+import { A11yProvider } from './components/DisplaySettings.js';
 import { Layout } from './components/Layout.js';
 import { RequireAuth } from './components/RequireAuth.js';
 import { AcceptInvite } from './pages/AcceptInvite.js';
@@ -35,51 +36,53 @@ export function App(): ReactElement {
       <AuthProvider>
         <OfflineProvider>
           <AnnouncerProvider>
-            <Routes>
-              <Route element={<Layout />}>
-                <Route path="/" element={<Home />} />
-                <Route path="/signup" element={<Signup />} />
-                <Route path="/login" element={<Login />} />
-                <Route path="/accept-invite" element={<AcceptInvite />} />
+            <A11yProvider>
+              <Routes>
+                <Route element={<Layout />}>
+                  <Route path="/" element={<Home />} />
+                  <Route path="/signup" element={<Signup />} />
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/accept-invite" element={<AcceptInvite />} />
 
-                <Route element={<RequireAuth />}>
-                  <Route path="/admin" element={<AdminDashboard />} />
-                  <Route path="/admin/facilities/:id" element={<FacilityLayout />}>
-                    <Route index element={<FacilityOverview />} />
-                    <Route path="services" element={<FacilityServices />} />
-                    <Route path="counters" element={<FacilityCounters />} />
-                    <Route path="staff" element={<FacilityStaff />} />
+                  <Route element={<RequireAuth />}>
+                    <Route path="/admin" element={<AdminDashboard />} />
+                    <Route path="/admin/facilities/:id" element={<FacilityLayout />}>
+                      <Route index element={<FacilityOverview />} />
+                      <Route path="services" element={<FacilityServices />} />
+                      <Route path="counters" element={<FacilityCounters />} />
+                      <Route path="staff" element={<FacilityStaff />} />
+                    </Route>
                   </Route>
+
+                  {/* Visitor routes (M2) — no account needed */}
+                  <Route path="/join/:orgSlug/:facilitySlug" element={<JoinPage />} />
+                  <Route path="/ticket/:code" element={<TicketPage />} />
+                  {/* Ticket recovery (M5.1): key or grant in the URL fragment only */}
+                  <Route path="/recover" element={<RecoverPage />} />
+                  <Route path="/recover/:orgSlug/:facilitySlug" element={<RecoverPage />} />
+                  <Route path="/recover/:orgSlug/:facilitySlug/:code" element={<RecoverPage />} />
+                  {/* Public display board (M2) */}
+                  <Route path="/display/:orgSlug/:facilitySlug" element={<DisplayBoard />} />
+
+                  <Route element={<RequireAuth />}>
+                    {/* Staff console (M2) */}
+                    <Route path="/staff" element={<StaffHome />} />
+                    <Route path="/staff/facilities/:fid" element={<StaffFacility />} />
+                    <Route path="/staff/queues/:queueId" element={<StaffConsole />} />
+                    {/* Read-only audit trail and integrity check (M4, F8) */}
+                    <Route path="/staff/queues/:queueId/audit" element={<AuditTrail />} />
+                    {/* Connectivity and recovery dashboard (M3, F9) */}
+                    <Route path="/staff/facilities/:fid/connectivity" element={<Connectivity />} />
+                  </Route>
+
+                  {/* Supervisor dashboard (device health) — M5 */}
+                  <Route
+                    path="/supervisor/*"
+                    element={<PlaceholderPage title="Supervisor Dashboard" />}
+                  />
                 </Route>
-
-                {/* Visitor routes (M2) — no account needed */}
-                <Route path="/join/:orgSlug/:facilitySlug" element={<JoinPage />} />
-                <Route path="/ticket/:code" element={<TicketPage />} />
-                {/* Ticket recovery (M5.1): key or grant in the URL fragment only */}
-                <Route path="/recover" element={<RecoverPage />} />
-                <Route path="/recover/:orgSlug/:facilitySlug" element={<RecoverPage />} />
-                <Route path="/recover/:orgSlug/:facilitySlug/:code" element={<RecoverPage />} />
-                {/* Public display board (M2) */}
-                <Route path="/display/:orgSlug/:facilitySlug" element={<DisplayBoard />} />
-
-                <Route element={<RequireAuth />}>
-                  {/* Staff console (M2) */}
-                  <Route path="/staff" element={<StaffHome />} />
-                  <Route path="/staff/facilities/:fid" element={<StaffFacility />} />
-                  <Route path="/staff/queues/:queueId" element={<StaffConsole />} />
-                  {/* Read-only audit trail and integrity check (M4, F8) */}
-                  <Route path="/staff/queues/:queueId/audit" element={<AuditTrail />} />
-                  {/* Connectivity and recovery dashboard (M3, F9) */}
-                  <Route path="/staff/facilities/:fid/connectivity" element={<Connectivity />} />
-                </Route>
-
-                {/* Supervisor dashboard (device health) — M5 */}
-                <Route
-                  path="/supervisor/*"
-                  element={<PlaceholderPage title="Supervisor Dashboard" />}
-                />
-              </Route>
-            </Routes>
+              </Routes>
+            </A11yProvider>
           </AnnouncerProvider>
         </OfflineProvider>
       </AuthProvider>
