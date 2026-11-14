@@ -54,6 +54,7 @@ export const SENTINELS = {
     'auto_miss_sweeps',
     'ticket_recovery_credentials.revoked_at',
   ],
+  '0008_device_health.sql': ['health_alerts', 'health_evaluations', 'devices.failure_streak'],
 };
 
 /** Migration files of this checkout, in apply order. */

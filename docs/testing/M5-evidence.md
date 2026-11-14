@@ -422,3 +422,59 @@ Before the change, every recovery path took at most these locks: the ticket's pr
 Mutation checks: removing the advisory lock fails 3 tests; restoring the old grant-first order fails the deterministic test 3/3 (the 25-round stress test caught it 1 time in 3, which is why the deterministic test was added). The M5.1 suite (`recovery.db.test.ts`, 44) passes unchanged.
 
 ---
+
+## M5.3 — Device health (F9; design §17; Group 8: 8.D1–8.D6; Group 11: 11.A10)
+
+Status: implemented and verified locally; **not committed** (awaiting review). Single-coordinator authority (ADR-006) is unchanged: health observes and recommends; nothing assigns, fails over, renews or revokes automatically.
+
+### What was built
+
+- **States by server time** (`@queuebridge/domain` `deviceHealthState`): `healthy · pending · offline (120 s) · stale (900 s) · needs_review · revoked`; coordinator `expiring` (300 s window) and `expired`. All thresholds are environment-configurable (API and worker read the same variables). The database clock is used for the dashboard read.
+- **Migration `0008_device_health.sql`** (additive): `health_alerts` (unique partial index = one open alert per facility, kind and subject), `health_evaluations`, `devices.failure_streak`, partial indexes for the evaluator.
+- **Worker `evaluateDeviceHealth`** (every `HEALTH_EVALUATION_INTERVAL_SECONDS`, default 30): the eight kinds of design §17.4 with their severities; one transaction; plain reads only; writes only `health_alerts` and `health_evaluations`; damping (resolve after two clear evaluations); subject-gone resolution; a `pg_notify` change signal without data; resolved alerts deleted after 30 days.
+- **API:** `operations/health` extended (stale threshold, `expiring`, revoke reason, failure streak, alerts, evaluation status, recovery-abuse and turn-alert counters); `POST /facilities/:id/health/alerts/:alertId/acknowledge` (`QUEUE_MANAGE`, idempotent, audited `health_alert.acknowledge` with the kind only); `GET /health/alerts/summary` (banner; only facilities where the caller has `OPERATIONS_VIEW`); `GET /devices/:id/health` (own device only, 404 otherwise). The heartbeat stays strict; it now maintains the failure streak.
+- **Web:** alerts panel on the connectivity dashboard (open / acknowledged / resolved today, severity as text and symbol, advice text that recommends and never acts, "alerts last checked", "automatic alerts are paused"), device filter and severity order, `stale` badge, honest silence wording, revoke flow with last contact and pending-count warning, revoked-row wording ("Up to N actions were pending … may be lost"; "register it again as a new device"), counters, a signed-in banner for alert recipients, and a non-blocking own-device warning on the console that stays readable offline with its check time.
+
+### Deviations and decisions (recorded; design §17.11a)
+
+1. `subject_gone` resolves at once (a revoked device or closed queue cannot recover); everything else uses damping.
+2. `--once` waits for a running evaluation instead of skipping (found by an intermittent browser test, below).
+3. No "stale with pending" warning to the device itself (it is reading the warning, so it is not silent).
+4. The dashboard keeps polling every 5 s; the new change signal has no consumer yet.
+5. **One existing M3 assertion changed by requirement:** `coordinator.db.test.ts` expected a device silent for one hour to be `offline`; REQ-F9.6 makes it `stale`. The test now checks both tiers (5 minutes → `offline`, 1 hour → `stale`): one more assertion, none weakened.
+6. **Bounded evaluation (found at the pre-commit review).** `--once` waited for the evaluation lock with no limit, so a stuck evaluator could stall it indefinitely. Every evaluation now sets `lock_timeout` (30 s) and `statement_timeout` (60 s): a wait or a statement beyond that aborts and rolls back the pass (nothing changes) and the next interval retries. The normal loop never waits (try-lock). Test: with another connection holding the evaluation lock, a waiting evaluation fails with a lock timeout within the bound, the try-lock path skips at once, nothing changes, and the next pass works.
+7. **One existing accessibility defect fixed:** the device table's horizontal scroll container (M3) was not keyboard-focusable; axe flagged it at 320/375 px once the table grew wider. It is now a focusable, labelled region (as in the audit page).
+
+### Test evidence
+
+| Suite                                                                                        | Result                                           |
+| -------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `apps/worker/src/health.db.test.ts` (8.D3, 8.D4, 8.D6; isolated database)                    | 23 / 23                                          |
+| `apps/api/src/device-health.db.test.ts` (8.D1, 8.D2, 8.D4, 8.D5, 8.D6)                       | 18 / 18                                          |
+| `packages/domain/src/device-health.test.ts`                                                  | 6 / 6                                            |
+| `apps/web/e2e/device-health.spec.ts` at 1280, 1440, 375 and 320 px (axe, overflow, keyboard) | 11 / 11, three consecutive full runs             |
+| `pnpm test:db`                                                                               | api 569, worker 42                               |
+| Full Playwright suite, all projects                                                          | 207 passed, 4 skipped (opt-in capture), 0 failed |
+| Group 6 fencing suites (`sync-*`, `acceptance-gate`, `coordinator` fencing blocks)           | unchanged files, all pass                        |
+
+Coverage: **8.D1** recipients (supervisor, facility admin, org admin see; auditor reads only; counter/reception see only their own-device warning; cross-tenant 404 on read, acknowledge, own-device and summary). **8.D2** no IP/user-agent/fingerprint/location columns; heartbeat rejects `ip`, `user_agent`, `location`, `client_time`, `label`; responses carry no network identifiers; static check that device/health code reads no request address or user-agent. **8.D3** each of the eight kinds with severity and counts; refresh instead of duplicate; 8 concurrent evaluators without the lock still produce one alert per subject; the database refuses a second open alert; damping including a flapping case; recurrence opens a new, unacknowledged alert; acknowledgement persists; acknowledgement is audited once and changes no queue, coordinator or device row; failing evaluation changes nothing. **8.D4** three evaluations leave `queue_sessions` (epoch, device, expiry), tickets, events, devices, operations and admin events byte-for-byte unchanged; an acknowledged `coordinator_offline` alert leaves the coordinator in place until the supervisor's explicit failover, which advances the epoch and keeps the chain intact. **8.D5** revoke as lost keeps last contact and pending count with the reason; sync, heartbeat and own-health refused; re-registration creates a new device; the row stays for audit; the browser wording for both. **8.D6** offline/stale and expiring/expired by server time; the device cannot send a time; configured thresholds honoured; paused indicator after 3 intervals.
+
+Mutation checks (each reverted, files compared with backups): no damping → 8 failures; plain insert instead of the deduplicating upsert → 4; coordinator alert without the busy-queue rule → 1; acknowledge allowed with `OPERATIONS_VIEW` → 1; own-device health for any device of the organization → 1; no stale tier → 2.
+
+**Intermittent failure found and fixed (stabilization rule).** The supervisor journey failed 1 in 6 under two workers. Cause: two tests ran the worker `--once` at the same moment; the second skipped on the evaluation try-lock, so its page loaded before its alert existed and the 30 s banner poll missed it. Fix in the product (`--once` waits for the lock; new DB test proves every waiting evaluator evaluates), not in the test. 10/10 repeats and three full runs since.
+
+### Remaining risks and limits
+
+- Alert latency is up to one evaluation interval (30 s) plus the dashboard poll (5 s) or banner poll (30 s).
+- The evaluator scans every facility each pass using partial indexes; it was not load-tested beyond the shared test database (about 20,000 organizations).
+- `alert_pipeline_failing` reads failed `notifications` rows; nothing produces turn-alert failures until M5.4.
+- The worker's thresholds must match the API's; nothing enforces it beyond documentation.
+- A pass slower than 60 s (for example on a much larger database) aborts and is retried; alerts would then stop updating and the dashboard would show "Automatic alerts are paused". Device states on the dashboard stay current either way.
+- The environment stall from M5.0 did not recur.
+
+### Manual acceptance (OUTSTANDING; none performed)
+
+1. Screen reader (VoiceOver and NVDA or TalkBack): dashboard alerts panel, acknowledge button names, the polite announcement of a new high-priority alert, the banner and the console warning.
+2. A real outage drill: two tablets, assign a coordinator, switch its Wi-Fi off; confirm `offline` then `stale`, the `coordinator_offline` alert and its advice, then an explicit failover and the fenced reconnect.
+3. A lost-device drill: revoke a tablet as lost, confirm the wording, confirm it cannot sync, and re-register it.
+4. 200 % zoom on the dashboard on a phone.

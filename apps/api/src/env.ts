@@ -58,6 +58,15 @@ const EnvSchema = z
      * every service unless enabled in its policy. 0 disables the sweep in this process.
      */
     AUTO_MISS_SWEEP_SECONDS: z.coerce.number().int().min(0).max(3600).default(15),
+    /**
+     * M5.3 (REQ-F9.6, F9.7): device-health thresholds, by server time. The worker reads the same
+     * variables; keep the values identical for both (see .env.example).
+     */
+    DEVICE_STALE_AFTER_SECONDS: z.coerce.number().int().min(121).max(86_400).default(900),
+    COORDINATOR_EXPIRY_WARN_SECONDS: z.coerce.number().int().min(30).max(7200).default(300),
+    CONFLICT_REVIEW_WARN_SECONDS: z.coerce.number().int().min(60).max(86_400).default(900),
+    /** Interval of the worker's health evaluation; 3 missed intervals = "alerts are paused" */
+    HEALTH_EVALUATION_INTERVAL_SECONDS: z.coerce.number().int().min(5).max(3600).default(30),
     /** Set true only when running behind a trusted reverse proxy (honours X-Forwarded-For). */
     TRUST_PROXY: z
       .enum(['true', 'false'])

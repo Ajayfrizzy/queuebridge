@@ -1,14 +1,46 @@
 import {
+  HEALTH_DEFAULTS,
+  type AlertEvaluation,
   type DeviceHealth,
-  type DeviceHealthState,
+  type HealthAlert,
+  type HealthAlertKind,
+  type HealthSeverity,
   type OperationsHealth,
   type QueueHealth,
 } from '@queuebridge/contracts';
+import {
+  coordinatorCondition,
+  deviceHealthState as domainDeviceHealthState,
+  type HealthThresholds,
+} from '@queuebridge/domain';
 import type { Db } from '../db.js';
+import type { Env } from '../env.js';
 import { coordinatorStatus } from './authority.js';
 
-/** A device not heard from for this long is shown as offline. */
-export const OFFLINE_AFTER_SECONDS = 120;
+/** A device not heard from for this long is shown as offline (M3; unchanged). */
+export const OFFLINE_AFTER_SECONDS = HEALTH_DEFAULTS.offlineAfterSeconds;
+
+/** Server-side health thresholds from the environment (same variables as the worker). */
+export interface HealthConfig extends HealthThresholds {
+  conflictReviewWarnSeconds: number;
+  evaluationIntervalSeconds: number;
+}
+export function healthConfig(env: Env): HealthConfig {
+  return {
+    offlineAfterSeconds: OFFLINE_AFTER_SECONDS,
+    deviceStaleAfterSeconds: env.DEVICE_STALE_AFTER_SECONDS,
+    coordinatorExpiryWarnSeconds: env.COORDINATOR_EXPIRY_WARN_SECONDS,
+    conflictReviewWarnSeconds: env.CONFLICT_REVIEW_WARN_SECONDS,
+    evaluationIntervalSeconds: env.HEALTH_EVALUATION_INTERVAL_SECONDS,
+  };
+}
+export const DEFAULT_HEALTH_CONFIG: HealthConfig = {
+  offlineAfterSeconds: OFFLINE_AFTER_SECONDS,
+  deviceStaleAfterSeconds: HEALTH_DEFAULTS.deviceStaleAfterSeconds,
+  coordinatorExpiryWarnSeconds: HEALTH_DEFAULTS.coordinatorExpiryWarnSeconds,
+  conflictReviewWarnSeconds: HEALTH_DEFAULTS.conflictReviewWarnSeconds,
+  evaluationIntervalSeconds: HEALTH_DEFAULTS.evaluationIntervalSeconds,
+};
 
 interface DeviceRow {
   id: string;
@@ -18,7 +50,9 @@ interface DeviceRow {
   last_sync_at: Date | null;
   reported_pending_count: number;
   last_failure_code: string | null;
+  failure_streak: number;
   revoked_at: Date | null;
+  revoked_reason_code: string | null;
   needs_review_count: number;
   rejected_count: number;
 }
@@ -37,35 +71,110 @@ interface QueueRow {
   open_conflicts: number;
 }
 
+/** M3 signature kept; state now also distinguishes `stale` (thresholds default as before). */
 export function deviceHealthState(
   d: Pick<
     DeviceRow,
     'revoked_at' | 'needs_review_count' | 'last_seen_at' | 'reported_pending_count'
   >,
   now: Date,
-): DeviceHealthState {
-  if (d.revoked_at) return 'revoked';
-  if (d.needs_review_count > 0) return 'needs_review';
-  if (!d.last_seen_at || now.getTime() - d.last_seen_at.getTime() > OFFLINE_AFTER_SECONDS * 1000) {
-    return 'offline';
-  }
-  return d.reported_pending_count > 0 ? 'pending' : 'healthy';
+  t: HealthThresholds = DEFAULT_HEALTH_CONFIG,
+): ReturnType<typeof domainDeviceHealthState> {
+  return domainDeviceHealthState(d, now, t);
+}
+
+interface AlertRow {
+  id: string;
+  kind: HealthAlertKind;
+  severity: HealthSeverity;
+  subject_type: 'device' | 'queue' | 'facility';
+  subject_id: string;
+  subject_label: string | null;
+  details: Record<string, number>;
+  opened_at: Date;
+  last_seen_at: Date;
+  acknowledged_at: Date | null;
+  acknowledged_by_name: string | null;
+  resolved_at: Date | null;
+}
+
+export function toHealthAlert(a: AlertRow): HealthAlert {
+  return {
+    id: a.id,
+    kind: a.kind,
+    severity: a.severity,
+    status: a.resolved_at ? 'resolved' : a.acknowledged_at ? 'acknowledged' : 'open',
+    subject_type: a.subject_type,
+    subject_id: a.subject_id,
+    subject_label: a.subject_label,
+    opened_at: a.opened_at.toISOString(),
+    last_seen_at: a.last_seen_at.toISOString(),
+    acknowledged_at: a.acknowledged_at?.toISOString() ?? null,
+    acknowledged_by_name: a.acknowledged_by_name,
+    resolved_at: a.resolved_at?.toISOString() ?? null,
+    // counts only (the evaluator writes nothing else; filter defensively anyway)
+    details: Object.fromEntries(
+      Object.entries(a.details ?? {}).filter(([, v]) => typeof v === 'number'),
+    ),
+  };
+}
+
+/** Facility alerts: open and acknowledged, and those resolved in the last 24 hours. */
+export async function facilityAlerts(
+  db: Db,
+  organizationId: string,
+  facilityId: string,
+): Promise<HealthAlert[]> {
+  const rows = await db<AlertRow[]>`
+    SELECT a.id, a.kind, a.severity, a.subject_type, a.subject_id, a.details, a.opened_at,
+           a.last_seen_at, a.acknowledged_at, a.resolved_at, u.display_name AS acknowledged_by_name,
+           CASE a.subject_type
+             WHEN 'device' THEN (SELECT d.label FROM devices d WHERE d.id = a.subject_id)
+             WHEN 'queue' THEN (SELECT s.name FROM queue_sessions qs JOIN services s ON s.id = qs.service_id
+                                 WHERE qs.id = a.subject_id)
+             ELSE (SELECT f.name FROM facilities f WHERE f.id = a.subject_id) END AS subject_label
+      FROM health_alerts a
+      LEFT JOIN staff_users u ON u.id = a.acknowledged_by
+     WHERE a.organization_id = ${organizationId} AND a.facility_id = ${facilityId}
+       AND (a.resolved_at IS NULL OR a.resolved_at > NOW() - INTERVAL '24 hours')
+     ORDER BY (a.resolved_at IS NOT NULL),
+              CASE a.severity WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
+              a.opened_at DESC
+     LIMIT 200`;
+  return rows.map(toHealthAlert);
+}
+
+export async function evaluationStatus(db: Db, cfg: HealthConfig): Promise<AlertEvaluation> {
+  const [r] = await db<{ last_evaluated_at: Date; paused: boolean }[]>`
+    SELECT last_evaluated_at,
+           last_evaluated_at < NOW() - make_interval(secs => ${3 * cfg.evaluationIntervalSeconds}) AS paused
+      FROM health_evaluations WHERE id`;
+  return {
+    last_evaluated_at: r?.last_evaluated_at.toISOString() ?? null,
+    paused: r ? r.paused : true,
+    interval_seconds: cfg.evaluationIntervalSeconds,
+  };
 }
 
 /**
  * Connectivity and recovery dashboard data for a facility (F9). Server API health is a separate
  * signal (/health/ready); this reports what the SERVER knows about each device — and says so:
- * pending counts are reported by the devices, so they are approximate.
+ * pending counts are reported by the devices, so they are approximate. States are computed here
+ * on read (server time), so they are correct even when the alert worker is not running.
  */
 export async function operationsHealth(
   db: Db,
   organizationId: string,
   facilityId: string,
+  cfg: HealthConfig = DEFAULT_HEALTH_CONFIG,
 ): Promise<OperationsHealth> {
-  const now = new Date();
+  // Server time from the database: the same clock the worker and every other check uses
+  const [clock] = await db<{ now: Date }[]>`SELECT NOW() AS now`;
+  const now = clock?.now ?? new Date();
   const devices = await db<DeviceRow[]>`
     SELECT d.id, d.label, u.display_name AS owner_name, d.last_seen_at, d.last_sync_at,
-           d.reported_pending_count, d.last_failure_code, d.revoked_at,
+           d.reported_pending_count, d.last_failure_code, d.failure_streak, d.revoked_at,
+           d.revoked_reason_code,
            (SELECT COUNT(*)::int FROM client_operations co
              WHERE co.device_id = d.id AND co.status = 'needs_review') AS needs_review_count,
            (SELECT COUNT(*)::int FROM client_operations co
@@ -110,25 +219,51 @@ export async function operationsHealth(
     pending_count: d.reported_pending_count,
     needs_review_count: d.needs_review_count,
     rejected_count: d.rejected_count,
-    health: deviceHealthState(d, now),
+    health: deviceHealthState(d, now, cfg),
     last_failure_code: d.last_failure_code,
+    failure_streak: d.failure_streak,
     revoked_at: d.revoked_at?.toISOString() ?? null,
+    revoked_reason: d.revoked_at ? d.revoked_reason_code : null,
     coordinator_for: queues
       .filter((q) => q.coordinator_device_id === d.id && q.coordinator_expires_at)
-      .map((q) => ({
-        queue_id: q.id,
-        service_name: q.service_name,
-        epoch: q.coordinator_epoch,
-        expires_at: (q.coordinator_expires_at as Date).toISOString(),
-        expired: (q.coordinator_expires_at as Date).getTime() <= now.getTime(),
-      })),
+      .map((q) => {
+        const c = coordinatorCondition(q.coordinator_expires_at, now, cfg);
+        return {
+          queue_id: q.id,
+          service_name: q.service_name,
+          epoch: q.coordinator_epoch,
+          expires_at: (q.coordinator_expires_at as Date).toISOString(),
+          expired: c === 'expired',
+          expiring: c === 'expiring',
+        };
+      }),
   }));
+
+  const [counters] = await db<{ abuse: number; failures: number }[]>`
+    SELECT
+      (SELECT COUNT(*)::int FROM admin_events
+        WHERE organization_id = ${organizationId} AND facility_id = ${facilityId}
+          AND event_type = 'ticket_recovery.abuse_detected'
+          AND created_at > NOW() - INTERVAL '24 hours') AS abuse,
+      (SELECT COUNT(*)::int FROM notifications n
+         JOIN tickets t ON t.id = n.ticket_id
+         JOIN queue_sessions qs ON qs.id = t.queue_session_id
+        WHERE n.organization_id = ${organizationId} AND qs.facility_id = ${facilityId}
+          AND n.status = 'failed' AND n.updated_at > NOW() - INTERVAL '1 hour') AS failures`;
 
   return {
     server_time: now.toISOString(),
-    offline_after_seconds: OFFLINE_AFTER_SECONDS,
+    offline_after_seconds: cfg.offlineAfterSeconds,
+    stale_after_seconds: cfg.deviceStaleAfterSeconds,
+    coordinator_expiry_warn_seconds: cfg.coordinatorExpiryWarnSeconds,
     devices: deviceHealth,
     queues: queueHealth,
     open_conflicts: queueHealth.reduce((n, q) => n + q.open_conflicts, 0),
+    alerts: await facilityAlerts(db, organizationId, facilityId),
+    evaluation: await evaluationStatus(db, cfg),
+    counters: {
+      recovery_abuse_24h: counters?.abuse ?? 0,
+      turn_alert_failures_1h: counters?.failures ?? 0,
+    },
   };
 }

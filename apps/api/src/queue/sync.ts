@@ -255,7 +255,7 @@ export async function processSyncBatch(
       UPDATE devices
          SET last_seen_at = NOW(), last_sync_at = NOW(),
              reported_pending_count = ${pending !== undefined && ids.length === 1 ? pending : db`reported_pending_count`},
-             last_failure_code = NULL
+             last_failure_code = NULL, failure_streak = 0
        WHERE id = ANY(${ids}::uuid[])`;
   }
 

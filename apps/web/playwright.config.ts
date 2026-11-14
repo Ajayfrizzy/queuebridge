@@ -48,7 +48,9 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'pnpm --filter @queuebridge/api build && node ../api/dist/server.js',
+      // The worker is built too: device-health tests run its real evaluator once (`--once`)
+      command:
+        'pnpm --filter @queuebridge/api --filter @queuebridge/worker build && node ../api/dist/server.js',
       url: `http://localhost:${API_PORT}/health/ready`,
       timeout: 120_000,
       reuseExistingServer: false,

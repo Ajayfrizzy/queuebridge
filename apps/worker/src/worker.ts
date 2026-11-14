@@ -1,6 +1,7 @@
 import postgres from 'postgres';
 import { assertQueueBridgeDatabase, auditKeyFingerprint, runCheckpointJob } from './checkpoints.js';
 import { parseEnv } from './env.js';
+import { evaluateDeviceHealth, runHealthRetention } from './health.js';
 import { runRecoveryRetention } from './retention.js';
 
 /**
@@ -10,6 +11,8 @@ import { runRecoveryRetention } from './retention.js';
  * - audit checkpoints (M4): verify each session's hash chain and sign checkpoint ranges
  * - recovery-data retention (M5.1): expired/revoked credentials, ended tickets' keys, grants,
  *   throttle windows (counts are logged, never values)
+ * - device-health evaluation (M5.3): observes devices and coordinators, raises and resolves
+ *   in-product alerts; never changes authority, queues, tickets, events or devices
  * - notification outbox (M6): not implemented yet — SMS/USSD delivery is milestone M6
  *
  * Logs are structured JSON; they never contain event payloads, tokens or keys.
@@ -46,7 +49,37 @@ if (checkpointsEnabled) {
   );
 }
 
-async function runOnce(): Promise<void> {
+let lastHealthEvaluation = 0;
+
+async function runOnce(force = false): Promise<void> {
+  // Device health first: alerts should not wait behind long housekeeping jobs
+  const due = Date.now() - lastHealthEvaluation >= env.HEALTH_EVALUATION_INTERVAL_SECONDS * 1000;
+  if (force || due) {
+    try {
+      const r = await evaluateDeviceHealth(sql, {
+        deviceStaleAfterSeconds: env.DEVICE_STALE_AFTER_SECONDS,
+        coordinatorExpiryWarnSeconds: env.COORDINATOR_EXPIRY_WARN_SECONDS,
+        conflictReviewWarnSeconds: env.CONFLICT_REVIEW_WARN_SECONDS,
+        // `--once` must really evaluate (wait for another instance instead of skipping)
+        waitForLock: force,
+      });
+      lastHealthEvaluation = Date.now();
+      if (r.opened + r.resolved > 0) log('info', 'Device health evaluated', { ...r });
+    } catch (err) {
+      // The previous alert state stays as it was (one transaction); queues are never affected
+      log('error', 'Device health evaluation failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  try {
+    const removed = await runHealthRetention(sql);
+    if (removed > 0) log('info', 'Resolved health alerts purged', { count: removed });
+  } catch (err) {
+    log('error', 'Health alert retention failed', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
   try {
     const purged = await runRecoveryRetention(sql);
     if (purged.tokens + purged.keys + purged.grants + purged.throttle > 0) {
@@ -95,7 +128,7 @@ async function main(): Promise<void> {
   });
   if (ONCE) {
     try {
-      await runOnce();
+      await runOnce(true);
       log('info', 'Worker run complete');
     } catch (err) {
       log('error', 'Worker job error', { error: err instanceof Error ? err.message : String(err) });

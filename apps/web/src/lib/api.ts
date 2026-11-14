@@ -43,6 +43,9 @@ import type {
   RecoveryRequestSummary,
   RecoveryRevokeAllRequest,
   RevokeOtherDevicesResponse,
+  AlertSummary,
+  HealthAlert,
+  OwnDeviceHealth,
 } from '@queuebridge/contracts';
 
 const BASE: string =
@@ -436,6 +439,12 @@ export const api = {
     request('POST', `/queues/${queueId}/coordinator${kind === 'assign' ? '' : `/${kind}`}`, body),
   operationsHealth: (fid: string): Promise<{ health: OperationsHealth }> =>
     request('GET', `/facilities/${fid}/operations/health`),
+  // ---- M5.3: device-health alerts (in-product only) ----
+  acknowledgeAlert: (fid: string, alertId: string): Promise<{ alert: HealthAlert }> =>
+    request('POST', `/facilities/${fid}/health/alerts/${alertId}/acknowledge`, {}),
+  alertSummary: (): Promise<{ summary: AlertSummary }> => request('GET', '/health/alerts/summary'),
+  ownDeviceHealth: (deviceId: string): Promise<{ device: OwnDeviceHealth }> =>
+    request('GET', `/devices/${deviceId}/health`),
   conflicts: (fid: string, includeResolved = false): Promise<{ conflicts: SyncConflict[] }> =>
     request('GET', `/facilities/${fid}/sync/conflicts${includeResolved ? '?include=all' : ''}`),
   resolveConflict: (

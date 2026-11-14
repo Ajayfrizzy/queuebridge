@@ -14,3 +14,4 @@ export * from './routing.js';
 export * from './wait-estimate.js';
 export * from './queue.js';
 export * from './audit.js';
+export * from './device-health.js';

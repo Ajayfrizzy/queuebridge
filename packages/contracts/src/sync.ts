@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { CommandDisposition, QueueAction } from './enums.js';
+import { AlertEvaluationSchema, HealthAlertSchema } from './health.js';
 import { StaffQueueSchema } from './queue.js';
 import { IsoDateTimeSchema, UuidSchema, UuidV7Schema } from './schemas.js';
 
@@ -347,6 +348,8 @@ export const DEVICE_HEALTH_STATES = [
   'healthy',
   'pending',
   'offline',
+  /** M5.3: no contact for the stale threshold (default 900 s); may be asleep, closed or lost */
+  'stale',
   'needs_review',
   'revoked',
 ] as const;
@@ -365,6 +368,10 @@ export const DeviceHealthSchema = z.object({
   health: z.enum(DEVICE_HEALTH_STATES),
   last_failure_code: z.string().nullable(),
   revoked_at: IsoDateTimeSchema.nullable(),
+  /** M5.3: why it was revoked (for example `lost`); null while active */
+  revoked_reason: z.string().nullable(),
+  /** M5.3: the same failure code reported this many times in a row */
+  failure_streak: z.number().int().nonnegative(),
   coordinator_for: z.array(
     z.object({
       queue_id: UuidSchema,
@@ -372,6 +379,8 @@ export const DeviceHealthSchema = z.object({
       epoch: z.number().int().nonnegative(),
       expires_at: IsoDateTimeSchema,
       expired: z.boolean(),
+      /** M5.3: ends within the warning window */
+      expiring: z.boolean(),
     }),
   ),
 });
@@ -391,8 +400,22 @@ export const OperationsHealthSchema = z.object({
   server_time: IsoDateTimeSchema,
   /** A device not heard from for this long is shown as offline */
   offline_after_seconds: z.number().int().positive(),
+  /** M5.3: a device not heard from for this long is shown as stale */
+  stale_after_seconds: z.number().int().positive(),
+  /** M5.3: coordinator authorization ending within this window is flagged */
+  coordinator_expiry_warn_seconds: z.number().int().positive(),
   devices: z.array(DeviceHealthSchema),
   queues: z.array(QueueHealthSchema),
   open_conflicts: z.number().int().nonnegative(),
+  /** M5.3: open and acknowledged alerts, plus those resolved in the last 24 hours */
+  alerts: z.array(HealthAlertSchema),
+  evaluation: AlertEvaluationSchema,
+  /** M5.3 counters (server facts, counts only) */
+  counters: z.object({
+    /** Recovery-abuse signals at this facility in the last 24 hours */
+    recovery_abuse_24h: z.number().int().nonnegative(),
+    /** Failed turn alerts at this facility in the last hour (M5.4 fills this in) */
+    turn_alert_failures_1h: z.number().int().nonnegative(),
+  }),
 });
 export type OperationsHealth = z.infer<typeof OperationsHealthSchema>;

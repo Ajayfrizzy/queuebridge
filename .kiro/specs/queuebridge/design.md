@@ -2061,6 +2061,24 @@ Evaluation errors are logged and the previous alert state stays (no spurious res
 condition is damped: an alert resolves only after the condition has been clear for two evaluations.
 An alert-system failure never blocks any queue action or any device operation.
 
+### 17.11a As implemented (M5.3; deviations recorded)
+
+- Migration `0008_device_health.sql`: `health_alerts` as specified plus `clear_count` (damping) and
+  `subject_type`; `health_evaluations` (single row, last completed evaluation); `devices.failure_streak`
+  (consecutive identical failure reports, written by the device's own heartbeat and reset by a
+  successful sync; the evaluator never writes it). Partial indexes for the evaluator's scans.
+- A subject that is gone (device revoked, queue closed) resolves at once with `subject_gone`; all
+  other alerts follow the two-evaluation damping.
+- The evaluator runs in one transaction under a try-lock (other instances skip); `--once` waits for
+  the lock instead, so a manual or scheduled single run always evaluates. Every pass is bounded
+  (`lock_timeout` 30 s, `statement_timeout` 60 s): a stuck pass rolls back and the next one retries. Deduplication does not depend
+  on the lock: the unique partial index enforces it.
+- Own-device warnings: `coordinator_expiring`, `coordinator_expired`, `sync_failing`. A
+  "stale with pending" warning to the device itself is not shown: a device that can read it is, by
+  definition, not silent.
+- Change signal: `pg_notify('qb_health_events', {"f": facility})`. The dashboard still refreshes by
+  polling every 5 s (no SSE consumer was added); the banner polls every 30 s.
+
 ### 17.12 Verification (Group 8, items 8.D1–8.D6; Group 6 regression; Group 11, item 11.A10)
 
 Real-PostgreSQL tests: state transitions by server time (offline, stale, expiring, expired);

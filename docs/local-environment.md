@@ -41,14 +41,18 @@ To set a value by hand instead, generate it straight into your editor's clipboar
 (`node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))" | pbcopy`)
 and paste it into `.env`; do not echo it in a terminal you share or record.
 
-| Variable                  | Rule                                                                       |
-| ------------------------- | -------------------------------------------------------------------------- |
-| `SESSION_SECRET`          | ≥ 32 characters, random                                                    |
-| `CONTACT_ENCRYPTION_KEY`  | exactly 64 hex characters (32 bytes)                                       |
-| `AUDIT_SIGNING_KEY`       | ≥ 32 characters, random; placeholders refused by API and worker            |
-| `RECOVERY_RATE_LIMIT_MAX` | optional, 1–1000 (default 10): recovery attempts per minute per source     |
-| `AUTO_MISS_SWEEP_SECONDS` | optional, 0–3600 (default 15; 0 disables the sweep in this process)        |
-| `AUDIT_SIGNING_KEY_ID`    | required whenever the key is set (and vice versa); letters, digits, `._:-` |
+| Variable                             | Rule                                                                       |
+| ------------------------------------ | -------------------------------------------------------------------------- |
+| `SESSION_SECRET`                     | ≥ 32 characters, random                                                    |
+| `CONTACT_ENCRYPTION_KEY`             | exactly 64 hex characters (32 bytes)                                       |
+| `AUDIT_SIGNING_KEY`                  | ≥ 32 characters, random; placeholders refused by API and worker            |
+| `RECOVERY_RATE_LIMIT_MAX`            | optional, 1–1000 (default 10): recovery attempts per minute per source     |
+| `AUTO_MISS_SWEEP_SECONDS`            | optional, 0–3600 (default 15; 0 disables the sweep in this process)        |
+| `DEVICE_STALE_AFTER_SECONDS`         | optional, 121–86400 (default 900); API **and** worker, same value          |
+| `COORDINATOR_EXPIRY_WARN_SECONDS`    | optional, 30–7200 (default 300); API **and** worker                        |
+| `CONFLICT_REVIEW_WARN_SECONDS`       | optional, 60–86400 (default 900); API **and** worker                       |
+| `HEALTH_EVALUATION_INTERVAL_SECONDS` | optional, 5–3600 (default 30); API **and** worker                          |
+| `AUDIT_SIGNING_KEY_ID`               | required whenever the key is set (and vice versa); letters, digits, `._:-` |
 
 Since M5.1, `CONTACT_ENCRYPTION_KEY` also seeds the ticket-recovery secrets (HKDF-derived, one per
 purpose: recovery key, staff grant, throttle). Without it self-service recovery is disabled rather

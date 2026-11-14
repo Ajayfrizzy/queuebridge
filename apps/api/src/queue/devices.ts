@@ -93,10 +93,17 @@ export async function recordHeartbeat(
   const device = await findOwnDevice(db, auth, deviceId);
   if (!device) throw problems.notFound();
   if (device.revoked_at) throw deviceRevoked();
+  // M5.3: `failure_streak` counts identical consecutive failure reports (`sync_failing`); the
+  // rule is `nextFailureStreak` in @queuebridge/domain, applied here atomically in SQL
+  const code = body.failure_code ?? null;
   await db`
     UPDATE devices
        SET last_seen_at = NOW(), reported_pending_count = ${body.pending_count},
-           last_failure_code = ${body.failure_code ?? null}
+           failure_streak = CASE
+             WHEN ${code}::text IS NULL THEN 0
+             WHEN last_failure_code = ${code}::text THEN failure_streak + 1
+             ELSE 1 END,
+           last_failure_code = ${code}
      WHERE id = ${device.id}`;
 }
 

@@ -355,22 +355,22 @@ Design-derived tasks:
 
 Original tasks (unchanged):
 
-- [ ] Device last-contact display
-- [ ] Sync health indicators
-- [ ] Coordinator status and failover controls
-- [ ] Automatic alerting for unhealthy devices (carried over from the explicit M3 deferral "automatic alerting/notification → M5"; in-dashboard flags first, no new external channel)
+- [x] Device last-contact display
+- [x] Sync health indicators
+- [x] Coordinator status and failover controls
+- [x] Automatic alerting for unhealthy devices (carried over from the explicit M3 deferral "automatic alerting/notification → M5"; in-dashboard flags first, no new external channel)
 
 Design-derived tasks:
 
-- [ ] `stale` state and thresholds from server time (`DEVICE_STALE_AFTER_SECONDS` = 900, `COORDINATOR_EXPIRY_WARN_SECONDS` = 300, `CONFLICT_REVIEW_WARN_SECONDS` = 900 as accepted initial defaults; all configurable); `deviceHealthState` extended; honest "approximate / may be offline, asleep or lost" wording
-- [ ] M5.3 migration (additive; indicatively `0008`): `health_alerts` with a unique partial index for one open alert per (facility, kind, subject)
-- [ ] Worker `evaluateDeviceHealth` (every 30 s): read-only on queue/coordinator/ticket tables, upsert/resolve alerts with two-evaluation damping, facility change signal, "paused" indicator when stale; never assigns, fails over, renews or revokes anything
-- [ ] Alert kinds and severities of design §17.4 including `recovery_abuse` and `alert_pipeline_failing`; recipients and acknowledge rules (`OPERATIONS_VIEW` view, `QUEUE_MANAGE` acknowledge, own-device warning); audited acknowledge/clear
-- [ ] Dashboard: state filter/sort, alerts panel, last-evaluated line, counters for recovery and turn alerts; supervisor/admin alert banner; staff console own-device warning
-- [ ] Lost-device flow: revoke-as-lost with last-contact/pending wording; revoked device re-registers as new; revoked device's unsent actions shown read-only, never auto-applied; confirm failover stays explicit with the existing fencing warning
-- [ ] Privacy review: no IP/user agent/fingerprint/location fields or logs; minimal heartbeat schema (unknown fields rejected); label guidance text
-- [ ] Retention: resolved alerts deleted after 30 days (shares the retention job)
-- [ ] Group 8 items 8.D1–8.D6; Group 6 fencing tests re-run unchanged; Group 11 item 11.A10
+- [x] `stale` state and thresholds from server time (`DEVICE_STALE_AFTER_SECONDS` = 900, `COORDINATOR_EXPIRY_WARN_SECONDS` = 300, `CONFLICT_REVIEW_WARN_SECONDS` = 900 as accepted initial defaults; all configurable); `deviceHealthState` extended; honest "approximate / may be offline, asleep or lost" wording
+- [x] M5.3 migration (additive; indicatively `0008`): `health_alerts` with a unique partial index for one open alert per (facility, kind, subject)
+- [x] Worker `evaluateDeviceHealth` (every 30 s): read-only on queue/coordinator/ticket tables, upsert/resolve alerts with two-evaluation damping, facility change signal, "paused" indicator when stale; never assigns, fails over, renews or revokes anything
+- [x] Alert kinds and severities of design §17.4 including `recovery_abuse` and `alert_pipeline_failing`; recipients and acknowledge rules (`OPERATIONS_VIEW` view, `QUEUE_MANAGE` acknowledge, own-device warning); audited acknowledge/clear
+- [x] Dashboard: state filter/sort, alerts panel, last-evaluated line, counters for recovery and turn alerts; supervisor/admin alert banner; staff console own-device warning
+- [x] Lost-device flow: revoke-as-lost with last-contact/pending wording; revoked device re-registers as new; revoked device's unsent actions shown read-only, never auto-applied; confirm failover stays explicit with the existing fencing warning
+- [x] Privacy review: no IP/user agent/fingerprint/location fields or logs; minimal heartbeat schema (unknown fields rejected); label guidance text
+- [x] Retention: resolved alerts deleted after 30 days (shares the retention job)
+- [x] Group 8 items 8.D1–8.D6; Group 6 fencing tests re-run unchanged; Group 11 item 11.A10 (automated; manual screen-reader pass of the dashboard still outstanding, see `M5-evidence.md`)
 
 Security follow-up from M5.1 (separate change, recorded in `M5-evidence.md`, "M5 hardening"):
 

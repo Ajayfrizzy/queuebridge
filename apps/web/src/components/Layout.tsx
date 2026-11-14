@@ -5,6 +5,7 @@ import { ApiRequestError } from '../lib/api.js';
 import { useOffline } from '../offline/OfflineProvider.js';
 import { ConnectivityBar } from './ConnectivityBar.js';
 import { DisplaySettingsButton } from './DisplaySettings.js';
+import { HealthAlertBanner } from './HealthAlertBanner.js';
 import { useRouteFocus } from '../lib/routeFocus.js';
 
 /** Page shell: skip link, banner, navigation, and route-change focus management. */
@@ -111,6 +112,7 @@ export function Layout(): ReactElement {
         </div>
       </header>
       <ConnectivityBar />
+      <HealthAlertBanner />
       {confirmDiscard ? (
         <div className="container">
           <div role="alert" className="alert alert-error" data-testid="discard-warning">

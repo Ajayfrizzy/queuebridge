@@ -25,6 +25,14 @@ const EnvSchema = z
     AUDIT_CHECKPOINT_MIN_EVENTS: z.coerce.number().int().min(1).max(100_000).default(25),
     /** ...or once its oldest unanchored event is this old (or the session is closed). */
     AUDIT_CHECKPOINT_MAX_AGE_MS: z.coerce.number().int().min(1000).default(600_000),
+    /**
+     * M5.3 device health (same variables and ranges as the API; keep the values identical).
+     * Evaluation runs at most every HEALTH_EVALUATION_INTERVAL_SECONDS.
+     */
+    DEVICE_STALE_AFTER_SECONDS: z.coerce.number().int().min(121).max(86_400).default(900),
+    COORDINATOR_EXPIRY_WARN_SECONDS: z.coerce.number().int().min(30).max(7200).default(300),
+    CONFLICT_REVIEW_WARN_SECONDS: z.coerce.number().int().min(60).max(86_400).default(900),
+    HEALTH_EVALUATION_INTERVAL_SECONDS: z.coerce.number().int().min(5).max(3600).default(30),
   })
   .superRefine(checkAuditSigningPair);
 

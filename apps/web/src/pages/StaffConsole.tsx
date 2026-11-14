@@ -37,6 +37,7 @@ import {
 } from '../lib/permissions.js';
 import { buildQr, qrPath, QUIET_ZONE } from '../lib/qr.js';
 import { StaffRecoveryPanel } from '../components/StaffRecoveryPanel.js';
+import { OwnDeviceWarning } from '../components/OwnDeviceWarning.js';
 import { formatRecoveryKey } from '@queuebridge/contracts';
 import { outcomeOfStatus } from '../lib/operationIds.js';
 import { OutboxPanel } from '../components/OutboxPanel.js';
@@ -599,6 +600,7 @@ export function StaffConsole(): ReactElement {
           </Link>
         </p>
       ) : null}
+      <OwnDeviceWarning deviceId={deviceId} reachable={reachable} />
       {canCount && advanceBlockedReason ? (
         <p role="status" className="alert alert-warn" data-testid="authority-banner">
           {advanceBlockedReason}

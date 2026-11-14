@@ -795,14 +795,17 @@ describe('snapshots and the connectivity dashboard (F9)', () => {
     expect(byId[f.reception.deviceId]).toMatchObject({ health: 'pending', pending_count: 3 });
     expect(byId[f.counter.deviceId]?.coordinator_for).toHaveLength(1);
     expect(h.body.health.queues[0]?.coordinator.status).toBe('active');
-    // devices never heard from after registration are shown offline once stale
-    await t.db`UPDATE devices SET last_seen_at = NOW() - interval '1 hour' WHERE id = ${f.reception.deviceId}`;
-    const stale = await f.supervisor.client.get<{
-      health: { devices: { id: string; health: string }[] };
-    }>(`/api/v1/facilities/${f.fid}/operations/health`);
-    expect(stale.body.health.devices.find((d) => d.id === f.reception.deviceId)?.health).toBe(
-      'offline',
-    );
+    // devices not heard from are shown offline after 120 s (M3) and, since M5.3 (REQ-F9.6),
+    // stale after 900 s
+    const stateAfter = async (silence: string): Promise<string | undefined> => {
+      await t.db`UPDATE devices SET last_seen_at = NOW() - ${silence}::interval WHERE id = ${f.reception.deviceId}`;
+      const r = await f.supervisor.client.get<{
+        health: { devices: { id: string; health: string }[] };
+      }>(`/api/v1/facilities/${f.fid}/operations/health`);
+      return r.body.health.devices.find((d) => d.id === f.reception.deviceId)?.health;
+    };
+    expect(await stateAfter('5 minutes')).toBe('offline');
+    expect(await stateAfter('1 hour')).toBe('stale');
     // staff without supervisor rights cannot see device health
     expect(
       (await f.counter.client.get(`/api/v1/facilities/${f.fid}/operations/health`)).status,
