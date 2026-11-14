@@ -384,3 +384,41 @@ Findings and what was done about them:
 5. **M5.0 and M5.1 commits** are unchanged (`87ec587`, `e0214c5`).
 
 The bundle-size gap and every manual check above remain **outstanding**.
+
+---
+
+## M5 hardening — atomic per-staff recovery limit (security follow-up to M5.1; separate from M5.3)
+
+Status: implemented and verified locally; **not committed**. Isolated to `apps/api/src/recovery/service.ts`, `apps/api/src/errors.ts` + `app.ts` (a `retryable` flag on problems) and the new test file `apps/api/src/recovery-staff-limit.db.test.ts`. No migration.
+
+### Lock-order review
+
+Before the change, every recovery path took at most these locks: the ticket's proof row (`lockProof`), the grant row (`FOR UPDATE`), and (revoke-all) the ticket's pending grants. No advisory locks existed. Recovery never takes the queue-session lock. The review found **two** problems:
+
+1. **The per-staff limit was not atomic** (as documented at M5.1). Reproduced: 20 simultaneous requests by one staff member for 20 different tickets created **8** grants against a limit of 5.
+2. **A deadlock between grant redemption and staff revoke-all** (not previously known). Redemption locked the grant row and then the proof row; revoke-all locked the proof row and then the grants. Reproduced: 2 of 25 simultaneous redeem/revoke-all pairs failed with a PostgreSQL deadlock (HTTP 500).
+
+### Fix
+
+- `staffAssist` takes `pg_advisory_xact_lock(key)` first, where `key` is a 64-bit hash of (organization id, staff user id): count-then-insert is serialized for one person only. Different staff never contend, and staff of different organizations never share a key. The transaction has `SET LOCAL lock_timeout = '3s'`; a timeout returns **503 `recovery-busy`, `retryable: true`**, with nothing written.
+- Grant redemption now locks **ticket (proof row) then grant**, the same order as revoke-all. The grant is first read without a lock to learn its ticket, then locked and re-checked.
+- Resulting lock order for all recovery paths: **staff advisory lock → ticket proof row → grant rows**. The advisory lock is taken only by `staffAssist`, so no cycle is possible.
+
+### Tests (real PostgreSQL, separate connections)
+
+| Test                                                                                         | Result                               |
+| -------------------------------------------------------------------------------------------- | ------------------------------------ |
+| 20 simultaneous requests, one staff member, 20 tickets → exactly 5 succeed, 15 × 429, 5 rows | pass (failed before the fix: 8 rows) |
+| 5 bursts of 12 parallel requests (fresh staff each) → never more than 5                      | pass                                 |
+| Staff B completes while staff A's lock is held by another connection; A waits, then succeeds | pass (proves no global lock)         |
+| Lock wait beyond 3 s → 503 retryable, no grant                                               | pass                                 |
+| Lock key differs per organization for the same staff id                                      | pass                                 |
+| Per-ticket limit (3/hour) exact with 6 staff in parallel                                     | pass                                 |
+| Deterministic: while redemption waits for the ticket lock it holds no grant lock             | pass (fails 3/3 with the old order)  |
+| 25 rounds of simultaneous redemption + revoke-all: no 500, no live token left                | pass (old order: deadlocks)          |
+
+**Test synchronization (found at the pre-commit full run).** The deterministic lock-order test failed once in the full parallel database suite. It inferred "the holder has its lock" and "the redemption is waiting" from global `pg_locks`/`pg_stat_activity` counts, which locks held by other suites running in parallel could satisfy early; the redemption then completed before the holder's lock existed. The three lock-observing tests now use a holder that signals once it really holds its lock and wait for a backend blocked by that holder's pid (`pg_blocking_pids`). Assertions are unchanged. Since then: three consecutive full parallel runs (api 569) pass, and both mutations below are still caught.
+
+Mutation checks: removing the advisory lock fails 3 tests; restoring the old grant-first order fails the deterministic test 3/3 (the 25-round stress test caught it 1 time in 3, which is why the deterministic test was added). The M5.1 suite (`recovery.db.test.ts`, 44) passes unchanged.
+
+---

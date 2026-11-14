@@ -372,6 +372,11 @@ Design-derived tasks:
 - [ ] Retention: resolved alerts deleted after 30 days (shares the retention job)
 - [ ] Group 8 items 8.D1–8.D6; Group 6 fencing tests re-run unchanged; Group 11 item 11.A10
 
+Security follow-up from M5.1 (separate change, recorded in `M5-evidence.md`, "M5 hardening"):
+
+- [x] Per-staff assisted-recovery limit made atomic (organization- and staff-scoped advisory lock, lock order staff → ticket, 3 s lock timeout → retryable 503); concurrency regression test (20 simultaneous requests → exactly 5)
+- [x] Grant redemption lock order corrected (ticket → grant, as revoke-all), removing a deadlock found while reviewing lock order; deterministic and repeated regression tests
+
 ### M5.4 Smart Turn Alerts (F14; ADR-013, design §12)
 
 - [ ] Contracts: alert/subscription/payload schemas, `ticket.called` template key, alert state enum (`sent | delivered | failed | suppressed | unknown`) in `packages/contracts`

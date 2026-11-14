@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   QueueAction,
   SystemActor,
@@ -220,6 +221,14 @@ export async function recoverWithGrant(
   const grant = normalizeRecoveryKey(input.rawGrant);
   const hmac = crypto.grantHmac(grant ?? '0'.repeat(32));
   const issued = await db.begin(async (tx) => {
+    // Lock order is ticket (proof row) THEN grant row, the same order as staff revoke-all, which
+    // locks the proof and then revokes the ticket's pending grants. The grant is first read
+    // WITHOUT a lock only to learn its ticket; it is then locked and re-checked. (Before the M5
+    // hardening pass this locked the grant first, which could deadlock with revoke-all.)
+    const [probe] = await tx<{ ticket_id: string }[]>`
+      SELECT ticket_id FROM ticket_recovery_grants WHERE grant_hmac = ${hmac}`;
+    if (!grant || !probe) return null;
+    await lockProof(tx, probe.ticket_id);
     const rows = await tx<
       {
         id: string;
@@ -236,8 +245,7 @@ export async function recoverWithGrant(
         FROM ticket_recovery_grants WHERE grant_hmac = ${hmac}
          FOR UPDATE`;
     const g = rows[0];
-    if (!grant || !g?.usable) return null;
-    await lockProof(tx, g.ticket_id);
+    if (!g?.usable || g.ticket_id !== probe.ticket_id) return null;
     const current = await currentTicketOf(tx, g.organization_id, g.ticket_id);
     if (!current || TERMINAL.has(current.state)) return null;
     await tx`UPDATE ticket_recovery_grants SET redeemed_at = NOW() WHERE id = ${g.id}`;
@@ -414,6 +422,17 @@ async function staffTicket(
   };
 }
 
+/**
+ * Advisory-lock key serializing ONE staff member's assisted-recovery requests (per-staff limit).
+ * Tenant-scoped: it includes the organization id. A signed 64-bit integer as a decimal string
+ * (SHA-256 prefix), so it can be bound as a parameter and compared in tests.
+ */
+export function assistLockKey(organizationId: string, staffUserId: string): string {
+  const h = createHash('sha256')
+    .update(`qb:recovery:assist:v1|${organizationId}|${staffUserId}`)
+    .digest();
+  return h.readBigInt64BE(0).toString();
+}
 const assistLimit = (detail: string): ApiProblem =>
   new ApiProblem(429, 'staff-recovery-limit', 'Too many recovery requests', { detail });
 
@@ -456,7 +475,50 @@ export async function staffAssist(
     return { outcome: 'restricted_assistance' };
   }
   if (!crypto) throw recoveryUnavailable();
+  try {
+    return await assistTransaction(db, crypto, auth, ref, body, t, audit);
+  } catch (err) {
+    // A lock wait that timed out (another request of this staff member, or of this ticket, is
+    // still running): nothing was written; the request can simply be repeated.
+    if ((err as { code?: string }).code === LOCK_TIMEOUT) {
+      throw new ApiProblem(503, 'recovery-busy', 'Recovery is busy', {
+        detail: 'Another recovery request is still being processed. Try again in a moment.',
+        retryable: true,
+      });
+    }
+    throw err;
+  }
+}
+
+/** PostgreSQL `lock_not_available` (raised when `lock_timeout` expires). */
+const LOCK_TIMEOUT = '55P03';
+/** Upper bound on waiting for the per-staff or per-ticket lock. */
+const ASSIST_LOCK_TIMEOUT = '3s';
+
+async function assistTransaction(
+  db: Db,
+  crypto: RecoveryCrypto,
+  auth: AuthContext,
+  ref: StaffTicketRef,
+  body: RecoveryAssistRequest,
+  t: { rootId: string },
+  audit: {
+    organizationId: string;
+    facilityId: string;
+    actorId: string;
+    targetType: string;
+    targetId: string;
+  },
+): Promise<RecoveryAssistResponse> {
   return db.begin(async (tx) => {
+    // Lock order (documented in M5-evidence.md, "per-staff limit"): staff, then ticket.
+    //  1. A per-STAFF advisory lock (organization + staff id) makes "count my recent grants,
+    //     then insert" atomic for one person, whichever tickets the requests are for. Different
+    //     staff never contend; nothing is locked globally.
+    //  2. The ticket's proof row serializes the per-ticket limit (unchanged).
+    // No other code path takes this advisory lock, so no cycle with the ticket lock is possible.
+    await tx.unsafe(`SET LOCAL lock_timeout = '${ASSIST_LOCK_TIMEOUT}'`);
+    await tx`SELECT pg_advisory_xact_lock(${assistLockKey(auth.organizationId, auth.staffUserId)}::bigint)`;
     await lockProof(tx, t.rootId); // serializes the per-ticket limit
     const [perTicket] = await tx<{ n: number }[]>`
       SELECT COUNT(*)::int AS n FROM ticket_recovery_grants

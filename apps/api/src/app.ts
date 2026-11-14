@@ -177,7 +177,7 @@ export async function buildApp(
         ...(error.detail !== undefined ? { detail: error.detail } : {}),
         ...(error.errors !== undefined ? { errors: error.errors } : {}),
         instance: req.id,
-        retryable: false,
+        retryable: error.retryable,
       };
       if (error.headers) void reply.headers(error.headers);
       req.log.warn(

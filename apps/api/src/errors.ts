@@ -19,12 +19,19 @@ export class ApiProblem extends Error {
   public readonly detail: string | undefined;
   public readonly errors: FieldError[] | undefined;
   public readonly headers: Record<string, string> | undefined;
+  /** Safe to retry unchanged (for example a lock wait timed out). Default false */
+  public readonly retryable: boolean;
 
   public constructor(
     status: number,
     slug: string,
     title: string,
-    options: { detail?: string; errors?: FieldError[]; headers?: Record<string, string> } = {},
+    options: {
+      detail?: string;
+      errors?: FieldError[];
+      headers?: Record<string, string>;
+      retryable?: boolean;
+    } = {},
   ) {
     super(title);
     this.name = 'ApiProblem';
@@ -33,6 +40,7 @@ export class ApiProblem extends Error {
     this.detail = options.detail;
     this.errors = options.errors;
     this.headers = options.headers;
+    this.retryable = options.retryable ?? false;
   }
 
   public get type(): string {
