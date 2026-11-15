@@ -106,12 +106,15 @@ Record template for each check: **Actual:** — · **Result:** Not tested · **E
 
 **1. Recovery key shown once (Mac)**
 
-- Preconditions: phase A; a facility with an open queue (open today's queue in the staff console
-  if needed).
-- Steps: open the join link (Administration → facility → Join link), press **Get a ticket**.
-- Expected: the key panel appears once: the key in 8 groups of 4 separated by hyphens, a QR code,
-  a link; the address bar never contains the key; after **I have saved my key** the panel does not
-  come back on reload.
+- Preconditions: phase A; today's queue for the service is open (supervisor or admin → Staff
+  console → facility → **Open today's queue**).
+- Steps: open the facility's join page (`/join/<org>/<facility>`), press **Get a ticket** on the
+  service; read the key panel; press **Show QR code**; press **I have saved my key**; reload.
+- Expected: the "Your recovery key" panel appears once, with the key as 8 groups of 4 letters and
+  digits joined by hyphens and the buttons Copy key, (Share key), Save as file, Print, Show QR
+  code; **Show QR code** reveals a QR (it encodes the recovery link; no link is shown as text);
+  the address bar never contains the key; after **I have saved my key** the panel is gone and does
+  not return on reload.
 - Actual: — · Result: Not tested · Evidence: —
 
 **2. Copy key (Mac)**
