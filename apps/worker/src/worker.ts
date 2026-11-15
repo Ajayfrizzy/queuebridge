@@ -22,7 +22,9 @@ import { runRecoveryRetention } from './retention.js';
  *   throttle windows (counts are logged, never values)
  * - device-health evaluation (M5.3): observes devices and coordinators, raises and resolves
  *   in-product alerts; never changes authority, queues, tickets, events or devices
- * - notification outbox (M6): not implemented yet — SMS/USSD delivery is milestone M6
+ * - turn-alert push delivery and retention (M5.4): web_push outbox rows, one device per row
+ *   (sandbox or standard Web Push); never writes tickets, sessions or events
+ * - SMS/USSD outbox delivery: not implemented yet — milestone M6
  *
  * Logs are structured JSON; they never contain event payloads, tokens or keys.
  */

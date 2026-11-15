@@ -32,7 +32,7 @@ QueueBridge is not a QR ticket generator. Its key differentiator is the **Contin
 | F11 | Real SMS incl. SMS turn alerts (sandbox ready; live pending provider) | M6     |
 | F12 | Real USSD (sandbox ready; live pending provider)                      | M6     |
 | F13 | Ask Que Anything (planned)                                            | MQ     |
-| F14 | Smart Turn Alerts (planned)                                           | M5     |
+| F14 | Smart Turn Alerts (in-app alert; opt-in Web Push, best effort)        | M5     |
 | F15 | Final UI/UX, branding, landing page (planned)                         | M7     |
 
 ## Architecture
@@ -45,7 +45,7 @@ apps/worker   → Notification outbox worker
 packages/contracts   → Zod schemas, enums, API types
 packages/domain      → Ticket state machine, routing, wait-time (zero I/O)
 packages/continuity  → Offline commands, reconciliation, epoch checks
-packages/channels    → SMS/USSD adapter interface + sandbox implementations
+packages/channels    → SMS/USSD adapter interface, Web Push transport, sandbox implementations
 packages/ui          → Accessible React components
 
 infra/migrations/    → Numbered idempotent SQL migrations

@@ -100,6 +100,13 @@ export async function admitSource(
 /**
  * L2–L4 before verifying a key. Aggregate limits (L3, L4) refuse only sources that have ALREADY
  * failed for this ticket / facility; a clean source is always verified.
+ *
+ * L2 is enforced by CHARGING the failure before verification, in the same atomic upsert that
+ * reads the count (check-then-act would let parallel guesses all pass the check before any of
+ * them recorded its failure; found by the M5 integration review: 10 failures instead of 5). A
+ * request that is then refused, or whose key turns out to be right, gets its charge refunded
+ * (`refundTargetCharge`). A request that dies in between keeps its charge: conservative, and it
+ * still expires with the 15-minute window (never a permanent lock-out).
  */
 export async function admitTarget(
   db: Db,
@@ -107,15 +114,30 @@ export async function admitTarget(
 ): Promise<{ aggregateUnderAttack: boolean }> {
   const zero = { attempt: 0, failure: 0 };
   const [ts, t, f, fs] = await Promise.all([
-    bump(db, 'target_source', k.targetSource, QUARTER, zero),
+    bump(db, 'target_source', k.targetSource, QUARTER, { attempt: 0, failure: 1 }),
     bump(db, 'target', k.target, QUARTER, zero),
     bump(db, 'facility', k.facility, QUARTER, zero),
     bump(db, 'facility_source', k.facilitySource, QUARTER, zero),
   ]);
-  if (ts.failures >= TARGET_SOURCE_FAILURES) throw tooMany();
-  if (t.failures >= TARGET_FAILURES && ts.failures > 0) throw tooMany();
-  if (f.failures >= FACILITY_FAILURES && fs.failures > 0) throw tooMany();
+  // failures of this source for this ticket other than the one just charged (including other
+  // verifications still in flight: pessimistic on purpose)
+  const prior = ts.failures - 1;
+  const refuse =
+    prior >= TARGET_SOURCE_FAILURES ||
+    (t.failures >= TARGET_FAILURES && prior > 0) ||
+    (f.failures >= FACILITY_FAILURES && fs.failures > 0);
+  if (refuse) {
+    await refundTargetCharge(db, k);
+    throw tooMany();
+  }
   return { aggregateUnderAttack: t.failures >= TARGET_FAILURES || f.failures >= FACILITY_FAILURES };
+}
+
+/** Give back the L2 charge of a request that did not fail (right key) or was refused. */
+export async function refundTargetCharge(db: Db, k: TargetKeys): Promise<void> {
+  await db`
+    UPDATE recovery_throttle SET failures = GREATEST(failures - 1, 0)
+     WHERE scope = 'target_source' AND key_hash = ${k.targetSource}`;
 }
 
 /** Record one failed proof. Returns which aggregate thresholds this failure just reached. */
@@ -124,8 +146,8 @@ export async function recordFailure(
   k: TargetKeys,
 ): Promise<{ targetThresholdReached: boolean; facilityThresholdReached: boolean }> {
   const one = { attempt: 0, failure: 1 };
-  const [, t, f] = await Promise.all([
-    bump(db, 'target_source', k.targetSource, QUARTER, one),
+  // the per-source failure (L2) was already charged by `admitTarget`
+  const [t, f] = await Promise.all([
     bump(db, 'target', k.target, QUARTER, one),
     bump(db, 'facility', k.facility, QUARTER, one),
     bump(db, 'facility_source', k.facilitySource, QUARTER, one),

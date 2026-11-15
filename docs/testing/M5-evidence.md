@@ -1,7 +1,7 @@
 # M5 Test Evidence — Recovery, Accessibility, Device Health and Smart Turn Alerts
 
 **Branch:** `feature/m5-recovery-accessibility-alerts` (from `staging` @ `2da1ced`, which contains M0–M4 and the M5–M7 specification, PR #7).
-**Status:** M5.0 (test stabilization) complete locally, **not committed**. M5.1–M5.4 not started.
+**Status (2026-11-15):** M5.0–M5.4 implemented and checkpointed locally (`87ec587`, `e0214c5`, `b8bc96f`, `83fbd3b`, `6a75213`, `fd5d52e`); M5 final-integration changes uncommitted. See the **M5 acceptance report** at the end of this file. Sections below are kept as written at each checkpoint (historical record).
 **Environment:** macOS, 11 cores, Node 24, pnpm 9, Playwright Chromium, PostgreSQL in the disposable Docker container `queuebridge-pg` (port 55433, database `queuebridge_test`). Playwright runs the built API and web app, `workers: 2` (as in CI) unless stated.
 
 ---
@@ -467,8 +467,8 @@ Mutation checks (each reverted, files compared with backups): no damping → 8 f
 
 - Alert latency is up to one evaluation interval (30 s) plus the dashboard poll (5 s) or banner poll (30 s).
 - The evaluator scans every facility each pass using partial indexes; it was not load-tested beyond the shared test database (about 20,000 organizations).
-- `alert_pipeline_failing` reads failed `notifications` rows; nothing produces turn-alert failures until M5.4.
-- The worker's thresholds must match the API's; nothing enforces it beyond documentation.
+- `alert_pipeline_failing` reads failed `notifications` rows; nothing produces turn-alert failures until M5.4. _(Superseded: M5.4 produces them; the worker test raises the alert from real failed deliveries.)_
+- The worker's thresholds must match the API's; nothing enforces it beyond documentation. _(Superseded in M5.4: the dashboard names any setting that differs.)_
 - A pass slower than 60 s (for example on a much larger database) aborts and is retried; alerts would then stop updating and the dashboard would show "Automatic alerts are paused". Device states on the dashboard stay current either way.
 - The environment stall from M5.0 did not recur.
 
@@ -754,3 +754,182 @@ not a proven cause.
 | Full Playwright, all projects                                    | 228 passed, 4 skipped, 0 failed; three consecutive runs on the final tree                                                                                                                                                                                                       |
 | Mutation regressions                                             | 19 / 19 killed (M1–M12 earlier, M13–M19 from this review)                                                                                                                                                                                                                       |
 | Sensitive artifacts                                              | no `.env`, logs, traces, keys or backups in the change set; no private key, VAPID secret or real credential in source (the only private key is the published RFC 8291 §5 example; test VAPID keys are generated at runtime; the e2e public key's private half was never stored) |
+
+## M5 acceptance report (final integration, 2026-11-15)
+
+Baseline: branch `feature/m5-recovery-accessibility-alerts`, clean at `fd5d52e` with the six M5
+checkpoints on top of `staging` @ `2da1ced`. This report covers the final-integration work done on
+top of that (uncommitted at the time of writing) and the state of every M5 acceptance item.
+Manual instructions: `docs/testing/M5-manual-acceptance.md`.
+
+Status words: **Pass (automated)** = a real-PostgreSQL or real-browser test asserts it; **Partial**
+= the named part is automated, the rest is stated; **Manual** = only a person can settle it;
+**Not executed** = not done yet.
+
+### Changes made during final integration
+
+| Change                                                                                                                                                                                                                                                                                                                                       | Why                                                                                                           | Evidence                                                                                                                                                                      |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Fix (defect, medium):** recovery L2 limit was check-then-act. 24 parallel wrong guesses from one source produced 10 failures instead of the stated 5 (L1's 10/min still held). The failure is now charged in the same atomic upsert that checks it and refunded on success or refusal (`apps/api/src/recovery/throttle.ts`, `service.ts`). | Steering 8.R3: "the 6th failure … gets 429"; the existing concurrency test only asserted `≤ 10`, which hid it | New two-instance test; existing test tightened to `≤ 5` failures and `≥ 15` refusals (stronger, not weaker); a partial revert of the fix fails 3 tests; recovery suites 60/60 |
+| REQ-F4.12 UI half: the recover page now says a temporary (offline-captured) ticket can be recovered only after the server confirms it                                                                                                                                                                                                        | requirement said the UI SHALL say so; only the staff console did                                              | static text, no oracle (same for every visitor); axe runs on the recover page in the browser suites                                                                           |
+| New `apps/api/src/m5-integration.db.test.ts` (8 tests)                                                                                                                                                                                                                                                                                       | cross-feature journeys were missing                                                                           | see "Cross-feature journeys"                                                                                                                                                  |
+| Stale text: worker header (outbox "not implemented"), README F14 "planned", this file's status line, two superseded M5.3 risks                                                                                                                                                                                                               | audit                                                                                                         | —                                                                                                                                                                             |
+
+### Cross-feature journeys (real PostgreSQL, `m5-integration.db.test.ts`, 8/8 ×3)
+
+1. Join → a second device recovers with the key → the key is rotated (old key 404, new key works)
+   → "sign out other devices" revokes both other devices **and their push subscription** → a
+   signed-out device cannot re-subscribe or acknowledge → the committed call enqueues an alert for
+   the surviving device only → recovery appended no queue event; chain intact.
+2. Staff-assisted recovery: requester (counter) cannot approve (403); grant unusable before
+   approval; a supervisor approves; the grant opens the ticket on a new device; the original
+   device sees "access granted elsewhere"; the new device subscribes and is the one alerted; audit
+   rows name requester and approver and contain no grant, key or token.
+3. Offline coordinator (epoch 1) records a call → explicit supervisor failover (epoch 2) → the new
+   coordinator's synced call alerts exactly once → the fenced old call is `needs_review`
+   (`stale_epoch`) and alerts nobody → dismissing it alerts nobody → a failed push leaves serving
+   unaffected, no `ticket.miss`, one `call_next`, chain intact.
+4. Tenants and roles: another organization gets 404 on queue alerts, operations health and
+   recovery requests; another organization's visitor token cannot remove a subscription even with
+   its reference; reception, counter and auditor read queue alerts; only auditor (not counter or
+   reception) reads operations health; auditors cannot assist or command; counter staff cannot
+   acknowledge health alerts.
+5. Recovery racing "sign out other devices" (×10 rounds): no revived token, no lost update, never
+   above 3 tokens, database and status endpoint agree.
+6. Recovery racing ticket completion (×10): completed wins, nothing recovers it afterwards,
+   recovery changed no queue state.
+7. Secrets never reach logs: the API at `trace` level through recovery, wrong key, rotation, push
+   subscribe/ack/unsubscribe, assisted recovery and redemption logs none of 9+ secrets (keys,
+   grant, tokens, endpoint, push keys). Verified non-vacuous: logging the endpoint makes it fail.
+8. Recovery throttling across two API instances: one source's parallel guesses split over both
+   instances give at most 5 failures; the rightful holder from a clean source still gets in.
+
+Journeys covered by existing suites rather than new tests: Group 6 fencing (`coordinator`,
+`acceptance-gate`, `sync-*`), turn-alert identity with two same-code tickets (browser), device
+health stale/conflict/pipeline-failure detection (`apps/worker/src/health.db.test.ts`,
+`turn-alerts.db.test.ts`), notification failure vs auto no-show (`auto-miss` 8.R12(f), 14.7).
+Not covered end to end by an automated test: a browser journey that runs the worker after an
+offline coordinator's synced call (the API part and the worker part are each tested), and the
+`alert_pipeline_failing` alert shown on the dashboard in a browser.
+
+### Requirement-by-requirement status
+
+**Group 8 — recovery (F4) and device health (F9)**
+
+| Item                                | Status                                                                       | Note                                                                                                                                                                                                                |
+| ----------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 8.R1 code alone never recovers      | Pass (automated)                                                             |                                                                                                                                                                                                                     |
+| 8.R2 oracle-free failure            | Pass (automated)                                                             | timing bound is loose (40 ms medians)                                                                                                                                                                               |
+| 8.R3 throttling                     | **Pass (automated) after the L2 fix above**                                  |                                                                                                                                                                                                                     |
+| 8.R4 credentials                    | Partial                                                                      | not asserted: status token stored as SHA-256 specifically (plaintext absence is tested), fragment absent from access logs/`Referer` (Referrer-Policy header is tested); key absent from logs now tested (journey 7) |
+| 8.R5 staff-assisted recovery        | Pass (automated); Manual check 9–12 outstanding                              | strong (contact) factor is M6                                                                                                                                                                                       |
+| 8.R6 queue neutrality               | Pass (automated); provisional ticket: server refusal untested, UI note added |                                                                                                                                                                                                                     |
+| 8.R7 concurrency                    | Pass (automated)                                                             | sign-out-others and completion races added (journeys 5, 6)                                                                                                                                                          |
+| 8.R8 grace and rejoin               | Pass (automated)                                                             |                                                                                                                                                                                                                     |
+| 8.R9 auto no-show semantics         | Pass (automated)                                                             |                                                                                                                                                                                                                     |
+| 8.R10 retention                     | Pass (automated)                                                             |                                                                                                                                                                                                                     |
+| 8.R11 secrets and tenancy           | Pass (automated)                                                             | hostile-Origin request not asserted separately (CSRF header and allowed Origin are)                                                                                                                                 |
+| 8.R12 auto no-show execution safety | Pass (automated)                                                             |                                                                                                                                                                                                                     |
+| 8.D1–8.D6                           | Pass (automated)                                                             | auto-resolve audit event and heartbeat-history absence not separately asserted                                                                                                                                      |
+
+**Group 11 — accessibility (F7)**: 11.A1–11.A9 Pass (automated; do not establish WCAG
+conformance). 11.A10 Partial (announcement of new high-severity alerts not asserted in a browser).
+**11.A11 Manual — Not executed** (checks 34–41).
+
+**Group 14 — Smart Turn Alerts (F14)**: 14.1–14.9, 14.11–14.14 Pass (automated), with the stated
+limits (push double and sandbox transport; system-notification and click branches unit-tested
+against the real file only; blocked-audio fallback not asserted in a browser). **14.10 Manual —
+Not executed** (checks 18–24).
+
+**M5 exit criteria (`tasks.md`)**
+
+| Criterion                                               | Status                                                                               |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Groups 8, 11, 14 pass; 1–7, 9, 12 unchanged             | Automated parts pass (all suites green, below); 11.A11 and 14.10 manual not executed |
+| Keyboard-only visitor journey incl. turn-alert controls | Pass (automated: 11.A1 and turn-alert keyboard tests); manual check 34 not executed  |
+| Recovery (8.R1–8.R8, 8.R10, 8.R11)                      | Pass (automated) except the 8.R4/8.R11 partial items listed                          |
+| Grace / rejoin / auto no-show                           | Pass (automated)                                                                     |
+| Push retention and defaults                             | Pass (automated)                                                                     |
+| Accessibility incl. manual passes                       | Automated parts pass; manual passes not executed                                     |
+| Device-health dashboard                                 | Pass (automated); manual drills 29–33 not executed                                   |
+| Alert failure never changes the queue                   | Pass (automated)                                                                     |
+| No copy promises delivery                               | UI copy and service worker pass; knowledge base does not exist until MQ              |
+| Full gate set green                                     | **Locally green; CI not run (nothing pushed)**                                       |
+| Evidence in this file and `M5-completion.md`            | this file updated; `M5-completion.md` not written                                    |
+
+### Automated evidence (final tree, 2026-11-15)
+
+| Gate                                                             | Result                                                                                                         |
+| ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build` | clean (0 errors)                                                                                               |
+| `pnpm test`                                                      | channels 33, worker 12, web 97, contracts 116, domain 109, continuity 64, api 56, ui 6: all pass               |
+| `pnpm test:db`                                                   | **api 599 / 599** (32 files), **worker 61 / 61** (4 files)                                                     |
+| `m5-integration.db.test.ts`                                      | 8 / 8, three consecutive runs                                                                                  |
+| Migrations                                                       | fresh isolated database: applied 9, second run skipped, all 9 files re-executed on top: OK; dropped afterwards |
+| Full Playwright, all projects (1280, 1440, 375, 320 px)          | **228 passed, 4 skipped (opt-in capture), 0 failed — three consecutive runs**                                  |
+| Mutation regressions                                             | 19 / 19 scripted killed (M1–M19) + 2 manual (L2 race, log leak)                                                |
+| `pnpm audit`                                                     | 2 low, 3 moderate; all pre-existing build/lint dependencies (workbox, eslint); none high/critical              |
+| Secrets scan of the change set                                   | no `.env`, keys, tokens, logs or traces                                                                        |
+
+### Manual results
+
+**None executed.** All checks 1–41 in `M5-manual-acceptance.md` are **Not executed** as of this
+report. This includes every real-device check (QR scanning, Android Chrome push and clicks, iOS
+installed-PWA push, two same-code tickets on one phone, two-device outage and failover, lost-device
+revocation), every screen-reader pass, real 200 % zoom and orientation.
+
+### Open defects and risks
+
+| #   | Item                                                                                                                                                                                                                                                  | Severity                                                              | Status                                                                                       |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| 1   | `offline-timing-handover` "lost acknowledgement" intermittent (2 in ~37 runs on 2026-11-14; 0 in 11 full runs and ~600 targeted runs since). Failure signature reproduced by one transient retry failure; most consistent with environment transients | Low (test reliability; product behaviour correct in the reproduction) | Open, unresolved cause                                                                       |
+| 2   | Docker Desktop connection stalls in the local test environment (CONNECT_TIMEOUT once; one `--once` hang; coinciding PostgreSQL checkpoints)                                                                                                           | Low (test infrastructure)                                             | Open; `--once` now bounded                                                                   |
+| 3   | Visitor bundle 597.7 kB raw / 180.8 kB gzip in one chunk; target < 100 kB initial JS for visitor flows (REQ-F7.7)                                                                                                                                     | Medium (low-bandwidth visitors)                                       | Pre-existing; route splitting planned in M7 (F15.5)                                          |
+| 4   | Per-IP rate limits use the in-process store (`@fastify/rate-limit`), so they multiply with API instances; recovery and push-change throttles are database-backed                                                                                      | Low                                                                   | Pre-existing platform-wide; documented                                                       |
+| 5   | Recovery only finds tickets of today's operational date: a session left open past midnight cannot be recovered after midnight                                                                                                                         | Low                                                                   | Documented limitation (codes are unique per facility per day; this keeps lookup unambiguous) |
+| 6   | Enqueue-error counter per API process                                                                                                                                                                                                                 | Low                                                                   | Diagnostic only; documented                                                                  |
+| 7   | 8.R4/8.R11/11.A10 partial items listed above                                                                                                                                                                                                          | Low                                                                   | Documented gaps                                                                              |
+| 8   | Real Web Push delivery never exercised against FCM/Mozilla/Apple/WNS                                                                                                                                                                                  | Medium (claim scope)                                                  | Manual checks 18–24                                                                          |
+
+No open security defect is known after the M5.4 review and the L2 fix.
+
+### Real-device support and limitations
+
+As stated in the UI and in the M5.4 section: Android Chrome (push expected with the browser closed,
+battery permitting), desktop Chrome/Edge/Firefox (browser must be running), iOS/iPadOS 16.4+ only as
+an installed Home Screen app, iOS Safari tabs and older systems without push (specific text). None
+of this has been verified on a real device in M5. The in-app alert, the public board and staff
+calling are the reliable channels.
+
+### Operational performance observations
+
+- **Device-health evaluator vs facility count** (throwaway database; 3 devices, one open session
+  with an offline coordinator and 2 waiting tickets per facility; local Docker PostgreSQL):
+
+  | Facilities | Devices | First pass (opens alerts) | Steady passes  |
+  | ---------- | ------- | ------------------------- | -------------- |
+  | 100        | 300     | 55 ms                     | 8 ms, 8 ms     |
+  | 1,000      | 3,000   | 236 ms                    | 45 ms, 41 ms   |
+  | 5,000      | 15,000  | 922 ms                    | 173 ms, 194 ms |
+  | 20,000     | 60,000  | 4,854 ms                  | 723 ms, 720 ms |
+
+  Linear (about 0.04 ms per facility per steady pass); far inside the 30 s lock and 60 s statement
+  bounds and the 30 s interval. Not measured: much larger devices-per-facility ratios, production
+  hardware.
+
+- **API/worker configuration consistency:** mechanised (dashboard names differing thresholds,
+  VAPID public key and push TTL).
+- **Worker termination and recovery:** `--once` bounded (deadline, stop signal); idle-in-transaction
+  guard 60 s; lease renewal before each send; attempt-guarded finish; 3 attempts inside the TTL.
+- **Recovery rate limits under concurrency:** exact after the L2 fix, also across two instances.
+
+### Recommendation
+
+**Ready for a PR with documented limitations; M5 milestone closure is blocked on your actions.**
+The code is complete, reviewed and green on every local automated gate, with no known open
+security defect. Closing M5 against its exit criteria still requires:
+
+1. Manual acceptance (`M5-manual-acceptance.md`), at minimum the screen-reader passes (11.A11) and
+   the real-device push checks (14.10), recorded here with results as observed.
+2. A CI run on GitHub Actions (needs a push, which needs your authorization).
+3. Committing the final-integration changes (needs your authorization), then `M5-completion.md`.

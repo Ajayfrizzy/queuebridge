@@ -221,6 +221,11 @@ export function RecoverPage(): ReactElement {
         Do not have your key? Ask a member of staff. They will check who you are before they help,
         and a second staff member must approve.
       </p>
+      <p className="muted" data-testid="recover-provisional-note">
+        Were you given a temporary reference while the desk was offline? That ticket can be
+        recovered only after the server has confirmed it and staff have given you your real ticket
+        code.
+      </p>
       <p>
         <Link to="/">Back to start</Link>
       </p>

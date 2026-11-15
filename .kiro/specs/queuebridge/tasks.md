@@ -394,22 +394,23 @@ Security follow-up from M5.1 (separate change, recorded in `M5-evidence.md`, "M5
 - [x] Group 14 tests (testing steering, 14.1–14.14): per-subscription outbox entries, notification identity and safe opening, savepoint isolation, no state change and no `ticket.miss` on any failure path, idempotency, stale suppression, committed-only triggering, honest states, minimal payload, encryption at rest, tenant isolation, keyboard/axe/reduced-motion at 320 and 375 px — done (automated; real devices are the next item)
 - [ ] Real-device checks recorded in `docs/testing/M5-evidence.md` (Android Chrome; iOS Safari including installed-app); results as observed, gaps stated — **not done:** procedure and support matrix recorded in `M5-evidence.md`; no real device was tested in this session
 - [x] Knowledge-base inventory (design §11.10) row for M5 includes turn alerts, so MQ.5 authors the articles — already present in design §11.10 (M5 row)
+- [x] M5 final integration (2026-11-15): cross-feature journeys (`m5-integration.db.test.ts`), recovery L2 limit made atomic under concurrency (defect fix), recover-page note for temporary tickets (REQ-F4.12), manual acceptance guide (`docs/testing/M5-manual-acceptance.md`)
 - [x] Final review (2026-11-15): send-time SSRF policy and connect-time address check, database-backed per-ticket change limit shared across instances, lease renewal before each send, deleted-token revocation, bounded `worker --once` (deadline, stop signal, idle-transaction guard); each with a regression test and a killed mutation; licence wording corrected across AGENTS.md, steering, design, requirements, ADR-013 and the architecture document (`M5-evidence.md`)
 
 ### M5 exit criteria
 
 - [x] M5.0: the M1 sign-out test and the related flaky tests are root-caused and fixed (or recorded as open with evidence) and CI is stable across consecutive runs — **done locally:** 449–450 of 450 per test across five waves; one environment stall recorded as open (`M5-evidence.md`). CI confirmation pending (not pushed)
-- [ ] Groups 8 (recovery and device-health access/privacy), 11 (accessibility) and 14 (turn alerts) tests pass; Groups 1–7, 9 and 12 still pass (M1–M4 routing rules, coordinator fencing and the audit chain unchanged)
-- [ ] Keyboard-only visitor journey end-to-end verified, including the turn alert controls
+- [ ] Groups 8 (recovery and device-health access/privacy), 11 (accessibility) and 14 (turn alerts) tests pass; Groups 1–7, 9 and 12 still pass (M1–M4 routing rules, coordinator fencing and the audit chain unchanged) — automated parts pass locally (2026-11-15, `M5-evidence.md` acceptance report); 11.A11 and 14.10 manual not executed
+- [ ] Keyboard-only visitor journey end-to-end verified, including the turn alert controls — automated (11.A1, turn-alert keyboard tests); manual check 34 not executed
 - [ ] Recovery: impossible from the public ticket code alone; 160-bit HMAC-stored keys; throttles that the guess cannot evade and that never lock out the rightful holder; uniform oracle-free errors; restricted staff procedure and audit verified; recovery creates no queue event and changes no ticket state, position or age (Group 8: 8.R1–8.R8, 8.R10, 8.R11)
-- [ ] Grace/rejoin use the existing `grace_window_seconds`; `self_resume` works only inside the window; automatic no-show is off by default, executes only through the authoritative command path with locking and idempotency across API instances and restarts, respects coordinator fencing, and is never alert-driven (Group 8: 8.R9, 8.R12)
+- [x] Grace/rejoin use the existing `grace_window_seconds`; `self_resume` works only inside the window; automatic no-show is off by default, executes only through the authoritative command path with locking and idempotency across API instances and restarts, respects coordinator fencing, and is never alert-driven (Group 8: 8.R9, 8.R12)
 - [x] Push subscription retention and deletion verified (design §12.13; Group 14.11); confirmed defaults verified (Group 14.12) — M5.4 worker/API DB tests
 - [ ] Accessibility: preferences, keyboard, announcement policy, contrast/reflow, reduced motion, vibration/audio preferences, offline and 320/375 px verified (Group 11: 11.A1–11.A10); manual passes recorded with limits stated (11.A11); manifest orientation unlocked
-- [ ] Device health dashboard shows last contact, sync health, coordinator status and failure reasons; stale detection and automatic alerts with recipients verified; evaluation leaves the single-coordinator authority model, queue state and event chain unchanged (Group 8: 8.D1–8.D6; Group 6)
+- [x] Device health dashboard shows last contact, sync health, coordinator status and failure reasons; stale detection and automatic alerts with recipients verified; evaluation leaves the single-coordinator authority model, queue state and event chain unchanged (Group 8: 8.D1–8.D6; Group 6)
 - [x] An alert failure of every kind leaves ticket state, queue revision and the event chain unchanged and never marks a visitor missed — M5.4 (14.7 worker, API and browser tests)
 - [ ] No copy, article or documentation promises alert delivery — UI copy and the service worker verified by `copyTruthfulness.test.ts`; KB articles do not exist until MQ
-- [ ] Full gate set green: format, lint, typecheck, build, `pnpm test`, `pnpm test:db`, Playwright (all projects), DB validation and security audit; no assertion weakened
-- [ ] Evidence recorded in `docs/testing/M5-evidence.md` and `M5-completion.md`
+- [ ] Full gate set green: format, lint, typecheck, build, `pnpm test`, `pnpm test:db`, Playwright (all projects), DB validation and security audit; no assertion weakened — **green locally (2026-11-15); CI not run**
+- [ ] Evidence recorded in `docs/testing/M5-evidence.md` and `M5-completion.md` — evidence and acceptance report recorded; manual results and `M5-completion.md` outstanding
 
 ---
 

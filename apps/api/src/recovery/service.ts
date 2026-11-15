@@ -36,6 +36,7 @@ import {
   admitSource,
   admitTarget,
   recordFailure,
+  refundTargetCharge,
   targetKeys,
   type ThrottleLimits,
 } from './throttle.js';
@@ -189,7 +190,10 @@ export async function recoverWithKey(
       });
       return token;
     });
-    if (issued) return recoveredTicket(current, issued);
+    if (issued) {
+      await refundTargetCharge(db, keys);
+      return recoveredTicket(current, issued);
+    }
   }
 
   const reached = await recordFailure(db, keys);

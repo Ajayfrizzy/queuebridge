@@ -795,8 +795,10 @@ describe('8.R7 concurrency', () => {
     const throttled = rs.filter((r) => r.status === 429).length;
     const failed = rs.filter((r) => r.status === 404).length;
     expect(throttled + failed).toBe(20);
-    // L1 admits exactly 10 per minute; L2 then stops this source after 5 failures for the ticket
-    expect(failed).toBeLessThanOrEqual(10);
+    // L1 admits exactly 10 per minute; L2 stops this source after 5 failures for the ticket, even
+    // when the guesses arrive together (the failure is charged before verification)
+    expect(failed).toBeLessThanOrEqual(5);
+    expect(throttled).toBeGreaterThanOrEqual(15);
     const crypto = createRecoveryCrypto({ CONTACT_ENCRYPTION_KEY: '7e57'.repeat(16) })!;
     const [src] = await t.db<{ attempts: number }[]>`
       SELECT attempts FROM recovery_throttle WHERE scope = 'source' AND key_hash = ${crypto.throttleKey('source', ip)}`;
