@@ -24,6 +24,7 @@ import {
 } from '@queuebridge/continuity';
 import { SyncStateIndicator } from '@queuebridge/ui';
 import { useAuth } from '../auth.js';
+import { TurnAlertStatus } from '../components/TurnAlertStatus.js';
 import { useAnnounce } from '../components/Announcer.js';
 import { Loading, StatusBadge } from '../components/Form.js';
 import { api, apiUrl, ApiRequestError } from '../lib/api.js';
@@ -713,6 +714,15 @@ export function StaffConsole(): ReactElement {
                       ) : null}
                     </p>
                   </div>
+                  {atCounter.state === 'called' &&
+                  (!atCounter.local_status || atCounter.local_status === 'committed') ? (
+                    <TurnAlertStatus
+                      queueId={queueId}
+                      ticketId={atCounter.id}
+                      revision={q.revision}
+                      reachable={reachable}
+                    />
+                  ) : null}
                   {atCounter.state === 'called' && !counterInService ? (
                     <p className="hint" data-testid="serve-blocked-hint">
                       This counter is out of service, so {atCounter.public_code} cannot be served

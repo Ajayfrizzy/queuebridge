@@ -20,7 +20,8 @@
     "clean": "rm -rf dist tsconfig.tsbuildinfo"
   },
   "dependencies": {
-    "@queuebridge/contracts": "workspace:*"
+    "@queuebridge/contracts": "workspace:*",
+    "http_ece": "1.2.1"
   },
   "devDependencies": {
     "@types/node": "22.10.2",

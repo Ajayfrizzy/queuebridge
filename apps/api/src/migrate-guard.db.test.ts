@@ -123,6 +123,7 @@ describe('existing QueueBridge database with valid history → migrated', () => 
     expect(after5[0]).toBe('0006_fairness_routing_audit.sql');
     expect(after5).toContain('0007_ticket_recovery.sql');
     expect(after5).toContain('0008_device_health.sql');
+    expect(after5).toContain('0009_turn_alerts.sql');
     try {
       const before = await inspectDatabase(sql, files);
       expect(before).toMatchObject({ kind: 'legacy', pending: after5 });

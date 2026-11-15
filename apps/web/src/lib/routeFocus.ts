@@ -12,6 +12,17 @@ export function titleFor(heading: string | null | undefined): string {
 }
 
 /**
+ * While set (a visitor's turn alert, M5.4), the document title says this instead of following
+ * the heading, so a person in another tab sees it. Cleared, the title follows the heading again.
+ */
+let urgentTitle: string | null = null;
+export function setUrgentTitle(title: string | null): void {
+  urgentTitle = title;
+  document.title = title ?? titleFor(document.querySelector('#main h1')?.textContent);
+}
+const pageTitle = (heading: string | null | undefined): string => urgentTitle ?? titleFor(heading);
+
+/**
  * Route-change focus (REQ-F7.11; design §16.3).
  *
  * After client-side navigation, focus moves to the new page's `h1` (made programmatically
@@ -36,7 +47,7 @@ export function useRouteFocus(main: RefObject<HTMLElement | null>, pathname: str
 
     const heading = (): HTMLElement | null => el.querySelector<HTMLElement>('h1');
     const settle = (h: HTMLElement | null): void => {
-      document.title = titleFor(h?.textContent);
+      document.title = pageTitle(h?.textContent);
     };
     settle(heading());
     if (isFirst) return undefined;
@@ -79,7 +90,7 @@ export function useRouteFocus(main: RefObject<HTMLElement | null>, pathname: str
     if (!el) return undefined;
     const observer = new MutationObserver(() => {
       const h = el.querySelector('h1');
-      if (h) document.title = titleFor(h.textContent);
+      if (h) document.title = pageTitle(h.textContent);
     });
     observer.observe(el, { childList: true, subtree: true, characterData: true });
     return (): void => observer.disconnect();

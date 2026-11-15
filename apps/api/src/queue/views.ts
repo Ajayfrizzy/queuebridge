@@ -529,5 +529,15 @@ export async function ticketStatusView(
       resolved.codes.length > 1 ? (resolved.codes[resolved.codes.length - 2] ?? null) : null,
     revision: session.revision,
     recovery: await recoveryInfo(db, resolved, session, opts.recoveryEnabled),
+    call_sequence: t.state === TicketState.CALLED ? await currentCallSequence(db, t.id) : null,
   };
+}
+
+/** The committed event sequence of the call a ticket is answering (its latest move INTO called). */
+export async function currentCallSequence(db: Db, ticketId: string): Promise<number | null> {
+  const [r] = await db<{ sequence: number }[]>`
+    SELECT e.sequence FROM ticket_transitions tt JOIN queue_events e ON e.id = tt.queue_event_id
+     WHERE tt.ticket_id = ${ticketId} AND tt.to_state = 'called'
+     ORDER BY e.sequence DESC LIMIT 1`;
+  return r?.sequence ?? null;
 }

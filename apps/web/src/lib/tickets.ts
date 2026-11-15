@@ -19,6 +19,12 @@ export interface StoredTicket {
   /** /join/:org/:facility path, to link back */
   joinPath: string | null;
   savedAt: string;
+  /**
+   * M5.4: the server's NON-SECRET `subscription_ref` when push alerts are on for this ticket on
+   * this device. A notification carries it as `ref`; it is how a notification finds its ticket
+   * (never the public code alone). It grants nothing: the token above is still required.
+   */
+  pushRef?: string | undefined;
 }
 
 export type NewStoredTicket = Omit<StoredTicket, 'id'> & { id?: string | undefined };
@@ -83,6 +89,30 @@ export function findTicketById(id: string): StoredTicket | undefined {
 
 export function findTicketByToken(token: string): StoredTicket | undefined {
   return storedTickets().find((t) => t.token === token);
+}
+
+/** The saved ticket a push notification belongs to (`?ref=`), if this device still has it. */
+export function resolveByPushRef(ref: string): StoredTicket | undefined {
+  return ref ? storedTickets().find((t) => t.pushRef === ref) : undefined;
+}
+
+/** True when another saved ticket on this device still uses push (they share one browser subscription). */
+export function otherTicketUsesPush(id: string): boolean {
+  return storedTickets().some((t) => t.id !== id && Boolean(t.pushRef));
+}
+
+/** Record (or clear, with null) the push reference of a saved ticket. Returns false if not stored. */
+export function setPushRef(id: string, ref: string | null): boolean {
+  const all = storedTickets();
+  const t = all.find((x) => x.id === id);
+  if (!t) return false;
+  const next: StoredTicket = { ...t };
+  if (ref) next.pushRef = ref;
+  else delete next.pushRef;
+  return write(
+    TICKETS_KEY,
+    all.map((x) => (x.id === id ? next : x)),
+  );
 }
 
 /** All saved tickets with this public code (there may be several, from different queues). */

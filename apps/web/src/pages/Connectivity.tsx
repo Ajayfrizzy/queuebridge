@@ -156,6 +156,38 @@ export function Connectivity(): ReactElement {
           <dd>{h.counters.turn_alert_failures_1h}</dd>
         </div>
       </dl>
+      <section
+        aria-labelledby="turn-alerts-heading"
+        className="card"
+        data-testid="turn-alert-counters"
+      >
+        <h2 id="turn-alerts-heading" className="card-title">
+          Visitor push alerts (last hour)
+        </h2>
+        <p className="hint">
+          Push alerts are best effort. “Sent” means the push service accepted the alert; only “seen
+          on device” is confirmed by the visitor’s page. An expired browser subscription is not
+          counted as a failure. The public board and calling aloud remain the reliable fallback.
+        </p>
+        <dl className="stat-row">
+          {(
+            [
+              ['Attempted', h.turn_alerts.attempted],
+              ['Sent, not confirmed', h.turn_alerts.sent],
+              ['Seen on device', h.turn_alerts.delivered],
+              ['Failed', h.turn_alerts.failed],
+              ['Not sent (ticket changed)', h.turn_alerts.suppressed],
+              ['Outcome unknown', h.turn_alerts.unknown],
+              ['Could not be queued', h.turn_alerts.enqueue_errors],
+            ] as const
+          ).map(([label, n]) => (
+            <div className="stat" key={label}>
+              <dt>{label}</dt>
+              <dd>{n}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
 
       <section aria-labelledby="this-device" className="card">
         <h2 id="this-device" className="card-title">

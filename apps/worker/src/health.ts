@@ -44,6 +44,8 @@ export interface HealthEvaluationOptions {
    * never hold the evaluation lock, or keep `--once` waiting, indefinitely.
    */
   timeoutMs?: number;
+  /** M5.4: non-secret configuration recorded with the evaluation (the API compares it) */
+  workerConfig?: Record<string, string | number | null>;
 }
 
 export interface HealthEvaluationResult {
@@ -153,13 +155,17 @@ export async function evaluateDeviceHealth(
            AND ae.created_at > NOW() - make_interval(secs => ${o.abuse})
          GROUP BY ae.organization_id, ae.facility_id
         UNION ALL
-        -- alert_pipeline_failing: many failed turn alerts in the last hour (M5.4 fills these)
+        -- alert_pipeline_failing: many failed turn alerts in the last hour. A failure is a
+        -- pipeline problem (retries exhausted, TTL elapsed, rejected, unexpected error); an
+        -- expired browser subscription (detail 'gone') is normal and does not count, and a
+        -- visitor who refused permission or has no push support never creates a row at all.
         SELECT n.organization_id, qs.facility_id, 'alert_pipeline_failing', 'facility', qs.facility_id,
                jsonb_build_object('failed', COUNT(*)::int)
           FROM notifications n
           JOIN tickets t ON t.id = n.ticket_id
           JOIN queue_sessions qs ON qs.id = t.queue_session_id
-         WHERE n.status = 'failed' AND n.updated_at > NOW() - INTERVAL '1 hour'
+         WHERE ((n.status = 'failed' AND n.detail_code IS DISTINCT FROM 'gone') OR n.status = 'unknown')
+           AND n.updated_at > NOW() - INTERVAL '1 hour'
          GROUP BY n.organization_id, qs.facility_id
         HAVING COUNT(*) >= ${o.pipeline}
       )
@@ -195,8 +201,11 @@ export async function evaluateDeviceHealth(
       RETURNING a.facility_id, (a.resolved_at IS NOT NULL) AS resolved`;
 
     await tx`
-      INSERT INTO health_evaluations (id, last_evaluated_at) VALUES (TRUE, NOW())
-      ON CONFLICT (id) DO UPDATE SET last_evaluated_at = GREATEST(health_evaluations.last_evaluated_at, NOW())`;
+      INSERT INTO health_evaluations (id, last_evaluated_at, worker_config)
+      VALUES (TRUE, NOW(), ${opts.workerConfig ? tx.json(opts.workerConfig) : null})
+      ON CONFLICT (id) DO UPDATE SET
+        last_evaluated_at = GREATEST(health_evaluations.last_evaluated_at, NOW()),
+        worker_config = COALESCE(EXCLUDED.worker_config, health_evaluations.worker_config)`;
 
     const changed = new Set<string>([
       ...upserted.filter((r) => r.inserted).map((r) => r.facility_id),

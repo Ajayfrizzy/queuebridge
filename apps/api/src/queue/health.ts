@@ -16,6 +16,7 @@ import {
 import type { Db } from '../db.js';
 import type { Env } from '../env.js';
 import { coordinatorStatus } from './authority.js';
+import { facilityEnqueueErrors } from './turn-alerts.js';
 
 /** A device not heard from for this long is shown as offline (M3; unchanged). */
 export const OFFLINE_AFTER_SECONDS = HEALTH_DEFAULTS.offlineAfterSeconds;
@@ -24,6 +25,10 @@ export const OFFLINE_AFTER_SECONDS = HEALTH_DEFAULTS.offlineAfterSeconds;
 export interface HealthConfig extends HealthThresholds {
   conflictReviewWarnSeconds: number;
   evaluationIntervalSeconds: number;
+  /** M5.4: the VAPID public key this API advertises (null when push is disabled) */
+  vapidPublicKey?: string | null;
+  /** M5.4: push time-to-live; the worker enforces it, the API reports it */
+  turnAlertTtlSeconds?: number;
 }
 export function healthConfig(env: Env): HealthConfig {
   return {
@@ -32,7 +37,41 @@ export function healthConfig(env: Env): HealthConfig {
     coordinatorExpiryWarnSeconds: env.COORDINATOR_EXPIRY_WARN_SECONDS,
     conflictReviewWarnSeconds: env.CONFLICT_REVIEW_WARN_SECONDS,
     evaluationIntervalSeconds: env.HEALTH_EVALUATION_INTERVAL_SECONDS,
+    vapidPublicKey: env.VAPID_PUBLIC_KEY || null,
+    turnAlertTtlSeconds: env.TURN_ALERT_TTL_SECONDS,
   };
+}
+
+/**
+ * The worker's configuration, as it reported it with its last evaluation, compared with this
+ * API's (REQ-F9.12 / M5.3 risk "thresholds must match"). Names only, never values of secrets:
+ * the VAPID public key is public, and only equality is reported.
+ */
+export function configMismatch(
+  worker: Record<string, unknown> | null | undefined,
+  cfg: HealthConfig,
+): string[] {
+  if (!worker) return [];
+  const out: string[] = [];
+  const pairs: [string, number][] = [
+    ['DEVICE_STALE_AFTER_SECONDS', cfg.deviceStaleAfterSeconds],
+    ['COORDINATOR_EXPIRY_WARN_SECONDS', cfg.coordinatorExpiryWarnSeconds],
+    ['CONFLICT_REVIEW_WARN_SECONDS', cfg.conflictReviewWarnSeconds],
+    ['HEALTH_EVALUATION_INTERVAL_SECONDS', cfg.evaluationIntervalSeconds],
+    ...(cfg.turnAlertTtlSeconds === undefined
+      ? []
+      : ([['TURN_ALERT_TTL_SECONDS', cfg.turnAlertTtlSeconds]] as [string, number][])),
+  ];
+  for (const [name, value] of pairs) {
+    if (name in worker && worker[name] !== value) out.push(name);
+  }
+  if (
+    'vapid_public_key' in worker &&
+    (worker['vapid_public_key'] ?? null) !== (cfg.vapidPublicKey ?? null)
+  ) {
+    out.push('VAPID_PUBLIC_KEY');
+  }
+  return out;
 }
 export const DEFAULT_HEALTH_CONFIG: HealthConfig = {
   offlineAfterSeconds: OFFLINE_AFTER_SECONDS,
@@ -145,14 +184,17 @@ export async function facilityAlerts(
 }
 
 export async function evaluationStatus(db: Db, cfg: HealthConfig): Promise<AlertEvaluation> {
-  const [r] = await db<{ last_evaluated_at: Date; paused: boolean }[]>`
-    SELECT last_evaluated_at,
+  const [r] = await db<
+    { last_evaluated_at: Date; paused: boolean; worker_config: Record<string, unknown> | null }[]
+  >`
+    SELECT last_evaluated_at, worker_config,
            last_evaluated_at < NOW() - make_interval(secs => ${3 * cfg.evaluationIntervalSeconds}) AS paused
       FROM health_evaluations WHERE id`;
   return {
     last_evaluated_at: r?.last_evaluated_at.toISOString() ?? null,
     paused: r ? r.paused : true,
     interval_seconds: cfg.evaluationIntervalSeconds,
+    config_mismatch: configMismatch(r?.worker_config, cfg),
   };
 }
 
@@ -239,17 +281,12 @@ export async function operationsHealth(
       }),
   }));
 
-  const [counters] = await db<{ abuse: number; failures: number }[]>`
-    SELECT
-      (SELECT COUNT(*)::int FROM admin_events
-        WHERE organization_id = ${organizationId} AND facility_id = ${facilityId}
-          AND event_type = 'ticket_recovery.abuse_detected'
-          AND created_at > NOW() - INTERVAL '24 hours') AS abuse,
-      (SELECT COUNT(*)::int FROM notifications n
-         JOIN tickets t ON t.id = n.ticket_id
-         JOIN queue_sessions qs ON qs.id = t.queue_session_id
-        WHERE n.organization_id = ${organizationId} AND qs.facility_id = ${facilityId}
-          AND n.status = 'failed' AND n.updated_at > NOW() - INTERVAL '1 hour') AS failures`;
+  const [counters] = await db<{ abuse: number }[]>`
+    SELECT COUNT(*)::int AS abuse FROM admin_events
+     WHERE organization_id = ${organizationId} AND facility_id = ${facilityId}
+       AND event_type = 'ticket_recovery.abuse_detected'
+       AND created_at > NOW() - INTERVAL '24 hours'`;
+  const turnAlerts = await turnAlertCounters(db, organizationId, facilityId);
 
   return {
     server_time: now.toISOString(),
@@ -263,7 +300,49 @@ export async function operationsHealth(
     evaluation: await evaluationStatus(db, cfg),
     counters: {
       recovery_abuse_24h: counters?.abuse ?? 0,
-      turn_alert_failures_1h: counters?.failures ?? 0,
+      turn_alert_failures_1h: turnAlerts.failed + turnAlerts.unknown,
     },
+    turn_alerts: { ...turnAlerts, enqueue_errors: facilityEnqueueErrors(facilityId) },
   };
+}
+
+/**
+ * Last-hour push turn-alert outcomes at a facility (counts only). A FAILURE here is a pipeline
+ * problem: retries exhausted, TTL elapsed, rejected, or an unexpected error. An expired
+ * subscription (`gone`, 404/410) is a normal end of a browser subscription, and a visitor who
+ * refused permission or has no push support never creates a row at all, so neither counts.
+ */
+export async function turnAlertCounters(
+  db: Db,
+  organizationId: string,
+  facilityId: string,
+): Promise<{
+  attempted: number;
+  sent: number;
+  delivered: number;
+  failed: number;
+  suppressed: number;
+  unknown: number;
+}> {
+  const [r] = await db<
+    {
+      attempted: number;
+      sent: number;
+      delivered: number;
+      failed: number;
+      suppressed: number;
+      unknown: number;
+    }[]
+  >`
+    SELECT COUNT(*) FILTER (WHERE n.status <> 'pending')::int AS attempted,
+           COUNT(*) FILTER (WHERE n.status = 'sent')::int AS sent,
+           COUNT(*) FILTER (WHERE n.status = 'delivered')::int AS delivered,
+           COUNT(*) FILTER (WHERE n.status = 'failed' AND n.detail_code IS DISTINCT FROM 'gone')::int AS failed,
+           COUNT(*) FILTER (WHERE n.status = 'suppressed')::int AS suppressed,
+           COUNT(*) FILTER (WHERE n.status = 'unknown')::int AS unknown
+      FROM notifications n
+      JOIN push_subscriptions ps ON ps.id = n.push_subscription_id
+     WHERE n.organization_id = ${organizationId} AND ps.facility_id = ${facilityId}
+       AND n.channel = 'web_push' AND n.updated_at > NOW() - INTERVAL '1 hour'`;
+  return r ?? { attempted: 0, sent: 0, delivered: 0, failed: 0, suppressed: 0, unknown: 0 };
 }

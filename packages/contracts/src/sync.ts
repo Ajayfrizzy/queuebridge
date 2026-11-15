@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { CommandDisposition, QueueAction } from './enums.js';
 import { AlertEvaluationSchema, HealthAlertSchema } from './health.js';
+import { TurnAlertCountersSchema } from './push.js';
 import { StaffQueueSchema } from './queue.js';
 import { IsoDateTimeSchema, UuidSchema, UuidV7Schema } from './schemas.js';
 
@@ -414,8 +415,10 @@ export const OperationsHealthSchema = z.object({
   counters: z.object({
     /** Recovery-abuse signals at this facility in the last 24 hours */
     recovery_abuse_24h: z.number().int().nonnegative(),
-    /** Failed turn alerts at this facility in the last hour (M5.4 fills this in) */
+    /** Failed turn alerts at this facility in the last hour (expired subscriptions excluded) */
     turn_alert_failures_1h: z.number().int().nonnegative(),
   }),
+  /** M5.4: push turn-alert outcomes at this facility in the last hour */
+  turn_alerts: TurnAlertCountersSchema,
 });
 export type OperationsHealth = z.infer<typeof OperationsHealthSchema>;

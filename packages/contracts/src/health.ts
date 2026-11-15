@@ -99,6 +99,12 @@ export const AlertEvaluationSchema = z.object({
   /** True when no evaluation happened for 3 intervals: stored alerts may lag reality */
   paused: z.boolean(),
   interval_seconds: z.number().int().positive(),
+  /**
+   * M5.4: settings where the worker's configuration differs from this API's (threshold names,
+   * or `vapid_public_key`), so a mismatch is visible instead of silently wrong. Empty when equal
+   * or when the worker has not reported yet.
+   */
+  config_mismatch: z.array(z.string()),
 });
 export type AlertEvaluation = z.infer<typeof AlertEvaluationSchema>;
 

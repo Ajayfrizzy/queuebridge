@@ -78,8 +78,11 @@ decision:
    Details: `design.md` §12.4.4 and §12.5.7.
 8. **Transport lives behind a narrow interface in `packages/channels`.** `ChannelAdapter` is
    SMS/USSD-shaped, so Web Push uses a separate `PushTransport` interface with a
-   `SandboxPushTransport` (labelled test-only, no network) and a `WebPushTransport` using the
-   MIT-licensed `web-push` library with VAPID keys from environment variables. The worker owns
+   `SandboxPushTransport` (labelled test-only, no network) and a `WebPushTransport` that
+   implements the open standards directly: RFC 8291 payload encryption with the MIT-licensed
+   `http_ece` library (exact-pinned) and RFC 8292 VAPID signing with `node:crypto`, with VAPID
+   keys from environment variables. _(Corrected 2026-11-12: this decision first named the
+   `web-push` package as MIT-licensed; it is MPL-2.0 and is not used. See implementation note 1.)_ The worker owns
    sending; the API only enqueues. The capability is `disabled` when VAPID keys are absent.
 9. **SMS turn alerts (M6) use the same pipeline.** SMS stays under `ChannelAdapter` (ADR-009), with
    explicit consent, opt-out, hard spending caps, sandbox by default and live only with approved
@@ -137,3 +140,57 @@ Savepoint isolation (injected enqueue failure still commits the call), no state 
 triggering (offline-applied calls), honest state transitions, minimal payload, encrypted
 subscriptions, tenant isolation, keyboard and screen-reader paths, reduced motion, and real-device
 checks recorded without overstating results.
+
+## Implementation notes and deviations (M5.4, 2026-11-12)
+
+Recorded at implementation. None changes a decision above. Item 1 corrected the wording of
+decision 8, AGENTS.md §3, the architecture steering, design §2 and REQ-F14.10.4 (2026-11-12).
+
+1. **Library: `http_ece` instead of `web-push` (licence).** Decision 8 originally said the `web-push` library
+   is MIT-licensed. It is not: every published version (including 3.6.7 and 4.0.0) is MPL-2.0, and
+   AGENTS.md §3, the architecture steering and REQ-F14.10.4 repeated the MIT statement. Rather than
+   add a dependency whose licence differs from the approved one, `WebPushTransport` implements the
+   standards directly: RFC 8291 `aes128gcm` payload encryption with `http_ece@1.2.1` (MIT, no
+   dependencies, exact-pinned, `packages/channels` only) and RFC 8292 VAPID (ES256 JWT) with
+   `node:crypto`. It is tested against the RFC 8291 §5 test vector and a local HTTP push-service
+   round trip. It sits behind `PushTransport`, so `web-push` can replace it if MPL-2.0 is accepted.
+   The documents that called `web-push` MIT-licensed now state this implementation.
+2. **One enqueue point, registered, not imported.** Instead of calling `enqueueTurnAlerts` at each
+   call site, `appendEvent` runs registered transition hooks for every committed transition, each
+   inside its own SAVEPOINT; the turn-alert hook acts on `→ called` (any call path, online or synced)
+   and re-binds subscriptions on `→ transferred`. `app.ts` registers it. The queue core therefore
+   has no import path to alert code, which keeps the automatic no-show sweep's static independence
+   check (testing 8.R12(f)) true.
+3. **Click destination carries two more public values.** `/ticket/<code>?ref=<ref>&seq=<n>&rp=<path>`:
+   `seq` lets the page acknowledge exactly the call that was shown, and `rp` lets the neutral
+   "not saved on this device" screen offer the recovery path. Both are public and validated
+   (`rp` must match `/recover/<org>/<facility>/<code>`); `ref` alone still decides which ticket opens.
+4. **Endpoint allow-list (SSRF).** The worker POSTs to the subscription endpoint, so the API accepts
+   endpoints only over HTTPS on the default port, with no IP literal or credentials, on the major
+   browsers' push services (FCM, Mozilla, Apple, WNS) plus `PUSH_ENDPOINT_HOSTS`. The worker's
+   transport re-checks the same policy before every send (an endpoint stored before a policy
+   change is never contacted) and refuses to connect when DNS resolves the name to a loopback,
+   private, link-local or otherwise non-public address (checked on the address actually used, so
+   there is no gap for DNS rebinding). No redirects, a 10 s deadline, the response body unread.
+5. **Shared per-ticket change limit.** Subscribe and turn-off changes are counted per ticket in
+   PostgreSQL (`push_subscription_throttle`, one atomic upsert), so the limit of 20 per minute
+   holds across API instances. Turning push off is counted but never refused. Windows expire by
+   themselves; the worker deletes them after an hour.
+6. **Lease renewal before each send.** A worker renews its lease in one guarded statement just
+   before sending and skips a row another worker has re-claimed, so a long batch that outlives
+   its lease does not cause a second send.
+7. **Push controls live on the ticket page,** not in the display-settings dialog: a subscription
+   belongs to one ticket and needs that ticket's status token. Sound, vibration, quiet mode and
+   "Test alert" stay in the dialog (M5.2).
+8. **Subscriptions are bound to the status token** that created them. Every token revocation (cap
+   eviction, join replay, "sign out other devices", staff revoke-all) revokes its subscriptions in
+   the same transaction (`credentials_revoked`). One browser has one push subscription per site,
+   shared by all its saved tickets; turning push off for one ticket unsubscribes the browser only
+   when no other saved ticket uses it.
+9. **Configuration consistency.** The worker reports its non-secret settings with each health
+   evaluation; the dashboard names any that differ from the API's (M5.3 thresholds, the VAPID public
+   key, `TURN_ALERT_TTL_SECONDS`). Enqueue errors are counted per facility over the last hour in
+   each API process (not shared across instances; diagnostic only).
+10. **Not verified here:** delivery through real push services and on real devices (Android Chrome,
+    iOS installed app). Browser tests use a push double and the sandbox transport; see
+    `docs/testing/M5-evidence.md`.

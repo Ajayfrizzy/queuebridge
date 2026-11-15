@@ -478,3 +478,279 @@ Mutation checks (each reverted, files compared with backups): no damping → 8 f
 2. A real outage drill: two tablets, assign a coordinator, switch its Wi-Fi off; confirm `offline` then `stale`, the `coordinator_offline` alert and its advice, then an explicit failover and the fenced reconnect.
 3. A lost-device drill: revoke a tablet as lost, confirm the wording, confirm it cannot sync, and re-register it.
 4. 200 % zoom on the dashboard on a phone.
+
+## M5.4 — Smart Turn Alerts (F14; design §12; ADR-013; Group 14: 14.1–14.14)
+
+Status: implemented, reviewed (security review 2026-11-15, below) and verified locally; committed as one local checkpoint on `feature/m5-recovery-accessibility-alerts` (not pushed). Base: `6a75213`.
+Alerts follow server-committed calls only. No alert outcome can block, delay or change a queue
+command, change a ticket, or mark a visitor missed.
+
+### What was built
+
+- **Migration `0009_turn_alerts.sql`** (additive; constraint replacement only): `push_subscriptions`
+  (random id = the non-secret `subscription_id`; encrypted endpoint and keys; a CHECK that
+  ciphertext exists only while active; one row per ticket and endpoint), `notifications`
+  (+`web_push` channel, +`suppressed` status, `push_subscription_id`, `event_sequence`,
+  `detail_code`), `notification_outbox.processed_at`, `notification_deliveries.detail_code`
+  (+`sent`/`suppressed` receipts), `health_evaluations.worker_config`.
+- **Contracts** (`packages/contracts/src/push.ts`): capability, strict subscribe/ack bodies, strict
+  v2 payload (8 fields), staff alert view, counters, tag/path/Topic helpers;
+  `TicketStatus.call_sequence`.
+- **Channels:** `PushTransport`; `SandboxPushTransport` (TEST-ONLY, no network, refused in
+  production); `WebPushTransport` (RFC 8291 `aes128gcm` via `http_ece@1.2.1`, RFC 8292 VAPID via
+  `node:crypto`); subscription cipher (AES-256-GCM, HKDF-derived from `CONTACT_ENCRYPTION_KEY`);
+  endpoint allow-list.
+- **API:** turn-alert hook registered on `appendEvent`, which covers every committed call path,
+  including sync and conflict apply. Each hook runs in its own SAVEPOINT and enqueues one
+  notification/outbox pair per active subscription, keyed
+  `web_push:ticket.called:<ticket>:<seq>:<subscription>`. Service transfers re-bind subscriptions.
+  Routes: `GET /push/capability`, subscribe/unsubscribe/ack, staff `GET /queues/:id/alerts`.
+  Token revocations revoke their subscriptions. Dashboard counters and the configuration check are
+  served alongside the health data.
+- **Worker:** `processTurnAlerts` claims due rows with `FOR UPDATE SKIP LOCKED`, holds a lease, and
+  guards every finish by the attempt it claimed. It suppresses stale alerts at send time. Limits:
+  3 attempts, exponential backoff inside the 120 s TTL. A 404/410 revokes only that subscription.
+  Outcomes are recorded honestly. `purgeAlertData` implements the §12.13 retention rules. Every job
+  has its own try/catch, and the worker reports its configuration for the consistency check.
+- **Web:**
+  - Visual and announcements: a persistent banner (code, counter, "Status: Called", service, an
+    icon, a Dismiss button that returns focus to the `h1`); the assertive region speaks once per
+    committed call sequence; the title becomes "Your turn: A012".
+  - Cues and focus: sound and vibration follow the M5.2 preferences, and quiet mode wins. If the
+    alert closes the settings dialog and focus would otherwise drop to the document body, focus
+    moves to the banner.
+  - Offline: an "alerts may be delayed" note.
+  - Push panel (ticket page): consent only on click; specific text for unsupported, blocked and
+    iPhone-not-installed browsers; the documented 409 message; turning push off unsubscribes the
+    browser only when no other saved ticket uses it.
+  - Identity: `pushRef`, `resolveByPushRef`, `?ref=` decides; a neutral "not saved on this device"
+    screen.
+  - Service worker: `public/push-handler.js` via `workbox.importScripts`; a global hand-off
+    listener.
+  - Staff: per-device alert state on the console; counters and the configuration warning on the
+    connectivity dashboard.
+- **Ops:** `pnpm env:generate --vapid` (with `--rotate-vapid`); `env:check` validates the pair;
+  `.env.example` and `docs/local-environment.md` updated.
+
+### Deviations (recorded in ADR-013 "Implementation notes and deviations")
+
+1. `web-push` is MPL-2.0 in every version, not MIT as ADR-013, AGENTS.md §3, the architecture
+   steering and REQ-F14.10.4 state. I implemented the standards with `http_ece` (MIT) and
+   `node:crypto` instead. AGENTS.md, the architecture and security steering, design §2,
+   REQ-F14.10.4, ADR-013 and the architecture document now state this (final review).
+2. Enqueue is a registered transition hook, not per-call-site calls. Found by the full DB run: a
+   direct import gave the automatic no-show sweep an import path to alert code, which test
+   8.R12(f) forbids. The dependency was inverted; the test was not changed.
+3. The click URL also carries the public `seq` (for an exact acknowledgement) and `rp` (for the
+   neutral screen's recovery link); both are validated.
+4. An SSRF allow-list for push endpoints was added (not in the design).
+5. Push controls are on the ticket page, not in the settings dialog.
+6. No banner animation: a pulse was tried and removed because the M5.2 test "the app declares no
+   animation" forbids it; that test was not changed.
+
+### Test evidence
+
+| Suite                                                                                                | Result                                                  |
+| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| `packages/channels/src/push.test.ts` (RFC 8291 §5 vector, local push-server round trip, VAPID, SSRF) | 15 / 15                                                 |
+| `apps/api/src/turn-alerts.db.test.ts` (14.2, 14.3, 14.5, 14.7, 14.11–14.13 server side)              | 22 / 22, three consecutive runs                         |
+| `apps/worker/src/turn-alerts.db.test.ts` (14.4, 14.5, 14.6, 14.7, 14.11, 14.12; isolated DB)         | 18 / 18, three consecutive runs                         |
+| `apps/worker/src/once.test.ts` (built worker against a stalled "database")                           | 2 / 2                                                   |
+| `apps/web` unit: `turnAlert`, `pushHandler` (the real SW file), `copyTruthfulness` (14.9)            | 19 / 19                                                 |
+| `apps/web/e2e/turn-alerts.spec.ts` at 1280, 1440, 375 and 320 px                                     | 20 / 20, three consecutive runs                         |
+| `apps/web/e2e/turn-alerts-sw.spec.ts` (the built `sw.js` receiving a DevTools-delivered push)        | 1 / 1, three consecutive runs                           |
+| `pnpm test`                                                                                          | all packages pass (web 97, contracts 116, domain 109 …) |
+| `pnpm test:db`                                                                                       | api 591 / 591, worker 61 / 61                           |
+| Full Playwright, all projects                                                                        | 228 passed, 4 skipped (opt-in capture), 0 failed; ×3    |
+| Fresh database: `pnpm db:migrate` twice; `0009` SQL executed twice                                   | applied, then skipped; idempotent                       |
+
+**Coverage highlights:**
+
+- **14.2 isolation.** A `SELECT 1/0` inside the savepoint still commits `call_next` with the
+  expected sequence and an intact chain. Three subscriptions produce three pairs with distinct
+  keys. A replay adds none. A forced conflict skips only that device.
+- **14.4 delivery semantics.** Six workers on separate connections claim and send each row once. A
+  stalled worker's late result never overwrites the newer attempt, in both orders (gated
+  transports, no sleeps). Crash loops are bounded. `delivered` is never downgraded.
+- **14.5 payload and storage.** Exactly 8 payload fields. No endpoint, credential or internal id in
+  the payload or the Topic. The ciphertext is unreadable in the row.
+- **14.7 neutrality.** Every outcome leaves tickets, sessions, events and transitions byte-for-byte
+  unchanged. A 410 leaves the ticket called and servable, with no `ticket.miss`.
+- **14.13 / 14.14 identity.** Two tickets with the same code from different organizations each open
+  their own ticket. A contradicting `k` resolves to nothing. A forgotten ticket opens the neutral
+  screen with no `/api/v1/tickets/` request.
+
+**Mutation checks** (`/tmp/qb-mutate.py`: each defect applied, the targeted suite run, the file
+restored and compared by SHA-256):
+
+- Killed, first pass (11): no savepoint · dedup key without subscription · no stale suppression ·
+  no endpoint allow-list · `gone` counted as failure (API and worker) · alert repeats on refresh ·
+  a forbidden promise in the copy · unresolved `ref` falls back to the public code (browser test) ·
+  alert from a cached offline copy · SW destination without `ref`.
+- **Survived at first: the claimed-attempt guard.** The existing test only covered the order the
+  `processed_at` guard already protects (and used a 1.1 s sleep). It was replaced by a
+  deterministic two-order test; the mutation is now killed.
+
+**Device health.** Real delivery failures (failed but not `gone`, or `unknown`) feed
+`alert_pipeline_failing`. A refused permission or missing push support creates no row, so it never
+counts. The evaluator stays read-only.
+
+**Threshold-consistency issue (M5.3 risk).** Now mechanised. The worker stores its non-secret
+settings with each evaluation. The dashboard names any setting that differs from the API's: the
+four M5.3 thresholds, the VAPID public key and `TURN_ALERT_TTL_SECONDS`. Names only, no values.
+
+### Operational checks
+
+- **API, push misconfigured.** With no VAPID key or a malformed one, the API starts and is ready;
+  capability is `disabled` (one warning, no key material). With a valid key, push is `live`.
+- **Worker, push misconfigured.** With push off, `web` without keys, a private key that does not
+  match, or no contact key, the worker logs one error, completes its other jobs and exits 0.
+  `PUSH_TRANSPORT=sandbox` with `NODE_ENV=production` is refused; the other jobs still ran.
+- **Side effect of that run.** It wrote audit checkpoints, signed with a throwaway key, into this
+  project's disposable test database. Assessed in the final review (section D below): no action
+  required.
+- **Overlap.** Overlapping workers are covered by the six-worker test and by parallel `--once` runs
+  in the browser suite. One push failure cannot stop the jobs that follow.
+- **`pnpm audit`.** 2 low and 3 moderate findings, all pre-existing (workbox, eslint); none from
+  M5.4.
+
+### Browser support (stated in the UI; nothing here was verified on a real device)
+
+| Platform                                 | Push                                                      | In-app alert |
+| ---------------------------------------- | --------------------------------------------------------- | ------------ |
+| Android Chrome                           | expected to work with the browser closed (battery limits) | yes          |
+| Desktop Chrome / Edge / Firefox          | needs the browser running                                 | yes          |
+| iOS / iPadOS Safari 16.4+, installed app | expected to work after opt-in inside the installed app    | yes          |
+| iOS Safari in a tab, older iOS, no push  | not offered; specific text                                | yes          |
+
+Vibration from a system notification depends on the device and is not relied on. Sound plays only
+when the browser allows it (the page has had a user gesture); a blocked tone leaves the visual
+alert intact.
+
+### Limits (stated, not hidden)
+
+- Browser tests use an in-page `PushManager`/`Notification` double and the sandbox transport. The
+  real `sw.js` is exercised only through DevTools push delivery. Headless Chromium reports the page
+  as focused and keeps notification permission `denied`, so the system-notification branch and the
+  click handler are unit-tested against the real file but not run in a browser.
+- `WebPushTransport` was never exercised against FCM, Mozilla, Apple or WNS. Only the RFC vector
+  and a local push server were used.
+- The enqueue-error counter lives in each API process's memory (diagnostic only). The per-ticket
+  subscription-change limit is now shared through PostgreSQL (final review).
+- **Open intermittent (stabilization rule).**
+  `offline-timing-handover.spec.ts` › "lost acknowledgement …" failed 2 times in about 37
+  executions during this session: once in a full run, once in five file runs. It then passed 356
+  times without a failure in targeted reproduction (isolated ×12, with the offline and turn-alert
+  suites ×4, with the heaviest suites ×3) and in three full runs. The error text was not captured
+  (output filtering), so the cause is unknown. M5.4 adds two things on that path: a no-op hook
+  call for a `→ waiting` walk-in, and one push-revocation UPDATE when a credential is reissued.
+  It stays open until reproduced with a trace. Final-review investigation: section C below.
+
+### Manual acceptance (OUTSTANDING; none performed)
+
+1. **Android Chrome, real push service.** Set real VAPID keys and a contact; join; turn push on;
+   lock the phone; call the ticket. Record whether a notification appears, its latency, and that
+   tapping it opens the right ticket. Then turn it off and confirm nothing arrives on a new call.
+2. **iOS 16.4+.** Confirm that Safari in a tab shows the Home Screen text. Add to Home Screen, open
+   the installed app, opt in, and repeat step 1. Record the result as observed.
+3. **Two saved tickets with the same code on one phone.** Confirm each notification opens its own
+   ticket.
+4. **Screen reader (VoiceOver, TalkBack or NVDA).** The banner and the single assertive
+   announcement; the push panel states; the neutral screen; the staff alert line.
+5. **Display modes.** High contrast, 200 % zoom and extra-large text on a phone, with a call
+   arriving while the settings dialog is open.
+
+## M5.4 final review and checkpoint (2026-11-15)
+
+Scope: the complete M5.4 diff before the checkpoint commit. No redesign, nothing from MQ/M6/M7.
+
+### A. Security review: findings and fixes (each with a regression test and a killed mutation)
+
+| #   | Finding                                                                                                                                                                                                                                                                | Severity                | Fix                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Regression                                                                                                                                                                                    |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **SSRF at send time.** The allow-list was enforced only when subscribing; the worker's transport POSTed to any decrypted endpoint (its own test posted to `http://127.0.0.1`). A narrowed `PUSH_ENDPOINT_HOSTS`, or a row written outside the API, would be contacted. | High (defence in depth) | `WebPushTransport` re-checks the endpoint policy on every send (worker passes the same allow-list as the API; new worker env `PUSH_ENDPOINT_HOSTS`); IP literals refused; the address actually connected to (custom DNS `lookup` on the request, so no gap for DNS rebinding) must be public: loopback, RFC 1918, link-local (incl. 169.254.169.254), CGNAT, documentation, benchmarking, multicast, reserved and IPv4-mapped forms are refused, and a mixed DNS answer is refused, not filtered. Now `node:http(s)`: no redirects (3xx = rejected), one deadline for connect + send + headers, body discarded unread, TLS validation untouched. | `push.test.ts`: policy refuses before any request (server hit count 0); a name resolving to 127.0.0.1 and IP literals refused at connect; `isBlockedAddress` table. Mutations M13, M14 killed |
+| 2   | **Per-ticket limit per process.** 20 changes/min was in each API process's memory, so N instances allowed N×20. (The 3-device cap was already database-enforced under an advisory lock and held.)                                                                      | Medium                  | One atomic PostgreSQL upsert per change (`push_subscription_throttle`, added to `0009`), self-expiring 1-minute window, no lock-out; turning push off is counted but never refused (privacy); the worker deletes windows after an hour.                                                                                                                                                                                                                                                                                                                                                                                                          | API test with two API instances: alternating calls → 21st refused; concurrent burst of 30 over both → exactly 20 accepted; turn-off over the limit → 204; window expiry. Mutation M16 killed  |
+| 3   | **Lease shorter than a slow batch.** A 50-row claim processed 8 at a time with 10 s sends can outlive the 30 s lease; another worker re-claims and sends again (results stayed correct thanks to the attempt guard, but the device got a duplicate).                   | Low                     | The worker renews its lease in one guarded statement immediately before each send and skips (`superseded`) a row that another worker re-claimed.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Gated two-worker test: the stalled worker sends only its first row and skips the second; one delivery row. Mutation M15 killed                                                                |
+| 4   | **Deleted status token not treated as revoked.** Retention deletes token rows (FK `ON DELETE SET NULL`); the send-time check and retention treated `credential_id IS NULL` as "not revoked". Expiry ordering made it unreachable in practice, but it was not enforced. | Low                     | NULL credential = revoked at send time and in retention.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Worker test: token deleted → suppressed, then revoked with ciphertext erased. Mutation M17 killed                                                                                             |
+
+Reviewed without change: VAPID JWT (ES256, `aud` = push-service origin, `exp` ≤ 24 h, subject
+validated, private key never logged), RFC 8291 encryption (fresh ECDH key and 16-byte salt per
+message, RFC §5 vector), subscription consent (permission only from the click; denied respected),
+authorization (status token required; foreign `subscription_ref` and cross-tenant 404; staff view
+`QUEUE_VIEW`-scoped by organization), the 3-device cap (DB count under a per-ticket advisory lock),
+revocation on every token revocation, ciphertext CHECK, secrecy (no endpoint, hash, key or token in
+payloads, tags, Topics, URLs, logs or responses), same-code identity (reference-based), outbox
+claim (`SKIP LOCKED`), attempt guard, bounded retries inside the TTL, crash bound, `delivered`
+never downgraded. Per-IP limits use `@fastify/rate-limit` with its default in-process store, as for
+every other endpoint of the API (pre-existing; recovery throttles and now push changes are
+database-backed).
+
+### B. Documentation
+
+AGENTS.md (stack table and §4.6), the architecture and security steering, design §2, REQ-F14.10.4,
+ADR-013 (decision 8 corrected; notes 1, 4, 9, 10) and the technical architecture document now
+state the implementation: RFC 8291 encryption with `http_ece@1.2.1` (MIT, exact-pinned) and RFC
+8292 VAPID with `node:crypto`; the MPL-2.0 `web-push` package is not used. `http_ece` is a
+dependency of `packages/channels` only: package boundaries unchanged.
+
+### C. Intermittent-failure investigation
+
+Five full-suite runs with unfiltered logs, then three more after the fixes:
+
+- **Hand-over "lost acknowledgement" test:** 0 failures in 8 completed full runs (and 356 targeted
+  runs before). Not reproduced; its original error text was never captured.
+- **Failure signature characterised (controlled experiment, temporary spec deleted afterwards):**
+  one injected retryable failure (503) on the retry makes the test fail exactly at
+  `expect(stored.map((o) => [o.status, o.attempts])).toEqual([['duplicate', 2]])` with
+  `attempts: 3`, while product behaviour is correct (one ticket, a `duplicate`, a working link).
+  The test therefore fails on any transient server-side hiccup during the retry. The assertion was
+  not changed (it is the stated property "learned from the second attempt").
+- **A different infrastructure failure was captured** (run 5): `device-health.spec.ts` at 320 px,
+  `worker --once` → `write CONNECT_TIMEOUT localhost:55433` (30 s TCP connect to the Docker
+  container). The PostgreSQL log shows no error in the window except expected test-induced
+  constraint errors, and a **timed checkpoint starting at 21:54:29 UTC inside that window**, the
+  same coincidence as the M5.0 stall. Classification: test infrastructure (Docker Desktop
+  forwarding / virtualised I/O), not application.
+- **A hang was captured and turned into a fix** (run 6): a `worker --once` started 23:04 local
+  never finished. PostgreSQL showed its connection `idle in transaction` right after `BEGIN`
+  (waiting for the client); the worker's sockets had nothing queued on the host and its process
+  had no pending writes (inspected read-only through the Node inspector). Whether traffic was lost
+  in Docker's forwarder or the client never sent the next statement could not be decided, so the
+  cause stays unresolved. But it exposed a **real defect**: `--once` had no overall bound and
+  ignored SIGTERM, so `execFileSync`'s 60 s timeout could not stop it and the suite hung (the
+  machine later slept; sleep began 06:02 local, seven hours after the hang, and is not the cause).
+  **Fix:** in `--once`, a stop signal exits at once and `WORKER_ONCE_TIMEOUT_MS` (default 120 s)
+  bounds the run; every worker connection sets `idle_in_transaction_session_timeout = 60 s`, so a
+  stalled client cannot hold locks. Regression: `once.test.ts` runs the built worker against a
+  TCP server that never answers (deadline → exit 1; SIGTERM → exit 1 promptly). Mutations M18,
+  M19 killed.
+
+**Status: unresolved risk, recorded with evidence.** The hand-over failure (2 in about 37 runs on
+2026-11-14, 0 in about 600 runs since) is most consistent with a transient server or connection
+hiccup during the retry, of the kind captured twice in this environment; this is a hypothesis,
+not a proven cause.
+
+### D. Database hygiene: the operations-check audit checkpoints
+
+- Database: `queuebridge_test` (this project's disposable test database). The development database
+  `queuebridge` has none (it is at migration 0006 and was not touched).
+- Key id `ops-check`; **50 checkpoints**, one each for 50 queue sessions, written 2026-11-14
+  18:58:16–17 UTC.
+- Effect: a checkpoint signed with a key the verifier does not hold is `unverifiable`; root and
+  head links still verify. The real verifier was run read-only on three affected sessions: status
+  **`incomplete`** with the test key configured and with no key, never `failed`. Future checkpoints
+  for those sessions extend after them unchanged. They are old fixture sessions that no test
+  re-verifies (the same situation as the existing `retired-key` checkpoints).
+- **No action required.** No audit record was modified or deleted.
+
+### E. Final verification (final tree)
+
+| Gate                                                             | Result                                                                                                                                                                                                                                                                          |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build` | clean, 0 errors                                                                                                                                                                                                                                                                 |
+| `pnpm test`                                                      | all pass (channels 33, worker 12, web 97, contracts 116, domain 109, continuity 64, api 56, ui 6)                                                                                                                                                                               |
+| `pnpm test:db`                                                   | api 591 / 591, worker 61 / 61                                                                                                                                                                                                                                                   |
+| Migrations                                                       | fresh isolated DB: applied, then skipped; `0009` SQL executed a second time: OK; migrate-guard 14 / 14                                                                                                                                                                          |
+| Full Playwright, all projects                                    | 228 passed, 4 skipped, 0 failed; three consecutive runs on the final tree                                                                                                                                                                                                       |
+| Mutation regressions                                             | 19 / 19 killed (M1–M12 earlier, M13–M19 from this review)                                                                                                                                                                                                                       |
+| Sensitive artifacts                                              | no `.env`, logs, traces, keys or backups in the change set; no private key, VAPID secret or real credential in source (the only private key is the published RFC 8291 §5 example; test VAPID keys are generated at runtime; the e2e public key's private half was never stored) |

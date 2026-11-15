@@ -60,6 +60,13 @@ export function HealthAlertsPanel({
           still current, but new problems may not appear here as alerts.
         </p>
       ) : null}
+      {evaluation.config_mismatch.length > 0 ? (
+        <p role="status" className="alert alert-warn" data-testid="config-mismatch">
+          <strong>Settings differ between the server and the alert worker</strong>:{' '}
+          {evaluation.config_mismatch.join(', ')}. Alerts may be raised at different times than
+          shown here. An administrator should give both the same values and restart them.
+        </p>
+      ) : null}
       {open.length === 0 && acknowledged.length === 0 ? (
         <p className="muted" data-testid="no-alerts">
           No open alerts.

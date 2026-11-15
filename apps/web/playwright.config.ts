@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { E2E_CONTACT_KEY, E2E_PUSH_HOST, E2E_VAPID_PUBLIC_KEY } from './e2e/push-env.js';
 
 /** Dedicated test port: never the dev API (3002) nor other local projects (3001). */
 const API_PORT = 3101;
@@ -67,8 +68,12 @@ export default defineConfig({
         COMMAND_RATE_LIMIT_MAX: '10000',
         // M5.1: TEST-ONLY recovery key material (never a real secret); the throttle itself is
         // covered by the PostgreSQL tests, so the browser suite raises its per-source limit
-        CONTACT_ENCRYPTION_KEY: 'e2e0'.repeat(16),
+        CONTACT_ENCRYPTION_KEY: E2E_CONTACT_KEY,
         RECOVERY_RATE_LIMIT_MAX: '1000',
+        // M5.4: push is "live" with a TEST-ONLY public key and a fictional push host; the worker
+        // run by the specs uses the sandbox transport (nothing leaves the machine)
+        VAPID_PUBLIC_KEY: E2E_VAPID_PUBLIC_KEY,
+        PUSH_ENDPOINT_HOSTS: E2E_PUSH_HOST,
         LOG_LEVEL: 'warn',
       },
     },

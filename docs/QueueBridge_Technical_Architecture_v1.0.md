@@ -403,6 +403,12 @@ visitor page ── SSE/poll of committed state ── TurnAlert (banner + live 
 service worker ── push event ── focused window? hand off : showNotification (best effort)
 ```
 
+`PushTransport.send` is the standards-based `WebPushTransport` in `packages/channels`: RFC 8291
+`aes128gcm` encryption with `http_ece` (MIT, exact-pinned) and RFC 8292 VAPID with `node:crypto`.
+The `web-push` npm package (MPL-2.0) is not used. The endpoint allow-list is checked at subscribe
+and again before each send, and the connected address must be public (ADR-013, implementation
+notes 1 and 4). Package boundaries are unchanged: only `packages/channels` depends on `http_ece`.
+
 - Alert code has no network I/O inside the queue transaction and never writes to ticket or queue
   tables from the worker; it cannot alter the authoritative sequence (ADR-004).
 - In-app alerts derive from server-committed state; offline-applied actions create none (ADR-006/007).

@@ -33,6 +33,8 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         // API calls must never be answered with the cached app shell
         navigateFallbackDenylist: [/^\/api\//, /^\/health/],
+        // M5.4: turn-alert push and notification-click handlers (public/push-handler.js)
+        importScripts: ['push-handler.js'],
         runtimeCaching: [
           {
             urlPattern: /^https?:\/\/.*\/api\/v1\/facilities\/.+\/public/,

@@ -33,6 +33,37 @@ const EnvSchema = z
     COORDINATOR_EXPIRY_WARN_SECONDS: z.coerce.number().int().min(30).max(7200).default(300),
     CONFLICT_REVIEW_WARN_SECONDS: z.coerce.number().int().min(60).max(86_400).default(900),
     HEALTH_EVALUATION_INTERVAL_SECONDS: z.coerce.number().int().min(5).max(3600).default(30),
+    /**
+     * M5.4 Web Push (REQ-F14.10.3). All four are needed to SEND: the VAPID key pair and subject,
+     * and CONTACT_ENCRYPTION_KEY to open the encrypted subscriptions. Missing or invalid values
+     * never stop the worker: push sending is disabled (logged once) and every other job runs.
+     * The private key lives in the worker environment only.
+     */
+    VAPID_PUBLIC_KEY: z.string().trim().optional(),
+    VAPID_PRIVATE_KEY: z.string().trim().optional(),
+    VAPID_SUBJECT: z.string().trim().optional(),
+    CONTACT_ENCRYPTION_KEY: z.string().trim().optional(),
+    TURN_ALERT_TTL_SECONDS: z.coerce.number().int().min(30).max(3600).default(120),
+    /**
+     * `web` (default when VAPID is configured) or `sandbox` (TEST-ONLY, no network; refused in
+     * production). `off` disables sending.
+     */
+    PUSH_TRANSPORT: z.enum(['web', 'sandbox', 'off']).optional(),
+    /** Upper bound for a `--once` run before it exits with status 1 (default 120 s). */
+    WORKER_ONCE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(3_600_000).default(120_000),
+    /**
+     * The same extra push-service hosts as the API (comma-separated). The worker re-checks every
+     * endpoint against the allow-list before each send (SSRF defence in depth).
+     */
+    PUSH_ENDPOINT_HOSTS: z
+      .string()
+      .optional()
+      .transform((v) =>
+        (v ?? '')
+          .split(',')
+          .map((h) => h.trim().toLowerCase())
+          .filter((h) => /^[a-z0-9.-]+$/.test(h)),
+      ),
   })
   .superRefine(checkAuditSigningPair);
 

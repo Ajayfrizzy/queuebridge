@@ -26,6 +26,8 @@ import { staffRoutes } from './routes/staff.js';
 import { syncRoutes } from './routes/sync.js';
 import { fairnessRoutes } from './routes/fairness.js';
 import { recoveryRoutes } from './routes/recovery.js';
+import { pushRoutes } from './routes/push.js';
+import { installTurnAlerts, setTurnAlertLogger } from './queue/turn-alerts.js';
 import { startAutoMissSweeper } from './queue/auto-miss.js';
 import type { RouteDeps } from './routes/deps.js';
 import { createRecoveryCrypto } from './recovery/crypto.js';
@@ -73,6 +75,10 @@ export async function buildApp(
   const db = options.db ?? createDb(env);
   // Live-update fan-out; closed before the pool so UNLISTEN can complete
   const notifier = new QueueNotifier(db, app.log);
+  // M5.4: turn alerts follow committed `called` transitions through a savepoint-isolated hook.
+  // Process-wide and stateless, so it is not removed on close (other app instances may share it).
+  setTurnAlertLogger(app.log);
+  installTurnAlerts();
   app.addHook('onClose', async () => {
     await notifier.close();
   });
@@ -258,6 +264,7 @@ export async function buildApp(
       await api.register(fairnessRoutes, deps);
       await api.register(publicRoutes, deps);
       await api.register(recoveryRoutes, deps);
+      await api.register(pushRoutes, deps);
     },
     { prefix: '/api/v1' },
   );

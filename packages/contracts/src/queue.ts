@@ -207,6 +207,11 @@ export const TicketStatusSchema = z.object({
   revision: z.number().int().nonnegative(),
   /** M5.1 recovery, rejoin and access information (no secret) */
   recovery: TicketRecoveryInfoSchema,
+  /**
+   * M5.4: the committed event sequence of the call the ticket is answering, while `called`
+   * (null otherwise). The page alerts once per call sequence (REQ-F14.1.4).
+   */
+  call_sequence: z.number().int().positive().nullable(),
 });
 export type TicketStatus = z.infer<typeof TicketStatusSchema>;
 

@@ -5,6 +5,7 @@ import { expect, test, type APIRequestContext, type Page } from '@playwright/tes
 import { uuidv7 } from '@queuebridge/contracts';
 import { apiQueueSetup, expectNoA11yViolations, hasHorizontalOverflow } from './helpers.js';
 import { goOffline, makeStaff, waitForDevice } from './offline-helpers.js';
+import { e2eWorkerEnv } from './push-env.js';
 
 /**
  * M5.3 device health in real browsers against the real stack (Group 8: 8.D1, 8.D5; Group 11:
@@ -18,12 +19,8 @@ const WORKER = fileURLToPath(new URL('../../worker/dist/worker.js', import.meta.
 
 function runWorkerOnce(): void {
   execFileSync('node', [WORKER, '--once'], {
-    env: {
-      PATH: process.env['PATH'] ?? '',
-      NODE_ENV: 'test',
-      DATABASE_URL: DB_URL,
-      LOG_LEVEL: 'warn',
-    },
+    // the same push settings as the API, so the configuration check stays consistent
+    env: e2eWorkerEnv(DB_URL),
     stdio: 'pipe',
     timeout: 60_000,
   });

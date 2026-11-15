@@ -76,7 +76,23 @@ export async function issueStatusToken(
         WHERE ticket_id = ${rootTicketId} AND revoked_at IS NULL AND expires_at > NOW()
         ORDER BY created_at DESC, id DESC
         OFFSET ${MAX_ACTIVE_STATUS_TOKENS})`;
+  await revokePushForRevokedTokens(tx, rootTicketId);
   return token;
+}
+
+/**
+ * M5.4 (design §12.13): a push subscription is bound to the status token it was created with.
+ * When that token is revoked (cap, join replay, "sign out other devices", staff revoke-all),
+ * the subscription is revoked too and its encrypted endpoint and keys are erased at once, so a
+ * signed-out device stops receiving turn alerts. Caller holds lockProof.
+ */
+export async function revokePushForRevokedTokens(tx: Db, rootTicketId: string): Promise<void> {
+  await tx`
+    UPDATE push_subscriptions ps
+       SET revoked_at = NOW(), revoke_reason = 'credentials_revoked', endpoint_ct = NULL, keys_ct = NULL
+      FROM ticket_recovery_credentials c
+     WHERE ps.credential_id = c.id AND c.ticket_id = ${rootTicketId}
+       AND c.revoked_at IS NOT NULL AND ps.revoked_at IS NULL`;
 }
 
 /** Revoke a ROOT ticket's active status tokens (optionally keeping one). Caller holds lockProof. */
@@ -92,6 +108,7 @@ export async function revokeStatusTokens(
      WHERE ticket_id = ${rootTicketId} AND revoked_at IS NULL
        AND (${keepTokenId ?? null}::uuid IS NULL OR id <> ${keepTokenId ?? null}::uuid)
     RETURNING id`;
+  await revokePushForRevokedTokens(tx, rootTicketId);
   return rows.length;
 }
 

@@ -55,6 +55,12 @@ export const SENTINELS = {
     'ticket_recovery_credentials.revoked_at',
   ],
   '0008_device_health.sql': ['health_alerts', 'health_evaluations', 'devices.failure_streak'],
+  '0009_turn_alerts.sql': [
+    'push_subscriptions',
+    'notifications.push_subscription_id',
+    'notification_outbox.processed_at',
+    'push_subscription_throttle',
+  ],
 };
 
 /** Migration files of this checkout, in apply order. */

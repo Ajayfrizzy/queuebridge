@@ -46,6 +46,10 @@ import type {
   AlertSummary,
   HealthAlert,
   OwnDeviceHealth,
+  PushCapability,
+  PushSubscribeRequest,
+  PushSubscribeResponse,
+  StaffTicketAlerts,
 } from '@queuebridge/contracts';
 
 const BASE: string =
@@ -375,6 +379,37 @@ export const api = {
       { operation_id: operationId },
       tokenHeader(token),
     ),
+
+  // ---- M5.4: Smart Turn Alerts (Web Push is optional and best effort) ----
+  pushCapability: (): Promise<PushCapability> => request('GET', '/push/capability'),
+  subscribePush: (
+    code: string,
+    token: string,
+    body: PushSubscribeRequest,
+  ): Promise<PushSubscribeResponse> =>
+    request(
+      'POST',
+      `/tickets/${encodeURIComponent(code)}/push-subscription`,
+      body,
+      tokenHeader(token),
+    ),
+  unsubscribePush: (code: string, token: string, ref: string): Promise<void> =>
+    request(
+      'DELETE',
+      `/tickets/${encodeURIComponent(code)}/push-subscription`,
+      { subscription_ref: ref },
+      tokenHeader(token),
+    ),
+  /** First-party "seen on this device" (only the page can send it: it holds the token). */
+  ackTurnAlert: (code: string, token: string, ref: string, sequence: number): Promise<void> =>
+    request(
+      'POST',
+      `/tickets/${encodeURIComponent(code)}/alerts/ack`,
+      { subscription_ref: ref, event_sequence: sequence },
+      tokenHeader(token),
+    ),
+  queueAlerts: (queueId: string): Promise<{ alerts: StaffTicketAlerts[] }> =>
+    request('GET', `/queues/${queueId}/alerts`),
 
   // ---- M5.1: staff-assisted recovery (restricted procedure) ----
   recoveryAssist: (

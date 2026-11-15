@@ -85,7 +85,7 @@
   - `SandboxSmsAdapter` — logs `[SANDBOX]`, never real network
   - `SandboxUssdAdapter` — stateful in-memory session for testing
   - Provider adapter registry: `getAdapter(provider: string) → ChannelAdapter`
-  - _(Planned, M5, ADR-013)_ `PushTransport` interface with `SandboxPushTransport` (test-only label, no network) and `WebPushTransport` (VAPID, `web-push`). Separate from `ChannelAdapter`, which is SMS/USSD-shaped (it carries `handleUssdSession`). See §12.5.
+  - _(M5.4, ADR-013)_ `PushTransport` interface with `SandboxPushTransport` (test-only label, no network) and `WebPushTransport` (RFC 8291 encryption with `http_ece` (MIT), RFC 8292 VAPID with `node:crypto`; not the MPL-2.0 `web-push` package). Separate from `ChannelAdapter`, which is SMS/USSD-shaped (it carries `handleUssdSession`). See §12.5.
 
 ### packages/ui
 
@@ -859,7 +859,10 @@ change; the KB consistency test (Group 13.5) enforces it.
 
 ## 12. Smart Turn Alerts (F14) — design (planned, milestone M5)
 
-> Added 2026-11-12. Specification only; nothing here is implemented. Governing decision: ADR-013.
+> Added 2026-11-12. Implemented in M5.4 (uncommitted at the time of writing); the differences from
+> the text below (transport library and licence, registered enqueue hook, extra public click
+> parameters `seq`/`rp`, endpoint allow-list, push controls on the ticket page) are recorded in
+> ADR-013 "Implementation notes and deviations". Governing decision: ADR-013.
 > Requirements: REQ-F14. Additive to §1–§11. The M5 recovery (F4), accessibility (F7) and device
 > health (F9) requirements and tasks are unchanged; alerts are task group M5.4 and must also satisfy
 > the M5.2 accessibility work.

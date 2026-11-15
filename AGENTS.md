@@ -105,7 +105,7 @@ queuebridge/
 | Formatting         | Prettier                                         | 2-space indent, single quotes                         |
 | CI                 | GitHub Actions                                   | Free tier                                             |
 | Env validation     | `zod` (no dotenv: env comes from the shell)      | `docs/local-environment.md`                           |
-| Web Push (from M5) | `web-push` (MIT), VAPID, exact-pinned            | Free open standard; ADR-013; `packages/channels` only |
+| Web Push (from M5) | `http_ece` 1.2.1 (MIT) + `node:crypto` VAPID     | RFC 8030/8291/8292; ADR-013; `packages/channels` only |
 
 **Paid services:** explicitly prohibited. Do not add any dependency with a paid tier requirement for local or CI use.
 
@@ -165,6 +165,11 @@ queuebridge/
   `delivered`; never promise background vibration or push delivery in code, UI or docs.
 - Push subscriptions are secrets: encrypted at rest, never logged or returned. VAPID private key is
   worker-only environment configuration.
+- Web Push is implemented on the open standards, not with the `web-push` npm package (that
+  package is MPL-2.0, not MIT): RFC 8291 payload encryption with `http_ece` (MIT, exact-pinned)
+  and RFC 8292 VAPID signing with `node:crypto`, behind `PushTransport` in `packages/channels`
+  (ADR-013). Endpoints are allow-listed at subscribe AND at every send; the connected address
+  must be public.
 
 ---
 
