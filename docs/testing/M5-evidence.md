@@ -1,7 +1,7 @@
 # M5 Test Evidence — Recovery, Accessibility, Device Health and Smart Turn Alerts
 
 **Branch:** `feature/m5-recovery-accessibility-alerts` (from `staging` @ `2da1ced`, which contains M0–M4 and the M5–M7 specification, PR #7).
-**Status (2026-11-15):** M5.0–M5.4 implemented and checkpointed locally (`87ec587`, `e0214c5`, `b8bc96f`, `83fbd3b`, `6a75213`, `fd5d52e`); M5 final-integration changes uncommitted. See the **M5 acceptance report** at the end of this file. Sections below are kept as written at each checkpoint (historical record).
+**Status (2026-11-15):** M5.0–M5.4 implemented and checkpointed locally (`87ec587`, `e0214c5`, `b8bc96f`, `83fbd3b`, `6a75213`, `fd5d52e`); M5 integration checkpoint `dba73a8`; development database migrated to 9/9; manual acceptance not yet executed. See the **M5 acceptance report** at the end of this file. Sections below are kept as written at each checkpoint (historical record).
 **Environment:** macOS, 11 cores, Node 24, pnpm 9, Playwright Chromium, PostgreSQL in the disposable Docker container `queuebridge-pg` (port 55433, database `queuebridge_test`). Playwright runs the built API and web app, `workers: 2` (as in CI) unless stated.
 
 ---
@@ -933,3 +933,53 @@ security defect. Closing M5 against its exit criteria still requires:
    the real-device push checks (14.10), recorded here with results as observed.
 2. A CI run on GitHub Actions (needs a push, which needs your authorization).
 3. Committing the final-integration changes (needs your authorization), then `M5-completion.md`.
+
+## M5 integration checkpoint and environment preparation (2026-11-15)
+
+### Pre-commit review of the integration changes
+
+- Working tree: 10 files, all M5 integration (throttle fix and its tests, cross-feature suite,
+  recover-page note, stale-text fixes, acceptance docs). No secrets, environment values, logs or
+  generated artifacts.
+- **Throttle pre-charge/refund review.** Refunds happen only after a refusal (the request never
+  tested a key) or after a successful recovery (the key was right). A wrong or malformed key, a
+  lost race with a key rotation, and any exception after the charge all keep it; each retry is
+  charged again; the per-source minute limit (L1) is checked before and is unaffected. A refused
+  request adds and removes exactly its own charge, so refunds cannot cancel other requests'
+  failures. Staff grants (single-use, 160-bit) use their own path, unchanged.
+- **Regression tests against the vulnerable code.** With the committed (`fd5d52e`) `throttle.ts`
+  and `service.ts` restored and the new tests kept: exactly the two concurrency tests fail
+  ("parallel wrong guesses … split over two instances …" and "parallel wrong guesses from one
+  source are counted exactly"); the other 50 pass. The fix was restored byte for byte.
+- Cross-feature tests use fresh tenants and random sources; they assert tenant isolation (404),
+  credential and log secrecy, coordinator fencing (`needs_review`, `stale_epoch`) and notification
+  independence (failed push, no miss).
+- The recover-page note is identical static text for every visitor; the server's refusal of a
+  temporary ticket is the same uniform response as any other failure: no existence disclosure.
+
+### Integration checkpoint
+
+Commit **`dba73a8`** on `feature/m5-recovery-accessibility-alerts` (parent `fd5d52e`; all earlier
+M5 checkpoints preserved). Not pushed. Gates for that tree are the "Automated evidence" table of
+the acceptance report above (no code changed after them).
+
+### Development database migration
+
+| Step             | Result                                                                                                                                                                                                                                                                                      |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Target           | `DATABASE_URL` → `localhost:55433/queuebridge` (container `queuebridge-pg`, PostgreSQL 17.10); `TEST_DATABASE_URL` is the separate `queuebridge_test`; no other project's container or database involved                                                                                    |
+| Identity         | `_queuebridge_identity` = `queuebridge`; `db:check`: applied 6, pending 0007, 0008, 0009                                                                                                                                                                                                    |
+| Running clients  | none (no dev API/worker; 0 other connections)                                                                                                                                                                                                                                               |
+| Backup           | `~/queuebridge-backups/queuebridge-20261115-121152-pre-0007.dump` (custom format, 230 KB, mode 600, outside the repository)                                                                                                                                                                 |
+| Backup integrity | `pg_restore --list`: 58 tables incl. `_migrations`, `_queuebridge_identity`, `queue_events`; restored into a scratch database: identical row counts for 15 key tables, history 0001–0006, marker `queuebridge`; scratch database dropped                                                    |
+| Effects reviewed | additive only; new columns on existing tables have safe defaults (57 credentials get `source='join'`); the dropped index is the old one-token-per-ticket unique index (replaced as designed); widened CHECKs on an empty `notifications` table                                              |
+| Migration        | `pnpm db:migrate`: APPLY 0007, 0008, 0009 → "Applied 3 migration(s)"; `db:check`: applied 9, pending none                                                                                                                                                                                   |
+| After            | row counts identical to before (organizations 3, facilities 4, services 12, sessions 20, tickets 71, events 336, staff 6, devices 5, operations 307, admin events 129, checkpoints 8); all 8 new tables present; audit verification of all 20 sessions: `verified`; `pnpm env:check`: READY |
+
+### Manual acceptance
+
+Prepared in `docs/testing/M5-manual-acceptance.md` (41 checks, each with preconditions, steps,
+expected result and Actual / Result / Evidence fields; the guide was checked against the current
+UI labels and local configuration). **All 41 checks: Not tested.** Configuration still to be done
+by the tester for later phases: VAPID keys and contact (desktop and phone push), LAN origin
+(phase C), HTTPS address (phase D).

@@ -1,218 +1,482 @@
-# M5 Manual Acceptance — Instructions and Checklist
+# M5 Manual Acceptance — Instructions and Record
 
-Scope: the M5.1–M5.4 checks that automated tests cannot settle (real devices, real assistive
-technology, real push services, real people at a desk). Record every result in
-`docs/testing/M5-evidence.md` → "M5 acceptance report" → "Manual results", as **Pass**, **Fail**
-(with what was seen) or **Not executed** (with the reason). Do not record a check as passed
-because an automated test covers something similar.
+Authoritative guide for the M5.1–M5.4 checks that automated tests cannot settle. Every check has
+a record block; fill in **Actual**, **Result** (`Pass`, `Fail` or `Not tested`) and **Evidence**
+(screenshot file name, screen-recording, or a short description; never a secret). A check is
+`Not tested` until a person has done it; an automated test never counts as a manual pass. Copy the
+final results into `docs/testing/M5-evidence.md` → "Manual results".
 
-Nothing in this file is a credential. Keep accounts, passwords, VAPID keys and tunnel addresses in
-a private file outside the repository (for example `~/.config/queuebridge/`, mode 600).
-
----
-
-## 0. Where each check can run
-
-| Kind                                               | Needs                                                                                                                                                      | Checks             |
-| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
-| **L — local desktop**                              | this Mac, a desktop browser, `localhost`                                                                                                                   | 1–14, 25–30, 33–36 |
-| **D — local + a phone/tablet on the same network** | phone browser; QR scanning; HTTP is enough (no service worker needed)                                                                                      | 15–17, 31, 32      |
-| **H — HTTPS origin reachable from the phone**      | an `https://` address for the web app (a tunnel or a host with a certificate), real VAPID keys, the worker able to reach the push services on the internet | 18–24              |
-| **A — assistive technology**                       | VoiceOver (macOS/iOS), TalkBack (Android) or NVDA (Windows)                                                                                                | 37–41              |
-
-Why HTTPS for H: browsers allow service workers and push only on a secure origin. `localhost`
-counts as secure on the Mac itself, but a phone opening `http://192.168.x.x` does not. iOS push
-additionally needs the app installed to the Home Screen from an HTTPS origin, on iOS/iPadOS 16.4
-or later.
+Nothing in this file is a credential. Passwords, VAPID keys and tunnel addresses belong in a
+private file outside the repository (for example `~/.config/queuebridge/`, mode 600).
 
 ---
 
-## 1. Prerequisites (one-time; your action)
+## 0. Environment status (prepared 2026-11-15)
 
-1. **PostgreSQL**: the container `queuebridge-pg` (port 55433) running (`docs/local-environment.md` §1).
-2. **Development database migrations.** At the time of writing the development database
-   `queuebridge` is at migration **0006**; M5 needs **0007–0009**. Back it up first and then
-   migrate, as described in `docs/local-environment.md` §5 ("Applying a new migration to the
-   existing development database"):
-   ```bash
-   set -a; . ./.env; set +a
-   pnpm db:check            # shows the pending migrations; changes nothing
-   # back up (see §5), then:
-   pnpm db:migrate
-   ```
-3. **Secrets in `.env`** (never committed): `pnpm env:generate` (session, contact and audit keys
-   if missing). For H checks also `pnpm env:generate --vapid`, then add a contact yourself:
-   `VAPID_SUBJECT=mailto:<your address>`. Verify: `pnpm build && pnpm env:check` → `READY`.
-4. **Accounts with one role each** (`docs/local-environment.md` §6): an organization admin, a
-   `staff_reception`, a `staff_counter`, two `supervisor`s (one approves another's request), an
-   `auditor`. A facility with one service and **two counters** serving it.
-5. For H checks only: an HTTPS address for the web app that the phone can open, for example a
-   free quick tunnel from your own machine (`cloudflared tunnel --url http://localhost:4173`) or a
-   staging host with a certificate. Add that origin to `CORS_ORIGIN` and `WEB_BASE_URL` (comma
-   list for `CORS_ORIGIN`) so the API's Origin/CSRF checks accept it. Choosing a tunnel is your
-   decision; no paid service is needed.
+- Development database `queuebridge` (container `queuebridge-pg`, `localhost:55433`): identity
+  verified (`_queuebridge_identity` = `queuebridge`), **migrated to 9/9** (0007–0009 applied with
+  the repository runner); all 20 existing queue sessions verify (`verified`) after migration.
+  Backup taken before migrating: `~/queuebridge-backups/queuebridge-20261115-121152-pre-0007.dump`
+  (mode 600; restore-tested).
+- `.env` (`pnpm env:check` → `READY`): session, contact-encryption and audit keys set; **Web Push
+  not configured** (no VAPID keys). Non-secret settings: `CORS_ORIGIN` and `WEB_BASE_URL` =
+  `http://localhost:5173`, `PORT=3002`, `API_PROXY_TARGET=http://localhost:3002`, `TRUST_PROXY=false`.
+- Existing accounts you can use (passwords are yours, from M4; not stored here):
+  - organization `m4-acceptance`, facility `m4-clinic` (one counter; services "General
+    Consultation" prefix `G` and "General Consultation 2" prefix `A`): one account each for
+    **org_admin, staff_counter, supervisor, auditor**.
+  - organization `queuebridge-demo`, facilities `sas` and `surulere-branch` (org_admin only).
+    "Queue 2" at `sas` and "Lacrin" at `surulere-branch` both use prefix `A`, so the first ticket
+    of the day in each is `A001`: the same-code fixture for checks 22–23.
+  - organization `demo-health-centre`: one account holding five roles (not usable for refusal
+    checks).
+- Missing for some checks: a `staff_reception` account is optional (counter staff can issue
+  walk-ins). Invite one through Administration → Staff if you want to test reception separately.
 
-## 2. Starting the stack locally
+## 1. Configuration per phase (names only; set values in `.env`)
 
-Run each in its own terminal, from the repository root, after loading the environment:
+| Phase                             | Change from the current `.env`                                                                                                                                                                        | Why                                                                                                |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| A, B (Mac, `localhost`)           | none                                                                                                                                                                                                  | `localhost` is a secure origin on the Mac                                                          |
+| B with desktop push               | `pnpm env:generate --vapid`; add `VAPID_SUBJECT=mailto:<you>`; `CORS_ORIGIN`/`WEB_BASE_URL` = `http://localhost:4173` while using the built app                                                       | real Web Push from desktop Chrome on `localhost` (no HTTPS needed on the Mac itself)               |
+| C (phone on the same Wi-Fi, HTTP) | add `http://<Mac LAN address>:5173` to `CORS_ORIGIN` (comma list) and set `WEB_BASE_URL` to it                                                                                                        | the API's Origin check must accept the phone's origin; join QR codes are built from `WEB_BASE_URL` |
+| D (Android/iOS push)              | an HTTPS address that reaches the Mac's port 4173 (e.g. a free quick tunnel: `cloudflared tunnel --url http://localhost:4173`); add it to `CORS_ORIGIN`, set `WEB_BASE_URL` to it; VAPID keys as in B | phones allow service workers and push only on HTTPS                                                |
+
+Restart the API and worker after every `.env` change (they read the environment once). Restore
+`CORS_ORIGIN`/`WEB_BASE_URL` to `http://localhost:5173` when you are done.
+
+## 2. Commands
+
+From the repository root, in **every** terminal first:
 
 ```bash
-set -a; . ./.env; set +a     # in EVERY terminal (no dotenv)
-
-# Terminal 1 — API (port 3002)
-pnpm dev:api
-
-# Terminal 2 — worker (health evaluation every 30 s, push delivery, retention, checkpoints)
-pnpm dev:worker
-
-# Terminal 3 — web, for L/D checks that need no service worker (port 5173)
-pnpm dev:web -- --host        # --host only if a phone on the network must reach it
-
-# Terminal 3 (instead) — web as built, WITH the service worker (needed for push, offline shell,
-# installability; port 4173). Re-run after code changes.
-pnpm --filter @queuebridge/web exec vite build
-pnpm --filter @queuebridge/web exec vite preview --port 4173 --host
+set -a; . ./.env; set +a
 ```
 
-`CORS_ORIGIN`/`WEB_BASE_URL` must name the origin you open (`http://localhost:5173`,
-`http://localhost:4173` or your HTTPS address). For push checks the worker must run with real
-VAPID keys and `PUSH_TRANSPORT` unset or `web` (never `sandbox`). Watch the worker terminal: it
-logs counts and outcome codes only, never endpoints or keys.
+Build once (and after any code change). `dev:api` and `dev:worker` run the built `dist/` files:
 
-Useful read-only check while testing (counts only):
+```bash
+pnpm build
+```
+
+| Terminal                         | Command                                                                                                                 | Notes                                                  |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| 1 — API (port 3002)              | `pnpm dev:api`                                                                                                          | restarts on rebuild                                    |
+| 2 — worker                       | `pnpm dev:worker`                                                                                                       | health evaluation every 30 s, push delivery, retention |
+| 3 — web, development (port 5173) | `pnpm dev:web` (add `-- --host` for phase C)                                                                            | no service worker: no push, no offline reload          |
+| 3 — web, built (port 4173)       | `pnpm --filter @queuebridge/web exec vite build && pnpm --filter @queuebridge/web exec vite preview --port 4173 --host` | service worker: push, offline shell, installable       |
+
+Read-only helper for push checks (counts only):
 
 ```bash
 psql "$DATABASE_URL" -c "SELECT status, detail_code, COUNT(*) FROM notifications WHERE channel='web_push' AND created_at > NOW() - INTERVAL '1 hour' GROUP BY 1,2"
 ```
 
+(`psql` is not required; the connectivity dashboard shows the same counts.)
+
+## 3. Where each check runs
+
+| Needs                                                           | Checks                                       |
+| --------------------------------------------------------------- | -------------------------------------------- |
+| **Mac only** (Safari/Chrome/Firefox on `localhost`)             | 1–14, 25–36, 37–40 (VoiceOver on macOS)      |
+| **Mac + desktop Chrome with real Web Push** (phase B; no HTTPS) | 18D, 19D, 20D, 21D (desktop variants), 25–27 |
+| **Any phone on the same Wi-Fi (HTTP)**                          | 15, 16, 17                                   |
+| **Android phone + HTTPS + real Web Push**                       | 18–23, 41 (TalkBack)                         |
+| **iPhone/iPad iOS 16.4+ + HTTPS** (if available)                | 24, 41 (VoiceOver iOS)                       |
+| **Windows + NVDA** (optional alternative to VoiceOver)          | 37–40                                        |
+
+## 4. Recommended order (fewest environment changes)
+
+1. **Phase A** — Mac, `pnpm dev:web`, current `.env`: 1–12, 14, 33–36, then 37–40 with VoiceOver.
+2. **Phase B** — Mac, built app on 4173 (switch `CORS_ORIGIN`/`WEB_BASE_URL` to 4173): 13, 29–32
+   (two browser profiles stand in for tablet and laptop; DevTools → Network → Offline), then add
+   VAPID keys and run 18D–21D, 25–28 with desktop Chrome.
+3. **Phase C** — same Wi-Fi, `pnpm dev:web -- --host` with the LAN origin: 15–17.
+4. **Phase D** — HTTPS tunnel to 4173: 18–23 on Android, 41 TalkBack; then 24 and 41 on iOS if
+   available.
+5. Restore `.env` to the localhost values.
+
 ---
 
-## 3. Checklist
+## 5. Checks
 
-Each line: **what to do** → **expected result**.
+Record template for each check: **Actual:** — · **Result:** Not tested · **Evidence:** —
 
 ### M5.1 Recovery (F4)
 
-1. (L) Join from the join link; on the ticket page the recovery key panel appears once → key shown
-   as 8 groups of 4, a QR and a link; the address bar never contains the key.
-2. (L) Press **Copy** → the clipboard holds the key; paste into a text editor; no other value.
-3. (L) Press **Print** (or Ctrl/Cmd-P) → the preview contains the ticket code and the key text
-   only; buttons, hints and the page chrome are not printed.
-4. (L) Press **Share** where the browser supports it → the system share sheet opens with the
-   recovery link; where unsupported the button is absent or explains why.
-5. (L) In a private window, open `/recover`, enter facility, code and the key typed with spaces,
-   hyphens and lower case → the ticket opens; the original window still works.
-6. (L) Enter a wrong key five times from the same browser, then the right key → the sixth attempt
-   says "Too many attempts"; from another network (or after 15 minutes) the right key works.
-   Every failure reads exactly the same, whether or not the code exists.
-7. (L) On the ticket page press **Get a new recovery key** → a new key is shown; the old key now
-   fails on `/recover`; your place in the queue is unchanged.
-8. (L) With two browsers holding the ticket, press **Sign out other devices** in one → the other
-   shows "no longer has access" on its next refresh; the first keeps working; the first sees a
-   notice the next time access is granted elsewhere.
-9. (L, two staff accounts) Staff console → ticket → **Help a visitor get their ticket back** as the
-   counter operator, answering yes to the checks → "approval required"; the same person cannot
-   approve; the second supervisor approves from their list → the grant QR is shown once on the
-   staff screen; opening it on the visitor's device gives access; using it a second time fails.
-10. (L) Repeat 9 answering "no" to the checks → restricted assistance only: no QR, no credential.
-11. (L) As the auditor, try the same → the action is not offered / refused.
-12. (L) Auditor → Audit trail: the recovery and approval entries name both staff members and the
-    reason, and show no key, grant or token.
-13. (L) During an offline capture at the desk (staff console offline, issue a walk-in) → the
-    temporary reference card says recovery is not available until the server confirms it; the
-    recover page shows the matching note about temporary references.
-14. (L, missed-turn) With `rejoin_policy = self_resume`, call and mark missed, then press
-    **I am here** inside the grace window → back in the queue; after the window → told to join
-    again.
+**1. Recovery key shown once (Mac)**
 
-### QR scanning and phones (D)
+- Preconditions: phase A; a facility with an open queue (open today's queue in the staff console
+  if needed).
+- Steps: open the join link (Administration → facility → Join link), press **Get a ticket**.
+- Expected: the key panel appears once: the key in 8 groups of 4 separated by hyphens, a QR code,
+  a link; the address bar never contains the key; after **I have saved my key** the panel does not
+  come back on reload.
+- Actual: — · Result: Not tested · Evidence: —
 
-15. (D) Scan the join QR with a phone camera → the join page opens on the phone.
-16. (D) Scan the key QR from the ticket page with a second phone → the ticket opens; the address
-    bar shows no key after loading.
-17. (D) Scan a staff grant QR (from check 9) with the visitor's phone → access granted once.
+**2. Copy key (Mac)**
 
-### M5.4 Web Push and notification identity (H)
+- Preconditions: as 1, before dismissing the panel.
+- Steps: press **Copy key**; paste into a text editor.
+- Expected: exactly the key text (no link, no code).
+- Actual: — · Result: Not tested · Evidence: —
 
-18. (H, Android Chrome) Open the HTTPS app, join, press **Get a push alert (optional)** → the
-    permission prompt appears only now; allow → "Push alert is on for this ticket on this
-    device". Lock the phone; staff call the ticket → a notification "Your turn: <code>" arrives
-    (record the delay); the staff console shows "Push sent, not confirmed".
-19. (H) Tap the notification → the ticket page opens on the right ticket, shows the banner, and
-    the staff console then shows "Seen on device".
-20. (H) Turn the push alert off; release and call again → no notification; the in-app banner still
-    appears when the page is open.
-21. (H) Deny permission at the prompt → the page explains how to allow it in site settings and
-    offers no button that cannot work; reload → no new prompt.
-22. (H, two tickets with the same code) Join facility A and facility B (both first tickets share a
-    code), turn push on for both, call both → two separate notifications; each opens its own
-    ticket (check service and facility names).
-23. (H) Forget ticket A on the phone, then tap A's notification (call it again if needed) → the
-    neutral "not saved on this device" page; ticket B is NOT opened; the recovery-key link is
-    offered.
-24. (H, iOS/iPadOS 16.4+ if available) In Safari (tab) → the push panel explains Home Screen
-    installation. Add to Home Screen, open the installed app, opt in, repeat 18–19 → record what
-    happens exactly. If no compatible device is available, record **Not executed**.
+**3. Print (Mac)**
 
-### Delivery failure and recovery (L)
+- Preconditions: as 1.
+- Steps: press **Print**; look at the print preview.
+- Expected: ticket code and key text only; buttons, hints and site header not printed.
+- Actual: — · Result: Not tested · Evidence: —
 
-25. (L) Stop the worker; call a subscribed ticket → the in-app banner appears on the open page;
-    queue progression is unaffected; serve and complete work.
-26. (L) Start the worker after more than 120 s → the stale alert is not sent (TTL); the connectivity
-    dashboard counts it under "Failed".
-27. (L) Configure a wrong VAPID private key for the worker only → the worker logs one error and
-    keeps running its other jobs; the dashboard shows "Settings differ between the server and the
-    alert worker" if the public key differs; calls still work.
-28. (L, auto no-show off) A called visitor whose push failed is never marked missed automatically.
+**4. Share / Save as file (Mac)**
 
-### M5.3 Device health and continuity (two devices: L or D)
+- Preconditions: as 1; Safari on macOS supports Share, Chrome on macOS may not.
+- Steps: press **Share key** (where shown) and **Save as file**.
+- Expected: Share opens the system sheet with the key in groups (no link); where Share is
+  unsupported the button is absent; Save downloads `queuebridge-recovery-<code>.txt` containing the
+  ticket code, facility, the grouped key and the privacy note (no link, no token).
+- Actual: — · Result: Not tested · Evidence: —
 
-29. (L/D) Two browsers (tablet and laptop) signed in as counter and supervisor; assign the tablet
-    as coordinator; take the tablet offline (airplane mode) → after 2 minutes the dashboard shows
-    it **offline**, after 15 minutes **stale**, and the `coordinator_offline` alert with its advice;
-    nothing changes automatically.
-30. (L/D) While offline, call and serve on the tablet → the tablet labels them Local / Pending
-    sync; the visitor page does not show them as confirmed and no push is sent.
-31. (D) On the laptop's connectivity dashboard the supervisor presses **Fail over to this device** → the laptop can call; reconnect the tablet
-    → its offline calls are held for review ("needs review", stale epoch), never applied silently;
-    resolve them from the conflict list.
-32. (D) On the connectivity dashboard press **Revoke** for the tablet with the reason "lost" → the wording warns that unsent actions may be lost; the tablet
-    can no longer sync; registering it again creates a new device.
-33. (L) Acknowledge an alert as supervisor → it shows "Acknowledged by …"; as counter staff the
-    action is not offered; as auditor it is read-only.
+**5. Recover with a typed key (Mac)**
 
-### M5.2 Accessibility (L)
+- Preconditions: a ticket and its key from 1.
+- Steps: private window → `/recover`; enter organization, facility, code and the key in lower
+  case with spaces instead of hyphens; **Recover my ticket**.
+- Expected: the ticket opens in the private window; the original window still works.
+- Actual: — · Result: Not tested · Evidence: —
 
-34. (L, keyboard only) Join → ticket → Display and alerts → turn on the push alert → recover →
-    rejoin, with Tab/Shift-Tab/Enter/Space/Escape only → every control reachable, focus always
-    visible, never trapped; dialog returns focus to its opener; a call while the dialog is open
-    closes it and focus stays on the page.
-35. (L) Browser zoom 200 % on the ticket, recover and dashboard pages → no horizontal scrolling,
-    nothing cut off; the 32-character key wraps.
-36. (L) Display and alerts → high contrast, extra-large text, reduce motion, quiet mode; also the OS
-    settings (increase contrast, reduce motion) → applied before the page appears, nothing moves,
-    quiet mode gives no sound/vibration but the banner still shows; rotate a phone/tablet between
-    portrait and landscape → content reflows, nothing is locked.
+**6. Throttle and uniform failures (Mac)**
 
-### Screen readers (A)
+- Preconditions: a fresh ticket and key. Locally every browser reaches the API through the same
+  proxy address, so all windows count as one source.
+- Steps: on `/recover`, enter a wrong key 5 times; then the right key; then also try a code that
+  does not exist with any key.
+- Expected: failures 1–5 show the same "could not recover" message (identical for the real and
+  the non-existent code); the 6th attempt (even with the right key) says "Too many attempts from
+  this connection"; after
+  15 minutes the right key works. No message ever says whether the ticket exists.
+- Actual: — · Result: Not tested · Evidence: —
 
-37. (A) VoiceOver or NVDA on the ticket page during a call → "It is your turn" content announced
-    once (not repeated on refresh); position changes announced politely at most every 15 s.
-38. (A) Push panel states (off, on, denied, unsupported) are read with their explanation; buttons
-    have names.
-39. (A) Recover form: errors are announced and linked to their fields; the success announcement is
-    heard once.
-40. (A) Staff console alert line ("Push sent, not confirmed" …) and the device-health alerts panel:
-    new high-priority alerts announced politely; acknowledge buttons named with the alert.
-41. (A, TalkBack on Android or VoiceOver on iOS) Repeat 37 and 39 on a phone.
+**7. New recovery key (Mac)**
+
+- Preconditions: an open ticket page.
+- Steps: **Get a new recovery key**; then try the OLD key on `/recover`; then the NEW key.
+- Expected: a new key panel; the old key fails like any wrong key; the new key works; position and
+  waiting time unchanged.
+- Actual: — · Result: Not tested · Evidence: —
+
+**8. Sign out other devices (Mac, two browsers)**
+
+- Preconditions: the same ticket open in browser A (join) and browser B (recovered with the key).
+- Steps: after B has recovered, refresh A and read the notices; then in A press **Sign out other
+  devices**; refresh B.
+- Expected: A shows "Access to this ticket was given to another device at …"; after sign-out, B
+  says this device no longer has access; A keeps working; A's message says how many devices were
+  signed out.
+- Actual: — · Result: Not tested · Evidence: —
+
+**9. Staff-assisted recovery, two people (Mac, two staff browsers)**
+
+- Preconditions: `m4-acceptance` counter account and supervisor account signed in in separate
+  browsers on the same queue; a waiting ticket.
+- Steps: counter → staff console → **Help a visitor get their ticket back** → choose the ticket,
+  reason, answer the checks "yes" → request; try to approve with the counter account; supervisor →
+  same panel → **Requests waiting for approval** → approve; counter shows the grant QR; open it on
+  the "visitor" browser (or copy its link from the QR with a phone, check 17); try the grant again.
+- Expected: "Waiting for a different supervisor to approve"; the counter cannot approve; after
+  approval the visitor's browser gets the ticket; second use fails; the staff screen never shows
+  the grant as text.
+- Actual: — · Result: Not tested · Evidence: —
+
+**10. Restricted assistance (Mac)**
+
+- Preconditions: as 9.
+- Steps: repeat 9, answering "no" to the checks.
+- Expected: restricted assistance only: guidance text, no QR, no credential.
+- Actual: — · Result: Not tested · Evidence: —
+
+**11. Auditor cannot assist (Mac)**
+
+- Preconditions: auditor account.
+- Steps: open the staff console for the queue.
+- Expected: no recovery or command actions offered (read-only).
+- Actual: — · Result: Not tested · Evidence: —
+
+**12. Audit trail of recovery (Mac)**
+
+- Preconditions: after 9.
+- Steps: auditor → queue → Audit trail; also supervisor → connectivity dashboard counters.
+- Expected: entries name the requesting and approving staff and the reason; no key, grant or token
+  text anywhere.
+- Actual: — · Result: Not tested · Evidence: —
+
+**13. Temporary tickets are not recoverable yet (Mac, phase B)**
+
+- Preconditions: counter signed in on the built app; DevTools → Network → Offline.
+- Steps: **Issue walk-in ticket** while offline; read the card; open `/recover` in another window.
+- Expected: the card says it is a temporary reference and recovery is not available until the
+  server confirms it; the recover page has the note about temporary references; going online syncs
+  and gives a real code.
+- Actual: — · Result: Not tested · Evidence: —
+
+**14. Missed turn and rejoin (Mac)**
+
+- Preconditions: admin sets the service's rejoin policy to "self resume" (Administration →
+  Services); grace window default 300 s.
+- Steps: call the visitor, mark missed; on the ticket page press **I am here, return me to the
+  queue** within 5 minutes; repeat and wait past 5 minutes.
+- Expected: inside the window: back to waiting; after it: told to join again or ask staff;
+  automatic no-show stays off unless enabled.
+- Actual: — · Result: Not tested · Evidence: —
+
+### Phones on the same Wi-Fi (phase C)
+
+**15. Scan the join QR (phone)**
+
+- Preconditions: phase C settings; join QR shown in Administration (built from `WEB_BASE_URL`).
+- Steps: scan with the phone camera.
+- Expected: the join page opens on the phone; a ticket can be taken.
+- Actual: — · Result: Not tested · Evidence: —
+
+**16. Scan the key QR (second phone)**
+
+- Preconditions: a ticket on phone 1 with its key panel open.
+- Steps: scan the key QR with phone 2.
+- Expected: the ticket opens on phone 2; the address bar shows no key after loading. (Copy and
+  Share need HTTPS on phones; test them on the Mac, checks 2 and 4.)
+- Actual: — · Result: Not tested · Evidence: —
+
+**17. Scan a staff grant QR (phone)**
+
+- Preconditions: an approved grant from check 9.
+- Steps: scan it with the visitor's phone.
+- Expected: access granted once; a second scan fails.
+- Actual: — · Result: Not tested · Evidence: —
+
+### M5.4 Web Push (desktop variant "D" in phase B; phones in phase D)
+
+**18 / 18D. Opt in and receive a push**
+
+- Preconditions: VAPID configured, worker running with `PUSH_TRANSPORT` unset; built app; for 18
+  an Android phone on the HTTPS address, for 18D desktop Chrome on `localhost:4173`.
+- Steps: join; **Get a push alert (optional)**; allow; put the page in the background (phone:
+  lock the screen; desktop: switch to another window); staff call the ticket.
+- Expected: the permission prompt appears only after pressing the button; "Push alert is on for
+  this ticket on this device"; a notification "Your turn: <code>" appears (record the delay); the
+  staff console shows "Push sent, not confirmed".
+- Actual (18): — · Result: Not tested · Evidence: —
+- Actual (18D): — · Result: Not tested · Evidence: —
+
+**19 / 19D. Open the notification**
+
+- Preconditions: after 18 / 18D.
+- Steps: tap/click the notification.
+- Expected: the right ticket page opens with the banner; the staff console then shows "Seen on
+  device".
+- Actual (19): — · Result: Not tested · Evidence: —
+- Actual (19D): — · Result: Not tested · Evidence: —
+
+**20 / 20D. Turn push off**
+
+- Preconditions: push on.
+- Steps: **Turn off push alert**; staff release and call again.
+- Expected: no notification; the in-app banner still appears with the page open.
+- Actual (20): — · Result: Not tested · Evidence: —
+- Actual (20D): — · Result: Not tested · Evidence: —
+
+**21 / 21D. Permission denied**
+
+- Preconditions: a new ticket; site permission not yet granted.
+- Steps: press the button and choose Block/Deny; reload.
+- Expected: text explains how to allow notifications in site settings; no push button; no new
+  prompt on reload; in-app alerts still work.
+- Actual (21): — · Result: Not tested · Evidence: —
+- Actual (21D): — · Result: Not tested · Evidence: —
+
+**22. Two tickets with the same code (Android)**
+
+- Preconditions: `queuebridge-demo` admin opens today's queues for "Queue 2" (`sas`) and "Lacrin"
+  (`surulere-branch`) with no tickets yet.
+- Steps: on one phone take the first ticket in each (both `A001`); turn push on for both; call
+  both.
+- Expected: two separate notifications; each opens its own ticket (check the service and facility
+  names on the page).
+- Actual: — · Result: Not tested · Evidence: —
+
+**23. Notification for a forgotten ticket (Android)**
+
+- Preconditions: after 22.
+- Steps: on ticket `sas`/A001 press **Forget this ticket on this device**; staff release and call
+  it again; tap its notification.
+- Expected: "This alert is for ticket A001. That ticket is not saved on this device"; the
+  `surulere-branch` ticket is NOT opened; an **Enter your recovery key** link is offered.
+- Actual: — · Result: Not tested · Evidence: —
+
+**24. iPhone/iPad (iOS 16.4+), if available**
+
+- Preconditions: HTTPS address; an iOS device.
+- Steps: open in Safari (tab) → read the push panel; Share → Add to Home Screen; open the
+  installed app; join; opt in; lock; call.
+- Expected: in the tab the panel explains Home Screen installation; in the installed app the
+  opt-in works; record exactly whether a notification arrives.
+- Actual: — · Result: Not tested · Evidence: — (if no device: `Not tested — no compatible device`)
+
+### Delivery failure and recovery (Mac, phase B)
+
+**25. Worker stopped (Mac)**
+
+- Preconditions: a subscribed ticket (18D).
+- Steps: stop the worker; call the ticket; serve and complete it.
+- Expected: the in-app banner appears on the open page; serving and completing work; no
+  notification while the worker is stopped.
+- Actual: — · Result: Not tested · Evidence: —
+
+**26. Stale alert after restart (Mac)**
+
+- Preconditions: as 25 with a new call.
+- Steps: keep the worker stopped for more than 2 minutes after the call; start it.
+- Expected: no late notification; the connectivity dashboard "Visitor push alerts" counts it
+  under Failed (time-to-live elapsed).
+- Actual: — · Result: Not tested · Evidence: —
+
+**27. Broken worker push configuration (Mac)**
+
+- Preconditions: worker terminal only: set a different (wrong) `VAPID_PRIVATE_KEY`, restart the
+  worker; API unchanged.
+- Steps: watch the worker log; open the connectivity dashboard after 30 s; call a ticket.
+- Expected: one worker error "Web Push disabled: invalid VAPID configuration", other jobs keep
+  running; the dashboard warns "Settings differ between the server and the alert worker:
+  VAPID_PUBLIC_KEY"; calls and the in-app banner work. Restore the key afterwards.
+- Actual: — · Result: Not tested · Evidence: —
+
+**28. No automatic no-show from failed alerts (Mac)**
+
+- Preconditions: automatic no-show off (default); a called ticket whose push failed (26 or 27).
+- Steps: wait 10 minutes.
+- Expected: the ticket stays "Called"; only staff can mark it missed.
+- Actual: — · Result: Not tested · Evidence: —
+
+### M5.3 Device health and continuity (phase B; two browser profiles, or two real devices)
+
+**29. Offline and stale coordinator (Mac or two devices)**
+
+- Preconditions: profile 1 = counter ("tablet"), profile 2 = supervisor ("laptop"), both on the
+  queue; supervisor assigns the tablet as coordinator; at least one waiting ticket.
+- Steps: take the tablet offline (DevTools Offline, or close it); wait 2 minutes, then 15 minutes;
+  watch the supervisor's connectivity dashboard.
+- Expected: tablet "offline" after about 2 minutes, "stale" after 15; the "offline coordinator is
+  not responding" alert with advice; nothing changes automatically.
+- Actual: — · Result: Not tested · Evidence: —
+
+**30. Offline actions stay local (Mac)**
+
+- Preconditions: as 29, tablet offline but still coordinator.
+- Steps: call and serve on the tablet; look at the visitor page and staff alert line.
+- Expected: tablet shows "Local" / "Pending sync"; the visitor page does not show the call as
+  confirmed; no push and no in-app alert until the server commits it.
+- Actual: — · Result: Not tested · Evidence: —
+
+**31. Explicit failover and fencing (Mac or two devices)**
+
+- Preconditions: as 30.
+- Steps: on the laptop's connectivity dashboard press **Fail over to this device**; call on the
+  laptop; bring the tablet back online.
+- Expected: the laptop can call; the tablet's offline actions are held as "needs review" (stale
+  epoch), never applied silently; the supervisor resolves them from the conflict list; no
+  duplicate alert to the visitor.
+- Actual: — · Result: Not tested · Evidence: —
+
+**32. Lost device (Mac or two devices)**
+
+- Preconditions: a registered device with unsent actions (offline).
+- Steps: connectivity dashboard → **Revoke** for that device, reason lost; bring it online.
+- Expected: wording warns that its unsent actions may be lost; it can no longer sync; signing in
+  again registers a new device.
+- Actual: — · Result: Not tested · Evidence: —
+
+**33. Acknowledge alerts by role (Mac)**
+
+- Preconditions: an open alert (29).
+- Steps: supervisor acknowledges; counter and auditor open the dashboard.
+- Expected: "Acknowledged by <name>"; counter has no acknowledge action (and only sees its own
+  device warning on the console); auditor is read-only.
+- Actual: — · Result: Not tested · Evidence: —
+
+### M5.2 Accessibility (Mac)
+
+**34. Keyboard only**
+
+- Preconditions: phase A, mouse/trackpad untouched.
+- Steps: join → ticket → **Display and alerts** → push panel → `/recover` → rejoin (14), with
+  Tab/Shift-Tab/Enter/Space/Escape only; have staff call while the Display and alerts dialog is
+  open.
+- Expected: every control reachable in a sensible order; focus always visible and never trapped;
+  the dialog returns focus to its opener; a call closes the dialog and focus stays on the page
+  (the banner); Dismiss returns focus to the heading.
+- Actual: — · Result: Not tested · Evidence: —
+
+**35. 200 % zoom**
+
+- Preconditions: Cmd-+ to 200 % (Safari or Chrome).
+- Steps: ticket page with key panel, recover page, connectivity dashboard.
+- Expected: no horizontal scrolling, nothing cut off; the 32-character key wraps.
+- Actual: — · Result: Not tested · Evidence: —
+
+**36. Display preferences and orientation**
+
+- Preconditions: Display and alerts dialog; macOS Accessibility settings; a phone or tablet for
+  rotation (any phase).
+- Steps: high contrast, extra-large text, reduce motion, quiet mode; then macOS "Increase
+  contrast" and "Reduce motion"; trigger a call; rotate a phone between portrait and landscape.
+- Expected: settings apply before the page appears (no flash); nothing moves; quiet mode: no sound
+  or vibration but the banner shows; rotation reflows, nothing locked.
+- Actual: — · Result: Not tested · Evidence: —
+
+### Screen readers
+
+**37. Called announcement (VoiceOver on macOS, or NVDA)**
+
+- Preconditions: screen reader on; ticket page open.
+- Steps: staff call the ticket; refresh; watch position changes before the call.
+- Expected: the call is announced once and not again on refresh; position changes politely, at
+  most one per 15 s.
+- Actual: — · Result: Not tested · Evidence: —
+
+**38. Push panel states (VoiceOver/NVDA)**
+
+- Steps: navigate the push panel in its off, on, blocked and unsupported states.
+- Expected: each state's text is read; buttons have names.
+- Actual: — · Result: Not tested · Evidence: —
+
+**39. Recover form (VoiceOver/NVDA)**
+
+- Steps: submit empty, then a wrong key, then the right key.
+- Expected: errors announced and linked to their fields; the failure message read; success
+  announced once.
+- Actual: — · Result: Not tested · Evidence: —
+
+**40. Staff alert line and health panel (VoiceOver/NVDA)**
+
+- Steps: staff console with a called, subscribed ticket; connectivity dashboard when a new
+  high-priority alert opens.
+- Expected: the visitor-alert line is read ("Push sent, not confirmed" …); a new high-priority
+  alert announced politely; acknowledge buttons named with the alert.
+- Actual: — · Result: Not tested · Evidence: —
+
+**41. Phone screen readers (TalkBack on Android; VoiceOver on iOS if available)**
+
+- Steps: repeat 37 and 39 on the phone.
+- Expected: as 37 and 39.
+- Actual (TalkBack): — · Result: Not tested · Evidence: —
+- Actual (VoiceOver iOS): — · Result: Not tested · Evidence: —
 
 ---
 
-## 4. Known limits to keep in mind while testing
+## 6. Known limits while testing
 
-- Push is best effort: no notification, a late one, or one only after unlocking are all possible
-  and must be recorded as observed, not as a failure of the queue.
-- Headless browser tests could not run the system-notification and notification-click branches;
-  checks 18–24 are the only evidence for them.
+- Push is best effort: no notification, a late one, or one only after unlocking must be recorded
+  as observed, not counted as a queue failure.
+- The system-notification and notification-click branches ran only in unit tests against the real
+  file; checks 18–24 are their only real evidence.
 - The visitor bundle is above the 100 kB target (REQ-F7.7); first loads on slow networks are
-  slower than intended (M7 work).
+  slower than intended (M7).
