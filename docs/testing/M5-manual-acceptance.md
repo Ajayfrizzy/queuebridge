@@ -115,7 +115,28 @@ Record template for each check: **Actual:** — · **Result:** Not tested · **E
   code; **Show QR code** reveals a QR (it encodes the recovery link; no link is shown as text);
   the address bar never contains the key; after **I have saved my key** the panel is gone and does
   not return on reload.
-- Actual: — · Result: Not tested · Evidence: —
+- Actual (2026-11-15, reported by the tester): the recovery panel, the QR display, dismissal and
+  the reload behaviour worked as expected. The tester also reported "the recovery code appears in
+  the address bar".
+- Finding (investigated 2026-11-15): **not a credential exposure.** After joining, the address is
+  `/ticket/<public code>?k=<device-local id>`. The `?k=` value is the saved ticket's device-local
+  id (a UUID such as `0193xxxx-xxxx-7xxx-…`, 36 characters, 8-4-4-4-12), which grants nothing on
+  its own and does not work on another device. The recovery key is 32 characters shown as 8
+  groups of 4 (`XXXX-XXXX-…`); it is never written into the ticket URL. The key appears in an
+  address bar only when a recovery link or QR (`/recover/…#k=<key>`) or a staff walk-in link
+  (`/ticket/…#t=…&k=…`) is opened, in the fragment, which browsers never send to the server. The
+  page removes it in about 15–17 ms (measured), and no history entry keeps it. Regression tests:
+  `e2e/recovery-url-secrecy.spec.ts` (join, link/QR, walk-in, and failure paths: every
+  navigation, request URL, Referer header, request body, Back/Forward and reload; four spellings
+  of the key; no other origin contacted). Mutations that fail the suite: fragment not removed on
+  the recover page; key added to the join URL; walk-in fragment kept by both removal paths (the
+  ticket page's `replaceState` and its later router replace to `?k=`; disabling only the first
+  still passes because the second removes the fragment within the tested bound). Failure output
+  was scanned and contains no key or token.
+- Result: Pass (tester-reported), **pending the tester's confirmation** that the value seen was the
+  `?k=` id (a UUID with hyphens in 8-4-4-4-12 form) and not the 8×4 recovery key. If the 8×4 key
+  itself was seen in the address bar after joining, record Fail with a screenshot (key covered).
+- Evidence: tester report; finding above; automated regression suite named above.
 
 **2. Copy key (Mac)**
 
