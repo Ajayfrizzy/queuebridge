@@ -154,7 +154,10 @@ test.describe('one-time hand-over of the confirmed status link', () => {
   test('after sync, the capturer sees the CONFIRMED code with a working QR link; it is not persisted; Done removes it', async ({
     browser,
     page,
+    baseURL,
   }) => {
+    // The link is built from the API's WEB_BASE_URL, which the test config sets to the web origin
+    const originRe = new URL(baseURL ?? '').origin.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
     const s = await setup(page);
     const staff = await makeStaff(browser, page.request, s.facility.id, 'staff_reception');
     const p = staff.page;
@@ -176,7 +179,7 @@ test.describe('one-time hand-over of the confirmed status link', () => {
     ).toBeVisible();
     await card.getByText('Show status link').click();
     const link = await card.getByTestId('handover-link').innerText();
-    expect(link).toMatch(/^http:\/\/localhost:4173\/ticket\/G001#t=[A-Za-z0-9_-]{43}$/);
+    expect(link).toMatch(new RegExp(`^${originRe}/ticket/G001#t=[A-Za-z0-9_-]{43}$`));
     const secret = link.split('#t=')[1] ?? '';
 
     // Never persisted on the device

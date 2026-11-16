@@ -32,7 +32,8 @@ Full ADRs live in `docs/adr/`.
 
 M0–M4 merged into `staging`. Next: **M5** (recovery, accessibility, device health, Smart Turn Alerts;
 stabilization M5.0 first) → **MQ** (Ask Que) → **M6** (SMS turn alerts + USSD) → **M7** (final UI/UX,
-animated landing page, hardening, demo, submission). No renumbering.
+animated landing page, hardening, demo, submission). No renumbering. M5 manual acceptance Set 2
+(checks 15–41) runs after M7, before submission; Set 1 (checks 1–14) is closed (2026-11-16).
 
 ## Runtime components
 

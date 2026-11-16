@@ -38,6 +38,10 @@ and ADR-011. Do not implement before MQ.
 
 **Milestone status (2026-11-12):** M0–M4 are implemented and merged into `staging` (PRs #1–#6).
 Order from here: **M5 → MQ → M6 → M7**. Do not implement a later milestone's scope early.
+M5 manual acceptance runs in two sets (approved 2026-11-16): Set 1 (checks 1–14) closed during
+development; Set 2 (checks 15–41) is final acceptance after M7, before submission
+(`docs/testing/M5-manual-acceptance.md` §0a). A confirmed critical security or integrity defect is
+never deferred; automated testing and CI continue on every change.
 
 ---
 

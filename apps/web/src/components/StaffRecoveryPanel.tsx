@@ -154,6 +154,10 @@ export function StaffRecoveryPanel({
         true,
       );
     } finally {
+      // The answers belong to this visitor and this request only: the next request asks again
+      // (manual check 10: kept ticks were silently reused for the next visitor)
+      setAsked(false);
+      setMatches(false);
       setBusy(false);
       noteRef.current?.focus();
     }
@@ -166,7 +170,23 @@ export function StaffRecoveryPanel({
       setPending((p) => p.filter((x) => x.request_id !== r.request_id));
       say(`Approved recovery for ${r.public_code}.`);
     } catch (e) {
-      say(e instanceof ApiRequestError ? e.message : 'The approval failed.', true);
+      const gone = e instanceof ApiRequestError && (e.status === 404 || e.status === 409);
+      if (gone) {
+        // Expired, already decided, or no longer part of this queue: drop it and refresh the list
+        setPending((p) => p.filter((x) => x.request_id !== r.request_id));
+        void api
+          .recoveryRequests(queueId)
+          .then((l) => setPending(l.requests.filter((x) => x.status === 'pending')))
+          .catch(() => undefined);
+      }
+      say(
+        gone
+          ? `The request for ${r.public_code} can no longer be approved here: it has expired, was already decided, or belongs to another queue. Ask for a new request if the visitor still needs help.`
+          : e instanceof ApiRequestError
+            ? e.message
+            : 'The approval failed.',
+        true,
+      );
     } finally {
       setBusy(false);
     }
@@ -217,7 +237,12 @@ export function StaffRecoveryPanel({
             <select
               {...aria}
               value={ticketId}
-              onChange={(e) => setTicketId(e.target.value)}
+              onChange={(e) => {
+                setTicketId(e.target.value);
+                // answers given about another ticket never carry over
+                setAsked(false);
+                setMatches(false);
+              }}
               disabled={disabled}
             >
               <option value="">Choose a ticket</option>

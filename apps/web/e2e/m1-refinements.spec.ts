@@ -114,7 +114,14 @@ test.describe('readiness and operational eligibility (UI)', () => {
     );
     const box = card.getByRole('checkbox', { name: 'Pharmacy' });
     await expect(box).toBeEnabled();
+    // The checkbox is optimistic: wait for the server to confirm the assignment before reading
+    // readiness elsewhere (otherwise Overview can load before the write commits)
+    const saved = page.waitForResponse(
+      (r) =>
+        r.url().endsWith('/api/v1/counter_service_capabilities') && r.request().method() === 'POST',
+    );
     await box.check();
+    expect((await saved).ok(), 'assignment saved').toBe(true);
     await expect(box).toBeChecked();
 
     await page.getByRole('link', { name: 'Overview' }).click();

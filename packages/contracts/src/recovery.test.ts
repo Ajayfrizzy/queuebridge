@@ -6,6 +6,8 @@ import {
   RECOVERY_KEY_LENGTH,
   RecoverTicketRequestSchema,
   RecoveryAssistRequestSchema,
+  RecoveryAuditEntrySchema,
+  RecoveryAuditQuerySchema,
   RecoverySecretSchema,
   encodeRecoveryKey,
   formatRecoveryKey,
@@ -152,5 +154,38 @@ describe('service policy recovery fields', () => {
     });
     // an enabled flag without a time is treated as disabled (never a guessed default)
     expect(recoveryPolicyOf({ auto_miss: { enabled: true } }).auto_miss.enabled).toBe(false);
+  });
+});
+
+describe('Recovery activity audit view (design §15.9a)', () => {
+  it('query: bounded limit, uuid cursor, nothing else', () => {
+    expect(RecoveryAuditQuerySchema.parse({})).toEqual({ limit: 50 });
+    expect(RecoveryAuditQuerySchema.parse({ limit: '100' }).limit).toBe(100);
+    for (const bad of [{ limit: '0' }, { limit: '101' }, { after: 'x' }, { extra: '1' }]) {
+      expect(RecoveryAuditQuerySchema.safeParse(bad).success).toBe(false);
+    }
+  });
+  it('entry: staff, visitor device, system or not recorded; unknown kinds rejected', () => {
+    const base = {
+      at: '2026-11-16T10:00:00.000Z',
+      ticket_code: 'G001',
+      kind: 'approval',
+      performed_by: { kind: 'staff', name: 'Staff supervisor', account_status: 'inactive' },
+      reason_code: 'lost_device',
+      assurance: 'basic',
+      method: null,
+      revoked_devices: null,
+    };
+    expect(RecoveryAuditEntrySchema.safeParse(base).success).toBe(true);
+    expect(
+      RecoveryAuditEntrySchema.safeParse({ ...base, performed_by: { kind: 'visitor_device' } })
+        .success,
+    ).toBe(true);
+    expect(RecoveryAuditEntrySchema.safeParse({ ...base, kind: 'grant_shown' }).success).toBe(
+      false,
+    );
+    expect(
+      RecoveryAuditEntrySchema.safeParse({ ...base, performed_by: { kind: 'staff' } }).success,
+    ).toBe(false);
   });
 });

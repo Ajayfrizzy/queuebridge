@@ -1691,8 +1691,39 @@ After an automatic miss the normal grace window and rejoin policy apply (§15.7)
 | `POST /queues/:id/tickets/:ticketId/recovery/assist`     | `WALK_IN` staff | Records the verification outcome; creates a single-use grant (basic assurance needs an approver); returns the grant QR once |
 | `POST /queues/:id/tickets/:ticketId/recovery/approve`    | `QUEUE_MANAGE`  | Second-person approval for a basic-assurance grant                                                                          |
 | `POST /queues/:id/tickets/:ticketId/recovery/revoke-all` | `WALK_IN` staff | Revoke all visitor access; regenerate the key                                                                               |
+| `GET /queues/:id/recovery/requests`                      | `QUEUE_MANAGE`  | Approval list: requests for tickets of this queue only (scoped to the queue, as approval is; manual check 9, 2026-11-15)    |
+| `GET /queues/:id/recovery/audit?after&limit`             | `AUDIT_VIEW`    | Read-only Recovery activity for this queue's tickets (§15.9a; approved extension, 2026-11-16)                               |
 
 There is no unlock endpoint because there is no lock (§15.10).
+
+#### 15.9a Recovery activity audit view (approved extension, 2026-11-16; ADR-015 amendment 1)
+
+Recovery audit records are `admin_events` (rule 8 above); recovery never writes queue events
+(8.R6). The M4 queue Audit trail shows only the queue's hash-chained events, so before this
+extension no screen showed who requested or approved a staff-assisted recovery (manual check 12).
+
+- **Endpoint:** `GET /api/v1/queues/:id/recovery/audit?after=<cursor>&limit=<1–100, default 50>`.
+  Same authorization as the queue audit view (`AUDIT_VIEW`: auditor, supervisor, facility admin;
+  organization admins through their facility permission); read-only; tenant, facility and queue
+  scoped on the server; another tenant's or facility's queue is 404.
+- **Rows:** the existing `ticket_recovery.*` `admin_events` whose target is a ticket of this queue
+  session, oldest first, ordered by `(created_at, id)`; keyset pagination (`next_after` is the
+  last row's event id). Nothing is written, rewritten or backfilled.
+- **Fields:** time, public ticket code, event kind, who performed it, reason code, assurance,
+  method, outcome and revoked-device count where the event recorded them. Details are copied
+  through an allow-list; nothing else from `details` is returned.
+- **Attribution:** staff events (`assist`, `approved`, `restricted_assistance`, `revoke_all`) are
+  attributed to the event's immutable `actor_id`. The name shown is the account's current
+  `display_name`, resolved at read time within the same organization: a display label, not a
+  historical snapshot; a renamed account shows its new name, and a deactivated or suspended one
+  is still named and marked as such (staff are never deleted). Visitor actions (`recovered`,
+  `key_regenerated`, `sessions_revoked`) are shown as the visitor's device, never as a staff
+  member; `abuse_detected` as the system. An event without a recorded actor is shown as "not
+  recorded", never guessed. Requests, approvals and redemptions are related only by their ticket
+  and time: the events carry no request id, so no further link is claimed.
+- **Never returned:** recovery keys, grants, status tokens, hashes, links, staff emails or ids.
+- **Limit:** events of a ticket transferred from another queue stay on its original (root)
+  ticket's queue.
 
 ### 15.10 Rate limiting and abuse prevention
 

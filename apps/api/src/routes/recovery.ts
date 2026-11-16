@@ -3,6 +3,7 @@ import {
   RecoverTicketRequestSchema,
   RecoveryApproveRequestSchema,
   RecoveryAssistRequestSchema,
+  RecoveryAuditQuerySchema,
   RecoveryRevokeAllRequestSchema,
   RejoinRequestSchema,
   Role,
@@ -12,6 +13,7 @@ import {
 import { queueActorRoles, requireFacilityPermission } from '../auth/rbac.js';
 import { requireAuth } from '../auth/session.js';
 import { parseInput, problems } from '../errors.js';
+import { recoveryAuditPage } from '../recovery/audit.js';
 import { sourceOf } from '../recovery/crypto.js';
 import {
   approveRecovery,
@@ -208,7 +210,31 @@ export async function recoveryRoutes(app: FastifyInstance, deps: RouteDeps): Pro
       const facilityId = await queueFacility(db, auth.organizationId, queueId);
       if (!facilityId) throw problems.notFound();
       await requireFacilityPermission(db, auth, facilityId, 'QUEUE_MANAGE');
-      return reply.send({ requests: await listRecoveryRequests(db, auth, facilityId) });
+      return reply.send({ requests: await listRecoveryRequests(db, auth, facilityId, queueId) });
+    },
+  );
+
+  /**
+   * GET /queues/:id/recovery/audit — read-only Recovery activity of this queue's tickets
+   * (design §15.9a; ADR-015 amendment 1). Same permission as the queue audit view (AUDIT_VIEW).
+   */
+  app.get<{ Params: { id: string } }>(
+    '/queues/:id/recovery/audit',
+    staffRoute,
+    async (req, reply) => {
+      const auth = requireAuth(req);
+      const queueId = uuidParam(req.params.id);
+      const facilityId = await queueFacility(db, auth.organizationId, queueId);
+      if (!facilityId) throw problems.notFound();
+      await requireFacilityPermission(db, auth, facilityId, 'AUDIT_VIEW');
+      const q = parseInput(RecoveryAuditQuerySchema, req.query);
+      return reply.send(
+        await recoveryAuditPage(
+          db,
+          { organizationId: auth.organizationId, facilityId, queueId },
+          { after: q.after, limit: q.limit },
+        ),
+      );
     },
   );
 }

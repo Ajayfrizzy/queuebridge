@@ -2,6 +2,7 @@ import { useId, useState, type FormEvent, type ReactElement } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import {
   DEFAULT_OVERRIDE_REASONS,
+  recoveryPolicyOf,
   type PolicyVersion,
   type Service,
   type ServicePolicy,
@@ -57,6 +58,10 @@ function PolicyFields({
 }): ReactElement {
   const reasons = [...new Set([...DEFAULT_OVERRIDE_REASONS, ...(policy?.override_reasons ?? [])])];
   const enabledReasons = new Set(policy?.override_reasons ?? DEFAULT_OVERRIDE_REASONS);
+  // Policies saved before M5 have no rejoin, auto-miss or staff-recovery fields: read them with the
+  // same defaults the server applies (reading `policy.auto_miss.enabled` directly threw and blanked
+  // the page; manual check 14 preparation)
+  const rec = policy ? recoveryPolicyOf(policy) : null;
   return (
     <>
       <fieldset>
@@ -149,7 +154,7 @@ function PolicyFields({
             <select
               {...aria}
               name="rejoin_policy"
-              defaultValue={policy?.rejoin_policy ?? 'staff_resume'}
+              defaultValue={rec?.rejoin_policy ?? 'staff_resume'}
             >
               <option value="staff_resume">Staff decide (default)</option>
               <option value="self_resume">
@@ -162,7 +167,7 @@ function PolicyFields({
           <input
             type="checkbox"
             name="auto_miss"
-            defaultChecked={policy?.auto_miss.enabled ?? false}
+            defaultChecked={rec?.auto_miss.enabled ?? false}
           />{' '}
           Automatically mark an unanswered call as missed (off by default)
         </label>
@@ -180,7 +185,7 @@ function PolicyFields({
               min={60}
               max={3600}
               inputMode="numeric"
-              defaultValue={policy?.auto_miss.after_seconds ?? ''}
+              defaultValue={rec?.auto_miss.after_seconds ?? ''}
             />
           )}
         </Field>
@@ -188,7 +193,7 @@ function PolicyFields({
           <input
             type="checkbox"
             name="staff_recovery"
-            defaultChecked={policy?.staff_recovery ?? true}
+            defaultChecked={rec?.staff_recovery ?? true}
           />{' '}
           Allow staff-assisted ticket recovery (needs a second supervisor to approve)
         </label>

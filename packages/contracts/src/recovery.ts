@@ -199,6 +199,66 @@ export const RecoveryRequestSummarySchema = z.object({
 export type RecoveryRequestSummary = z.infer<typeof RecoveryRequestSummarySchema>;
 
 // ---------------------------------------------------------------------------
+// Recovery activity audit view (design §15.9a; ADR-015 amendment 1). Read-only. Never carries a
+// key, grant, token, hash, link, staff email or staff id.
+// ---------------------------------------------------------------------------
+
+export const RecoveryAuditQuerySchema = z
+  .object({
+    /** Opaque cursor: `next_after` of the previous page */
+    after: z.string().uuid().optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(50),
+  })
+  .strict();
+export type RecoveryAuditQuery = z.infer<typeof RecoveryAuditQuerySchema>;
+
+export const RecoveryAuditKindSchema = z.enum([
+  'request', // staff asked for a grant (basic assurance, approval required)
+  'restricted_assistance', // staff could not verify the visitor: no credential
+  'approval', // a different supervisor or admin approved a request
+  'recovered', // the visitor's device opened the ticket (key or staff grant)
+  'key_regenerated', // the visitor made a new recovery key
+  'sessions_revoked', // the visitor signed out their other devices
+  'access_ended', // staff ended access on all of the ticket's devices
+  'abuse_detected', // many failed attempts for this ticket
+]);
+export type RecoveryAuditKind = z.infer<typeof RecoveryAuditKindSchema>;
+
+export const RecoveryAuditActorSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('staff'),
+    /** The account's CURRENT display name, resolved from the event's immutable actor id */
+    name: z.string(),
+    account_status: z.enum(['active', 'inactive', 'suspended']),
+  }),
+  z.object({ kind: z.literal('visitor_device') }),
+  z.object({ kind: z.literal('system') }),
+  /** The event has no recorded actor: shown as such, never guessed */
+  z.object({ kind: z.literal('not_recorded') }),
+]);
+export type RecoveryAuditActor = z.infer<typeof RecoveryAuditActorSchema>;
+
+export const RecoveryAuditEntrySchema = z.object({
+  at: z.string().datetime(),
+  ticket_code: z.string(),
+  kind: RecoveryAuditKindSchema,
+  performed_by: RecoveryAuditActorSchema,
+  reason_code: RecoveryReasonCodeSchema.nullable(),
+  assurance: z.enum(['basic']).nullable(),
+  method: z.enum(['recovery_key', 'staff_grant']).nullable(),
+  /** Number of devices whose access ended, where the event recorded it */
+  revoked_devices: z.number().int().nonnegative().nullable(),
+});
+export type RecoveryAuditEntry = z.infer<typeof RecoveryAuditEntrySchema>;
+
+export const RecoveryAuditPageSchema = z.object({
+  entries: z.array(RecoveryAuditEntrySchema),
+  /** Pass as `after` for the next page; null on the last page */
+  next_after: z.string().uuid().nullable(),
+});
+export type RecoveryAuditPage = z.infer<typeof RecoveryAuditPageSchema>;
+
+// ---------------------------------------------------------------------------
 // Service policy fields (versioned with the policy, ADR-012)
 // ---------------------------------------------------------------------------
 

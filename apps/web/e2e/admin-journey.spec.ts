@@ -9,7 +9,11 @@ import { PASSWORD, apiFacility, apiSignup, uid, uiLogin } from './helpers.js';
 test('new organization configures a facility end to end and onboards a staff member', async ({
   page,
   browser,
+  baseURL,
 }) => {
+  // Links are built from the API's WEB_BASE_URL, which the test config sets to the web origin
+  const origin = new URL(baseURL ?? '').origin;
+  const originRe = origin.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
   const orgName = `Journey Hospital ${uid('j')}`;
   const adminEmail = `${uid('admin')}@example.test`;
 
@@ -89,7 +93,7 @@ test('new organization configures a facility end to end and onboards a staff mem
   await expect(page.getByTestId('join-notice')).toContainText('Not live yet');
   await expect(page.getByTestId('join-notice')).toContainText('Do not share');
   const joinUrl = await page.getByTestId('join-url').innerText();
-  expect(joinUrl).toBe(`http://localhost:4173/join/${orgSlug}/central-clinic`);
+  expect(joinUrl).toBe(`${origin}/join/${orgSlug}/central-clinic`);
   await expect(page.getByTestId('join-qr')).toBeVisible();
   await expect(page.getByTestId('join-qr')).toHaveAttribute('aria-label', new RegExp(joinUrl));
   const download = page.getByRole('link', { name: 'Download QR (SVG)' });
@@ -108,7 +112,7 @@ test('new organization configures a facility end to end and onboards a staff mem
   const result = page.getByTestId('invite-result');
   await expect(result).toContainText('Email delivery is not configured');
   const inviteLink = await page.getByTestId('invite-link').innerText();
-  expect(inviteLink).toMatch(/^http:\/\/localhost:4173\/accept-invite#token=[A-Za-z0-9_-]{43}$/);
+  expect(inviteLink).toMatch(new RegExp(`^${originRe}/accept-invite#token=[A-Za-z0-9_-]{43}$`));
   await expect(page.getByTestId('pending-invitations')).toContainText(
     'counter.operator@example.test',
   );

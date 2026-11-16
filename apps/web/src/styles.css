@@ -990,10 +990,35 @@ legend {
   user-select: all;
 }
 
+/*
+ * Printing the recovery key (manual check 3). The general print rule above hides every
+ * `section:not(.printable)`, which hid this panel and with it the key. While the panel is on
+ * screen, printing (the Print button or the browser's own command) produces only the key sheet:
+ * ticket code, facility, the grouped key and the privacy note. Everything else on the page, and
+ * the panel's buttons, hints and QR, is left out. Pure CSS: nothing is copied, stored or sent.
+ */
+.print-only {
+  display: none;
+}
 @media print {
+  body:has(.recovery-key-panel)
+    *:not(:has(.recovery-key-panel)):not(.recovery-key-panel):not(.recovery-key-panel *) {
+    display: none !important;
+  }
+  html body section.recovery-key-panel {
+    display: block !important;
+    border: 0;
+    box-shadow: none;
+    padding: 0;
+  }
   .recovery-key-panel .btn-row,
-  .recovery-key-panel .hint {
-    display: none;
+  .recovery-key-panel .hint,
+  .recovery-key-panel .qr-panel,
+  .recovery-key-panel .screen-only {
+    display: none !important;
+  }
+  .recovery-key-panel .print-only {
+    display: block !important;
   }
 }
 

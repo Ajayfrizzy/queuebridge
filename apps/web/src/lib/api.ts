@@ -39,6 +39,7 @@ import type {
   RecoveryAssistRequest,
   RecoveryAssistResponse,
   RecoveryKeyResponse,
+  RecoveryAuditPage,
   RecoveryRequestStatus,
   RecoveryRequestSummary,
   RecoveryRevokeAllRequest,
@@ -334,6 +335,12 @@ export const api = {
     request('GET', `/queues/${queueId}/audit?after_sequence=${afterSequence}&limit=${limit}`),
   verifyAudit: (queueId: string): Promise<{ verification: AuditVerification }> =>
     request('GET', `/queues/${queueId}/audit/verify`),
+  /** Read-only Recovery activity of this queue's tickets (design §15.9a) */
+  recoveryAudit: (queueId: string, after: string | null, limit = 50): Promise<RecoveryAuditPage> =>
+    request(
+      'GET',
+      `/queues/${queueId}/recovery/audit?limit=${limit}${after ? `&after=${encodeURIComponent(after)}` : ''}`,
+    ),
 
   // ---- M2: public / visitor ----
   publicFacility: (org: string, fac: string): Promise<{ facility: PublicFacility }> =>

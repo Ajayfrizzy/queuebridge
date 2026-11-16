@@ -1,11 +1,9 @@
-import { execFileSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { uuidv7 } from '@queuebridge/contracts';
 import { apiQueueSetup, expectNoA11yViolations, hasHorizontalOverflow } from './helpers.js';
 import { goOffline, makeStaff, waitForDevice } from './offline-helpers.js';
-import { e2eWorkerEnv } from './push-env.js';
+import { runWorkerOnce as runWorker } from './worker-once.js';
 
 /**
  * M5.3 device health in real browsers against the real stack (Group 8: 8.D1, 8.D5; Group 11:
@@ -15,16 +13,8 @@ import { e2eWorkerEnv } from './push-env.js';
  */
 const CSRF = { 'X-QB-CSRF': '1' };
 const DB_URL = process.env['TEST_DATABASE_URL'] ?? '';
-const WORKER = fileURLToPath(new URL('../../worker/dist/worker.js', import.meta.url));
 
-function runWorkerOnce(): void {
-  execFileSync('node', [WORKER, '--once'], {
-    // the same push settings as the API, so the configuration check stays consistent
-    env: e2eWorkerEnv(DB_URL),
-    stdio: 'pipe',
-    timeout: 60_000,
-  });
-}
+const runWorkerOnce = (): void => runWorker('device-health');
 
 async function withDb<T>(fn: (sql: postgres.Sql) => Promise<T>): Promise<T> {
   const sql = postgres(DB_URL, { max: 1, onnotice: () => undefined });

@@ -2,6 +2,7 @@
 
 **Spec version:** 1.1 (2026-11-12)  
 **Status:** **M0–M4 complete and merged into `staging`** (PRs #1 M0, #2 M1, #3 F13 spec, #4 M2, #5 M3, #6 M4; `staging` at `01927e4`, M4 merged 2026-11-12 after CI green, manual acceptance 17/17 and Codex review with no open findings). **Next: M5** (Recovery, Accessibility, Device Health **and Smart Turn Alerts**), starting with stabilization task group M5.0. Planned after M5: MQ (Ask Que, F13), M6 (**SMS Turn Alerts** and USSD), M7 (**Final UI/UX, animated landing page**, hardening, demo, submission). Nothing in M5–M7 or MQ is implemented yet.  
+**Update (2026-11-16):** M5 is implemented on `feature/m5-recovery-accessibility-alerts` (not yet merged). M5 manual acceptance runs in two sets (approved 2026-11-16): **Set 1 (checks 1–14) closed, 14 / 14 Pass**; **Set 2 (checks 15–41) is final acceptance after M7**. Remaining sequence: **M5 checkpoint → MQ → M6 → M7 → Set 2 acceptance → submission**. Confirmed critical security or integrity defects are never deferred.  
 **Each task:** implement → test → validate → mark done
 
 ---
@@ -293,7 +294,7 @@ Deferred to M2 (not implemented here): routing-engine eligibility tests, visitor
 > Planned; next milestone. M5.1–M5.3 (recovery, accessibility, device health) are the original M5
 > scope and are unchanged. M5.0 (stabilization) and M5.4 (Smart Turn Alerts, REQ-F14, ADR-013,
 > design §12) are added by the 2026-11-12 plan. Branch: `feature/m5-recovery-accessibility-alerts`
-> from `staging`. Evidence: `docs/testing/M5-evidence.md`. Report: `M5-completion.md`.
+> from `staging`. Evidence: `docs/testing/M5-evidence.md`. Report: `docs/reports/M5-completion.md`.
 > **Order:** M5.0 first (a green, trustworthy test base), then M5.1–M5.4.
 > **Migrations** follow implementation order and are numbered at implementation time (indicatively M5.1 `0007`, M5.3 `0008`, M5.4 `0009`); all are additive.
 > Confirm the open decisions in design §12.12 at kickoff.
@@ -397,6 +398,13 @@ Security follow-up from M5.1 (separate change, recorded in `M5-evidence.md`, "M5
 - [x] M5 final integration (2026-11-15): cross-feature journeys (`m5-integration.db.test.ts`), recovery L2 limit made atomic under concurrency (defect fix), recover-page note for temporary tickets (REQ-F4.12), manual acceptance guide (`docs/testing/M5-manual-acceptance.md`)
 - [x] Final review (2026-11-15): send-time SSRF policy and connect-time address check, database-backed per-ticket change limit shared across instances, lease renewal before each send, deleted-token revocation, bounded `worker --once` (deadline, stop signal, idle-transaction guard); each with a regression test and a killed mutation; licence wording corrected across AGENTS.md, steering, design, requirements, ADR-013 and the architecture document (`M5-evidence.md`)
 
+### M5 manual acceptance schedule (approved by the product owner, 2026-11-16)
+
+- [x] **Set 1 — development acceptance (manual checks 1–14): closed 2026-11-16, 14 / 14 Pass.** Product defects found were fixed with regression tests (print, recover form, approval-list scope, restricted-assistance answers, recovery audit view per ADR-015 amendment 1, policy editor on pre-M5 policies); results and history in `docs/testing/M5-manual-acceptance.md` and `M5-evidence.md`
+- [ ] **Set 2 — final acceptance (manual checks 15–41, desktop and device variants):** run at the final integration and pre-submission stage, after M7 (see M7.6). Until then each record is "Not tested — scheduled for final acceptance (Set 2)". The manual parts of the M5 exit criteria below (11.A11 screen readers, zoom and orientation; 14.10 real-device push; device-drill checks) are verified there
+- Rules: a confirmed critical security or integrity defect is never deferred (fixed and re-verified before the next checkpoint); automated regression, security, database, integration and CI testing continues on every change; no out-of-pocket spending
+- Remaining sequence: **M5 checkpoint → MQ → M6 → M7 → Set 2 acceptance → submission**
+
 ### M5 exit criteria
 
 - [x] M5.0: the M1 sign-out test and the related flaky tests are root-caused and fixed (or recorded as open with evidence) and CI is stable across consecutive runs — **done locally:** 449–450 of 450 per test across five waves; one environment stall recorded as open (`M5-evidence.md`). CI confirmation pending (not pushed)
@@ -410,7 +418,7 @@ Security follow-up from M5.1 (separate change, recorded in `M5-evidence.md`, "M5
 - [x] An alert failure of every kind leaves ticket state, queue revision and the event chain unchanged and never marks a visitor missed — M5.4 (14.7 worker, API and browser tests)
 - [ ] No copy, article or documentation promises alert delivery — UI copy and the service worker verified by `copyTruthfulness.test.ts`; KB articles do not exist until MQ
 - [ ] Full gate set green: format, lint, typecheck, build, `pnpm test`, `pnpm test:db`, Playwright (all projects), DB validation and security audit; no assertion weakened — **green locally (2026-11-15); CI not run**
-- [ ] Evidence recorded in `docs/testing/M5-evidence.md` and `M5-completion.md` — evidence and acceptance report recorded; manual results and `M5-completion.md` outstanding
+- [ ] Evidence recorded in `docs/testing/M5-evidence.md` and `docs/reports/M5-completion.md` — evidence, Set 1 manual results and the completion report recorded (2026-11-16); Set 2 results at final acceptance
 
 ---
 
@@ -572,7 +580,16 @@ Security follow-up from M5.1 (separate change, recorded in `M5-evidence.md`, "M5
 - [ ] Kiro contribution documented with concrete artifacts
 - [ ] Public demo video ≤ 3 minutes
 
+### M7.6 Final acceptance (Set 2 of the M5 manual acceptance; before submission)
+
+- [ ] Re-read M5 manual checks 15–41 against the final screens; update wording only where a screen or label changed, never a criterion
+- [ ] Run Set 2 by environment group (`docs/testing/M5-manual-acceptance.md` section 0a): Mac and desktop browser; phones on the local network; Android and Web Push; iOS if a device is available; device health and failover; accessibility and screen readers
+- [ ] Record each result as observed; a check without a compatible device is "Not tested — no compatible device", never a Pass
+- [ ] Any confirmed critical security or integrity defect is fixed and re-verified before submission
+
 ### M7 exit criteria
+
+- [ ] M5 manual acceptance Set 2 (checks 15–41) recorded in `docs/testing/M5-manual-acceptance.md` (M7.6)
 
 - [ ] All ten core feature groups demonstrated in integrated workflows
 - [ ] All test groups 1–12 passing, plus Group 14 (turn alerts) and Group 15 (final UI/UX, landing, cross-browser)

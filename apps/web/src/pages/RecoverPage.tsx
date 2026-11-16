@@ -14,12 +14,26 @@ import { saveTicket, ticketPath } from '../lib/tickets.js';
  * server, an access log or a Referer header. It is read once, removed from the address bar at
  * once and sent in a POST body. Nothing the visitor types is stored on the device.
  *
- * Every failure shows the same message: the page never says whether a ticket exists, whether the
- * key was wrong, or whether the ticket ended. There is no CAPTCHA and no lockout.
+ * Every failed recovery shows the same message: the page never says whether a ticket exists,
+ * whether the key was wrong, or whether the ticket ended. Only an incomplete or malformed form
+ * (which depends on what was typed, not on any ticket) gets its own message. There is no CAPTCHA
+ * and no lockout.
  */
 const NOT_RECOVERED =
   'We could not recover a ticket with those details. Check the facility, the ticket code and the ' +
   'recovery key, then try again. If you cannot find your key, ask a member of staff for help.';
+/**
+ * Format problems are told apart from a failed recovery (manual check 6): they depend only on
+ * what was typed, never on whether a ticket exists, so they reveal nothing. An empty field is
+ * caught before sending; the key field is cleared after every failure and is a password field,
+ * so pressing the button again used to send an empty key that looked like another wrong key.
+ */
+const MISSING =
+  'Fill in the organization, the facility, the ticket code and the recovery key. The key field is ' +
+  'emptied after every attempt, so type the key again.';
+const MALFORMED =
+  'Some of these details are not in the expected form. Check the organization and facility (as ' +
+  'in the join link), the ticket code (for example A012) and the 32-character key, then try again.';
 
 export function RecoverPage(): ReactElement {
   const params = useParams();
@@ -73,7 +87,9 @@ export function RecoverPage(): ReactElement {
           ? 'Too many attempts from this connection. Wait a few minutes and try again.'
           : offline
             ? 'Recovery needs a connection. Connect to the internet and try again.'
-            : NOT_RECOVERED;
+            : e instanceof ApiRequestError && e.status === 400
+              ? MALFORMED
+              : NOT_RECOVERED;
       setMessage({ text, offline });
       announce(text);
     } finally {
@@ -114,12 +130,19 @@ export function RecoverPage(): ReactElement {
 
   function onSubmit(e: FormEvent): void {
     e.preventDefault();
-    void submit({
+    const body = {
       org_slug: org.trim().toLowerCase(),
       facility_slug: facility.trim().toLowerCase(),
       ticket_code: code.trim().toUpperCase(),
       recovery_key: key,
-    });
+    };
+    if (!body.org_slug || !body.facility_slug || !body.ticket_code || !key.trim()) {
+      // Nothing is sent: an incomplete form is not a recovery attempt
+      setMessage({ text: MISSING, offline: false });
+      announce(MISSING);
+      return;
+    }
+    void submit(body);
   }
 
   return (

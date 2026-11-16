@@ -3,7 +3,9 @@ import { E2E_CONTACT_KEY, E2E_PUSH_HOST, E2E_VAPID_PUBLIC_KEY } from './e2e/push
 
 /** Dedicated test port: never the dev API (3002) nor other local projects (3001). */
 const API_PORT = 3101;
-const WEB_PORT = 4173;
+// E2E_WEB_PORT: local override when 4173 is taken (for example by a manual phase B preview); CI
+// and normal runs use 4173. Specs derive expected links from `baseURL` (WEB_BASE_URL = WEB_ORIGIN)
+const WEB_PORT = Number(process.env['E2E_WEB_PORT'] ?? 4173);
 const WEB_ORIGIN = `http://localhost:${WEB_PORT}`;
 const DATABASE_URL =
   process.env['TEST_DATABASE_URL'] ??

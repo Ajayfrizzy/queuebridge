@@ -129,6 +129,8 @@ general-purpose chatbot and not part of core queue operations. Spec: REQ-F13, de
 
 M0–M4 are implemented and **merged into `staging`** (PRs #1–#6). Order from here: **M5 → MQ → M6 → M7**
 (MQ = Ask Que, between M5 and M6; no renumbering). Do not implement a later milestone's scope early.
+M5 manual acceptance runs in two sets (approved 2026-11-16): Set 1 (checks 1–14) is closed; Set 2
+(checks 15–41) is final acceptance after M7, before submission.
 
 ## F14 — Smart Turn Alerts (planned; milestone M5, with F4/F7/F9 unchanged)
 

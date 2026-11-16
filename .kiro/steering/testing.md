@@ -205,6 +205,10 @@ real state machine transitions, real SQL against a real (test) database, real re
 - 15.8 Cross-browser: smoke journeys on Chromium, Firefox and WebKit at mobile and desktop sizes; real-device checklist recorded.
 - 15.9 Regression: Groups 1–14 (including the M1–M4 routing rules, coordinator fencing and audit chain) pass unchanged after the redesign; no assertion weakened.
 
+### Manual acceptance schedule (approved 2026-11-16)
+
+M5 manual acceptance runs in two sets: Set 1 (checks 1–14) is closed; Set 2 (checks 15–41, desktop and device variants) runs as final acceptance after M7, before submission (`docs/testing/M5-manual-acceptance.md` §0a). A deferred check stays "Not tested — scheduled for final acceptance (Set 2)"; deferral is never a Pass, Fail or Skip, and an automated test never replaces a manual result. A confirmed critical security or integrity defect is never deferred. Automated Groups 8, 11 and 14 stay green on every change.
+
 ### Stabilization rule (M5.0 onward)
 
 A known intermittent test is not "fixed" by retrying, lengthening timeouts or loosening assertions. Reproduce it, find the cause, fix the product or the test synchronization, and show repeated consecutive passes under CI-like conditions. If it cannot be reproduced it stays listed as open with its observed frequency. Tracked items: the M1 `security-isolation` sign-out/back test, the `review-fixes` logout "Dismiss" locator, and the M3 `offline` storage-unavailable test (tasks M5.0).

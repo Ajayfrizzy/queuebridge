@@ -873,6 +873,9 @@ Not executed** (checks 18–24).
 
 ### Manual results
 
+_(As of 2026-11-15. Superseded by "M5 manual acceptance: Set 1 results and the two-set schedule"
+at the end of this file.)_
+
 **None executed.** All checks 1–41 in `M5-manual-acceptance.md` are **Not executed** as of this
 report. This includes every real-device check (QR scanning, Android Chrome push and clicks, iOS
 installed-PWA push, two same-code tickets on one phone, two-device outage and failover, lost-device
@@ -983,3 +986,108 @@ expected result and Actual / Result / Evidence fields; the guide was checked aga
 UI labels and local configuration). **All 41 checks: Not tested.** Configuration still to be done
 by the tester for later phases: VAPID keys and contact (desktop and phone push), LAN origin
 (phase C), HTTPS address (phase D).
+
+## M5 manual acceptance: Set 1 results and the two-set schedule (2026-11-16)
+
+**Decision (product owner, 2026-11-16):** manual acceptance runs in two sets so the remaining
+development can continue without dropping any required verification. The procedures, numbering
+and criteria in `M5-manual-acceptance.md` are unchanged; its section 0a holds the schedule.
+
+### Set 1 — development acceptance (checks 1–14): closed, 14 / 14 Pass
+
+| Check | Subject                               | Result                                           | Defect found and fixed during Set 1 (tests that prove it)                                                                                                                                      |
+| ----- | ------------------------------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1     | Recovery key shown once               | Pass                                             | none (address-bar value was the device-local id); URL-secrecy suite added (`e2e/recovery-url-secrecy.spec.ts`, commit `4a0431a`)                                                               |
+| 2     | Copy key                              | Pass                                             | —                                                                                                                                                                                              |
+| 3     | Print                                 | Pass — verified after correction                 | key missing from print output: print stylesheet hid the panel (`e2e/recovery-print.spec.ts`)                                                                                                   |
+| 4     | Share / Save as file                  | Pass — fully verified                            | —                                                                                                                                                                                              |
+| 5     | Recover with a typed key              | Pass                                             | —                                                                                                                                                                                              |
+| 6     | Throttle and uniform failures         | Pass — verified after correction                 | empty or malformed submissions looked like wrong keys; limit itself correct (`e2e/recovery-throttle.spec.ts`, "manual check 6 sequence")                                                       |
+| 7     | New recovery key                      | Pass                                             | —                                                                                                                                                                                              |
+| 8     | Sign out other devices                | Pass                                             | —                                                                                                                                                                                              |
+| 9     | Staff-assisted recovery, two people   | Pass — independently verified after revalidation | approval list offered other queues' requests (queue-scoped now; "approval list scope"); grant redemption confirmed with database counts (local helper `e2e/manual/check9-grant-redemption.ts`) |
+| 10    | Restricted assistance                 | Pass — verified after correction                 | verification answers carried over between requests (`e2e/recovery-staff-restricted.spec.ts`)                                                                                                   |
+| 11    | Auditor cannot assist                 | Pass                                             | —                                                                                                                                                                                              |
+| 12    | Audit trail of recovery               | Pass — verified after correction                 | no view of recovery audit records: approved extension, ADR-015 amendment 1, design §15.9a (`recovery-audit.db.test.ts`, `e2e/recovery-audit.spec.ts`)                                          |
+| 13    | Temporary tickets not recoverable yet | Pass — verified after environment correction     | none in the product; built app's origin missing from `CORS_ORIGIN` (local `.env` corrected)                                                                                                    |
+| 14    | Missed turn and rejoin                | Pass                                             | Edit policy page blank for services saved before M5 (`e2e/policy-editor-legacy.spec.ts`); final automatic no-show state taken from the saved policy version (v5, off)                          |
+
+No security bypass was found in Set 1. Every product defect above was reproduced by a regression
+test that failed before its fix and passes after it. All Set 1 fixes after `4a0431a` are in the
+working tree, not yet committed (M5 checkpoint).
+
+### Set 2 — final acceptance (checks 15–41): deferred
+
+Scheduled for the final integration and pre-submission stage, after M7. Every record reads **Not
+tested — scheduled for final acceptance (Set 2)** until a person runs it; deferral is never a
+Pass, Fail or Skip. 32 records, grouped by environment in `M5-manual-acceptance.md` section 0a:
+Mac and desktop browser (18D–21D, 25–28); phones on the local network (15–17); Android and Web Push
+(18–23, 41 TalkBack); iOS if a device is available (24, 41 VoiceOver iOS); device health and
+failover (29–33); accessibility and screen readers (34–40). These include the manual items of
+11.A11 (screen readers, zoom, orientation) and 14.10 (real-device push).
+
+### Rules for the rest of the project
+
+1. A confirmed critical security or integrity defect is never deferred: it is fixed and
+   re-verified before the next checkpoint, whichever set or milestone it is found in.
+2. Automated regression, security, database, integration and CI testing continues on every change
+   through MQ, M6 and M7; Groups 8, 11 and 14 stay green.
+3. No out-of-pocket spending: Set 2 uses available devices and free tools only; a check without a
+   compatible device is recorded as such, never as a Pass.
+4. Remaining sequence: **M5 checkpoint → MQ (Ask Que) → M6 (SMS turn alerts and USSD) → M7 (final
+   product) → Set 2 acceptance → submission.**
+
+## M5 checkpoint readiness (2026-11-16, after Set 1)
+
+Working tree on `feature/m5-recovery-accessibility-alerts` above `4a0431a`: 23 modified and 9 new
+files (the Set 1 fixes, their regression tests, ADR-015 amendment 1, design §15.9a, the local
+check 9 helper and the documentation). Not committed, not pushed.
+
+### Automated gates (full tree)
+
+| Gate                                        | Result                                                                                                    |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `pnpm format:check`, `pnpm lint`, typecheck | pass (lint: zero warnings)                                                                                |
+| `pnpm test`                                 | pass: contracts 118, ui 6, channels 33, domain 109, continuity 64, api 56, worker 12, web 97              |
+| `pnpm build`                                | pass                                                                                                      |
+| `pnpm test:db`                              | pass: api 608 (33 files), worker 61 (4 files)                                                             |
+| Playwright, all projects                    | 241 passed, 5 skipped (4 opt-in capture tests, Firefox print variant), **1 failed** (see open item below) |
+| `pnpm audit --audit-level high`             | pass: no high or critical (2 low, 3 moderate)                                                             |
+
+The browser suite ran with `E2E_WEB_PORT=4174` because the tester's phase B preview held 4173; two
+specs now derive expected links from the configured origin instead of a literal `localhost:4173`
+(identical on 4173).
+
+### Open items
+
+- **Intermittent (environment item 2 above, recurred once):** `device-health.spec.ts` "an auditor
+  reads alerts …" failed once in the full run when `worker --once` exceeded its 60 s bound
+  (`spawnSync ETIMEDOUT`); the spec then passed 33 / 33 in isolation (3 repeats). Not fixed by
+  retrying: recorded as open, frequency 1 in this full run. Device-health code is unchanged since
+  `fd5d52e`.
+- **CI not run** for this tree (needs a push, which needs authorization).
+- **Manual:** Set 2 (checks 15–41) at final acceptance; the M5 exit criteria that depend on manual
+  passes (11.A11, 14.10, device drills) close there.
+- **Minor, not changed:** the offline refusal says "Reconnect once" also when registration was
+  refused while online (check 13 finding).
+- **Not verified here:** the WebKit and Firefox variants of the print test skip in CI (CI installs
+  Chromium only); Firefox does not launch headless on this Mac.
+- `M5-completion.md` not yet written.
+
+No known open security or integrity defect.
+
+### Checkpoint reliability gate (2026-11-16)
+
+- **`device-health` `worker --once` timeout:** not reproduced. A single run takes 0.4–0.8 s on
+  the shared test database (34,887 facilities, 28,217 open sessions, 23,339 devices); under two
+  more full-suite loads all 60 recorded runs finished (12 runs: max 1,544 ms; 48 runs: mean 456 ms,
+  max 751 ms; none failed). Cause of the single slow run unconfirmed; most consistent with open
+  item 2 (local Docker/PostgreSQL stall). The old harness discarded the worker's output and killed
+  it at 60 s, before the worker's own deadline, so it could not explain itself. Corrected (test
+  harness only): shared `e2e/worker-once.ts` (worker deadline 50 s below the 60 s kill; failures
+  report duration and the worker's log messages; optional timing log `QB_WORKER_TIMING_LOG`).
+- **`m1-refinements` "inactive counters/services …" (found in the same gate):** test race with an
+  optimistic checkbox; with the save delayed by 1.5 s the original test fails with the exact
+  full-run signature and the fixed test (waits for the server's confirmation) passes.
+- **Final full run:** Playwright 242 passed, 5 skipped, 0 failed; changed specs 147 / 147 over
+  three repeats. Completion report: `docs/reports/M5-completion.md`.

@@ -648,11 +648,17 @@ export async function recoveryRequestStatus(
   return { status: statusOf(r) };
 }
 
-/** Requests of a facility that are pending, or were decided in the last 10 minutes. */
+/**
+ * Requests for tickets of ONE queue session that are pending, or were decided recently. Scoped to
+ * the queue because approval is (`/queues/:id/tickets/:ticketId/recovery/approve` checks that the
+ * ticket belongs to that queue): a facility-wide list offered requests from other queues, such as
+ * yesterday's session after midnight, whose Approve button could only fail (manual check 9).
+ */
 export async function listRecoveryRequests(
   db: Db,
   auth: AuthContext,
   facilityId: string,
+  queueId: string,
 ): Promise<RecoveryRequestSummary[]> {
   const rows = await db<
     {
@@ -680,6 +686,7 @@ export async function listRecoveryRequests(
       JOIN services s ON s.id = qs.service_id
       JOIN staff_users u ON u.id = g.created_by
      WHERE g.facility_id = ${facilityId} AND g.organization_id = ${auth.organizationId}
+       AND t.queue_session_id = ${queueId}
        AND g.created_at > NOW() - INTERVAL '30 minutes'
      ORDER BY g.created_at DESC
      LIMIT 50`;

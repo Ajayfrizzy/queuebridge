@@ -1,5 +1,3 @@
-import { execFileSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
 import {
   expect,
@@ -11,7 +9,8 @@ import {
 } from '@playwright/test';
 import { uuidv7 } from '@queuebridge/contracts';
 import { apiQueueSetup, expectNoA11yViolations, hasHorizontalOverflow } from './helpers.js';
-import { e2eWorkerEnv, E2E_PUSH_HOST } from './push-env.js';
+import { E2E_PUSH_HOST } from './push-env.js';
+import { runWorkerOnce as runWorker } from './worker-once.js';
 
 /**
  * M5.4 Smart Turn Alerts in real browsers against the real stack (testing steering Group 14:
@@ -27,16 +26,9 @@ import { e2eWorkerEnv, E2E_PUSH_HOST } from './push-env.js';
  */
 const CSRF = { 'X-QB-CSRF': '1' };
 const DB_URL = process.env['TEST_DATABASE_URL'] ?? '';
-const WORKER = fileURLToPath(new URL('../../worker/dist/worker.js', import.meta.url));
 type Setup = Awaited<ReturnType<typeof apiQueueSetup>>;
 
-function runWorkerOnce(): void {
-  execFileSync('node', [WORKER, '--once'], {
-    env: e2eWorkerEnv(DB_URL),
-    stdio: 'pipe',
-    timeout: 60_000,
-  });
-}
+const runWorkerOnce = (): void => runWorker('turn-alerts');
 async function withDb<T>(fn: (sql: postgres.Sql) => Promise<T>): Promise<T> {
   const sql = postgres(DB_URL, { max: 1, onnotice: () => undefined });
   try {

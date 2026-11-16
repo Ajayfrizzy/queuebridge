@@ -312,6 +312,54 @@ describe('8.R3 throttling', () => {
     expect((await recover(withKey(q, v.code, v.key), freshIp())).status).toBe(200);
   });
 
+  it('manual check 6 sequence: five wrong keys in any spelling, the right key refused, identical failures, open again after 15 minutes', async () => {
+    const q = await setupQueue(t.app, { counters: 1 });
+    const v = await join(q);
+    const ip = freshIp();
+    const spell = [
+      (k: string): string => k.toLowerCase().replace(/(.{4})(?!$)/g, '$1 '),
+      (k: string): string => k.replace(/(.{4})(?!$)/g, '$1-'),
+      (k: string): string => k.toLowerCase(),
+      (k: string): string => ` ${k.replace(/(.{8})(?!$)/g, '$1 - ')} `,
+      (k: string): string => k,
+    ];
+    const bodies: Record<string, unknown>[] = [];
+    for (const f of spell) {
+      const r = await recover(withKey(q, v.code, f(wrongKey())), ip);
+      expect(r.status).toBe(404);
+      bodies.push(shape(r.body));
+    }
+    for (const b of bodies) expect(b).toEqual(bodies[0]);
+    // the 6th attempt is refused even with the right key, in any spelling
+    const right = await recover(withKey(q, v.code, v.key.toLowerCase()), ip);
+    expect(right.status).toBe(429);
+    expect(JSON.stringify(right.body).includes(v.key), 'no secret in the refusal').toBe(false);
+    // a non-existent code fails with the same status and body as the real one
+    const none = await recover(withKey(q, 'Z999', wrongKey()), freshIp());
+    expect(none.status).toBe(404);
+    expect(shape(none.body)).toEqual(bodies[0]);
+    // malformed requests (what the manual run sent: empty key) count for L1 only, never as a
+    // failed key check for the ticket, and are told apart only by their format (400)
+    const other = await join(q);
+    const ip2 = freshIp();
+    for (let i = 0; i < 3; i++) {
+      expect((await recover(withKey(q, other.code, ''), ip2)).status).toBe(400);
+    }
+    expect((await recover(withKey(q, other.code, other.key), ip2)).status).toBe(200);
+    // 16 minutes later (windows are at most 15 minutes) the first source gets in with the key
+    const crypto = createRecoveryCrypto({ CONTACT_ENCRYPTION_KEY: '7e57'.repeat(16) })!;
+    const k = targetKeys(
+      crypto,
+      { orgSlug: q.org.slug, facilitySlug: q.facilitySlug, ticketCode: v.code },
+      ip,
+    );
+    await t.db`UPDATE recovery_throttle SET window_started_at = window_started_at - INTERVAL '16 minutes'
+                WHERE key_hash = ANY(${[k.source, k.targetSource, k.target, k.facility, k.facilitySource]})`;
+    expect(
+      (await recover(withKey(q, v.code, v.key.replace(/(.{4})(?!$)/g, '$1-')), ip)).status,
+    ).toBe(200);
+  });
+
   it('no irreversible lockout: every window expires by itself and there is no lock state at all', async () => {
     const q = await setupQueue(t.app, { counters: 1 });
     const v = await join(q);
@@ -551,6 +599,62 @@ const approve = (
   c.post(`/api/v1/queues/${q.queueId}/tickets/${ticketId}/recovery/approve`, {
     request_id: requestId,
   });
+
+describe('8.R5 staff-assisted recovery: approval list scope (manual check 9 revalidation)', () => {
+  it("a queue's approval list shows only requests that can be approved from that queue", async () => {
+    // Two open queues in ONE facility: like yesterday's and today's session after midnight
+    const q = await setupQueue(t.app, { counters: 1 });
+    const other = await setupQueue(t.app, {
+      counters: 1,
+      org: q.org,
+      fid: q.fid,
+      facilitySlug: q.facilitySlug,
+    });
+    const v = await join(q);
+    const counter = await createStaff(t.app, q.org, q.fid, 'staff_counter');
+    const sup = await createStaff(t.app, q.org, q.fid, 'supervisor');
+    const a = await assist(counter.client, q, v.ticketId, true);
+    expect(a.status).toBe(200);
+    type Listed = { status: number; body: { requests: { request_id: string }[] } };
+    const list = (queueId: string): Promise<Listed> =>
+      sup.client.get<{ requests: { request_id: string }[] }>(
+        `/api/v1/queues/${queueId}/recovery/requests`,
+      );
+    // The request's own queue lists it and approves it
+    const own = await list(q.queueId);
+    expect(own.body.requests.map((r) => r.request_id)).toContain(a.body.request_id);
+    // Another queue of the same facility must not list a request it cannot approve: approving
+    // through that queue is (correctly) refused as not found
+    const elsewhere = await list(other.queueId);
+    expect(elsewhere.status).toBe(200);
+    expect(elsewhere.body.requests.map((r) => r.request_id)).not.toContain(a.body.request_id);
+    const wrongQueue = await sup.client.post(
+      `/api/v1/queues/${other.queueId}/tickets/${v.ticketId}/recovery/approve`,
+      { request_id: a.body.request_id },
+    );
+    expect(wrongQueue.status).toBe(404);
+    // another organization sees nothing and cannot approve; the requester cannot approve
+    const foreign = await setupQueue(t.app, { counters: 1 });
+    expect(
+      (await foreign.org.admin.get(`/api/v1/queues/${q.queueId}/recovery/requests`)).status,
+    ).toBe(404);
+    expect((await approve(foreign.org.admin, q, v.ticketId, a.body.request_id ?? '')).status).toBe(
+      404,
+    );
+    expect((await approve(counter.client, q, v.ticketId, a.body.request_id ?? '')).status).toBe(
+      403,
+    );
+    // the request's own queue: a different supervisor approves it
+    expect((await approve(sup.client, q, v.ticketId, a.body.request_id ?? '')).status).toBe(200);
+    // ... and once decided it is no longer pending in the list
+    const after = await sup.client.get<{ requests: { request_id: string; status: string }[] }>(
+      `/api/v1/queues/${q.queueId}/recovery/requests`,
+    );
+    expect(after.body.requests.find((r) => r.request_id === a.body.request_id)?.status).toBe(
+      'approved',
+    );
+  });
+});
 
 describe('8.R5 staff-assisted recovery', () => {
   it('no verified factor: restricted assistance only — no grant, no token, audited', async () => {

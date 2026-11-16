@@ -69,10 +69,13 @@ export function RecoveryKeyPanel({
       className="card recovery-key-panel"
       data-testid="recovery-key-panel"
     >
+      <p className="print-only" data-testid="recovery-print-heading">
+        QueueBridge recovery key for ticket <strong>{code}</strong> at {facilityName}
+      </p>
       <h2 id="recovery-key-heading" className="card-title">
         Your recovery key
       </h2>
-      <p>
+      <p className="screen-only">
         Save this now. It is shown <strong>only once</strong> on this page. If you lose your phone
         or clear your browser, the key is how you get your ticket back. Your ticket code{' '}
         <strong>{code}</strong> alone is not enough, so keep the key private.
@@ -80,6 +83,11 @@ export function RecoveryKeyPanel({
       <p className="recovery-key-text mono" data-testid="recovery-key-text">
         <span className="visually-hidden">Recovery key: </span>
         {grouped}
+      </p>
+      <p className="print-only">
+        Keep this private. With it, anyone can get access to your ticket status. Your ticket code
+        alone cannot be used to recover your ticket. Open the QueueBridge recover page and enter the
+        facility, ticket code and this key.
       </p>
       <div className="btn-row">
         <button type="button" className="btn btn-secondary" onClick={() => void copy()}>

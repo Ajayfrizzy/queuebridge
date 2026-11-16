@@ -137,26 +137,46 @@ test.describe('visitor recovery with the key (8.R1, 8.R2, 8.R4)', () => {
     const s = await apiQueueSetup(page.request);
     const a = await joinVisitor(browser, s);
     const wrongKey = 'Z'.repeat(32);
-    const messages: string[] = [];
-    const attempts = [
-      { code: a.code, key: wrongKey }, // right code, wrong key
-      { code: 'Q999', key: wrongKey }, // unknown code
-      { code: a.code, key: '' }, // the public code alone
-    ];
-    for (const at of attempts) {
+    async function attempt(at: {
+      code: string;
+      key: string;
+    }): Promise<{ message: string; requests: number }> {
       const v = await freshContext(browser);
+      let requests = 0;
+      v.page.on('request', (r) => {
+        if (r.url().endsWith('/api/v1/tickets/recover')) requests += 1;
+      });
       await v.page.goto(recoverLink(s, at.code));
       await v.page.getByLabel('Recovery key').fill(at.key);
       await v.page.getByRole('button', { name: 'Recover my ticket' }).click();
       const err = v.page.getByTestId('recover-error');
       await expect(err).toBeVisible();
-      messages.push((await err.innerText()).trim());
+      await expect(v.page.getByRole('button', { name: 'Recover my ticket' })).toBeEnabled();
+      const message = (await err.innerText()).trim();
       expect(v.page.url()).toContain('/recover/');
       expect(await storageDump(v.page)).not.toContain('"qb.tickets.v1"');
       await v.ctx.close();
+      return { message, requests };
     }
-    expect(new Set(messages).size).toBe(1);
-    expect(messages[0]).not.toMatch(/wrong|not found|exists|expired|ended|incorrect/i);
+    // Key checks that fail: one message for a real and an unknown code
+    const failed = [
+      await attempt({ code: a.code, key: wrongKey }), // right code, wrong key
+      await attempt({ code: 'Q999', key: wrongKey }), // unknown code
+    ];
+    expect(new Set(failed.map((f) => f.message)).size).toBe(1);
+    for (const f of failed) expect(f.requests).toBe(1);
+    // The public code alone (no key): never sent, never opens anything, and the page answers the
+    // same for a real and an unknown code (manual check 6: an empty form has its own message,
+    // which depends only on what was typed)
+    const codeAlone = [
+      await attempt({ code: a.code, key: '' }),
+      await attempt({ code: 'Q999', key: '' }),
+    ];
+    expect(new Set(codeAlone.map((f) => f.message)).size).toBe(1);
+    for (const f of codeAlone) expect(f.requests).toBe(0);
+    for (const m of [failed[0]?.message ?? '', codeAlone[0]?.message ?? '']) {
+      expect(m).not.toMatch(/wrong|not found|exists|expired|ended|incorrect/i);
+    }
     await a.ctx.close();
   });
 
@@ -293,7 +313,10 @@ test.describe('staff-assisted recovery (8.R5)', () => {
     );
     await expect(page.getByTestId('staff-recovery-active')).toHaveCount(0);
 
-    // 2. Basic factor: a request is created; the requester cannot approve it
+    // 2. Basic factor: a request is created; the requester cannot approve it. The answers are
+    // given again for every request (they are cleared after each one)
+    await expect(panel.getByLabel(/I asked the visitor before showing/)).not.toBeChecked();
+    await panel.getByLabel(/I asked the visitor before showing/).check();
     await panel.getByLabel(/They named the correct service/).check();
     const assist = page.waitForResponse((r) => r.url().includes('/recovery/assist'));
     await panel.getByRole('button', { name: 'Start recovery' }).click();
