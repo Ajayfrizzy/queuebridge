@@ -565,6 +565,75 @@ describe('14.4 concurrency, leases and crashes', () => {
   });
 });
 
+describe('a malformed outbox row never blocks the batch (CI finding, 2026-11-16)', () => {
+  it('a row without a payload is closed as failed/invalid_payload once; the valid row in the same batch is sent; nothing is re-claimed', async () => {
+    // A web_push row whose payload is missing (as older or hand-written rows have): before the
+    // fix, closing it threw UNDEFINED_VALUE outside the per-row guard, which aborted every batch
+    // it was in, left it unprocessed forever and stranded the other rows claimed with it.
+    const f = await calledTicket();
+    const sub = await subscription(f);
+    const [n] = await sql<{ id: string }[]>`
+      INSERT INTO notifications (organization_id, ticket_id, channel, template_key, status, push_subscription_id, event_sequence)
+      VALUES (${f.orgId}, ${f.ticketId}, 'web_push', 'ticket.called', 'pending', ${sub}, ${f.callSeq}) RETURNING id`;
+    const [bad] = await sql<{ id: string }[]>`
+      INSERT INTO notification_outbox (notification_id, dedup_key, created_at, next_attempt_at)
+      VALUES (${n?.id ?? ''}, ${`web_push:malformed:${hex(8)}`}, NOW() - INTERVAL '200 seconds', NOW() - INTERVAL '200 seconds')
+      RETURNING id`;
+    // past its 120 s TTL: the path that crashed (closing a failed row touched its subscription)
+    const goodSub = await subscription(f);
+    const good = await enqueue(f, goodSub);
+    const sandbox = new SandboxPushTransport();
+    const r = await processTurnAlerts(sql, sandbox, cipher);
+    expect(r.claimed).toBeGreaterThanOrEqual(2);
+    expect(r.errors).toBe(0);
+    expect(await state(good.notificationId)).toEqual({ status: 'sent', detail_code: 'accepted' });
+    expect((await outboxRow(good.outboxId)).processed).toBe(true);
+    expect(await state(n?.id ?? '')).toEqual({ status: 'failed', detail_code: 'invalid_payload' });
+    expect((await outboxRow(bad?.id ?? '')).processed).toBe(true);
+    // the good row was sent once; every send is a row recorded as sent (none for the malformed one)
+    const refs = sandbox.sent.map((x) => (JSON.parse(x.payload) as { ref?: string }).ref);
+    expect(refs.filter((x) => x === goodSub)).toHaveLength(1);
+    expect(sandbox.sent).toHaveLength(r.sent);
+    // closed for good: a later pass does not claim either row again
+    const again = await processTurnAlerts(sql, sandbox, cipher);
+    expect((await outboxRow(bad?.id ?? '')).attempt_count).toBe(1);
+    expect(again.sent).toBe(0);
+  });
+
+  it('an error while recording one row never aborts the others in its batch', async () => {
+    const f = await calledTicket();
+    const rows = await Promise.all(
+      Array.from({ length: 3 }, async () => enqueue(f, await subscription(f))),
+    );
+    // A real database error for ONE row's result (throwaway database; removed afterwards)
+    const victim = rows[0]?.notificationId ?? '';
+    await sql.unsafe(`
+      CREATE OR REPLACE FUNCTION qb_test_refuse_delivery() RETURNS trigger AS $$
+      BEGIN
+        IF NEW.notification_id = '${victim}'::uuid THEN RAISE EXCEPTION 'test: refused'; END IF;
+        RETURN NEW;
+      END $$ LANGUAGE plpgsql;
+      CREATE TRIGGER qb_test_refuse_delivery BEFORE INSERT ON notification_deliveries
+        FOR EACH ROW EXECUTE FUNCTION qb_test_refuse_delivery();`);
+    try {
+      const r = await processTurnAlerts(sql, new SandboxPushTransport(), cipher, {
+        concurrency: 1,
+      });
+      expect(r.claimed).toBeGreaterThanOrEqual(3);
+      // the other rows are sent and recorded; the refused one stays pending (its lease expires
+      // and a later pass retries it), it is never marked sent
+      for (const x of rows.slice(1)) {
+        expect(await state(x.notificationId)).toEqual({ status: 'sent', detail_code: 'accepted' });
+      }
+      expect((await state(victim)).status).toBe('pending');
+      expect(r.errors).toBe(1);
+    } finally {
+      await sql.unsafe(`DROP TRIGGER IF EXISTS qb_test_refuse_delivery ON notification_deliveries;
+                        DROP FUNCTION IF EXISTS qb_test_refuse_delivery();`);
+    }
+  });
+});
+
 describe('14.7 the worker never touches queue state', () => {
   it('every outcome leaves tickets, sessions, events and transitions byte-for-byte unchanged', async () => {
     const f = await calledTicket();

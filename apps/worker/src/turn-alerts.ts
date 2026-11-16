@@ -47,6 +47,31 @@ export interface TurnAlertResult {
   unknown: number;
   /** rows another worker re-claimed before this one reached them (not sent, not recorded) */
   superseded: number;
+  /**
+   * rows whose result could not be recorded (database error): left for the next pass after the
+   * lease; counted, never allowed to stop the rest of the batch
+   */
+  errors: number;
+}
+
+/**
+ * The outbox payload this worker needs. Rows written by the API always have it; a row without it
+ * (older or hand-written data) is closed as failed/invalid_payload instead of being retried
+ * forever and blocking every batch it is claimed in (CI finding, 2026-11-16).
+ */
+function validPayload(p: unknown): p is Claimed['payload'] {
+  if (typeof p !== 'object' || p === null) return false;
+  const x = p as Record<string, unknown>;
+  const uuid = (v: unknown): boolean =>
+    typeof v === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+  return (
+    uuid(x['subscription_id']) &&
+    uuid(x['ticket_id']) &&
+    typeof x['event_sequence'] === 'number' &&
+    Number.isInteger(x['event_sequence']) &&
+    (x['counter_id'] === null || uuid(x['counter_id']))
+  );
 }
 
 interface Claimed {
@@ -80,7 +105,10 @@ interface Context {
 
 type Outcome =
   | { status: 'sent'; detail: 'accepted' }
-  | { status: 'failed'; detail: 'gone' | 'ttl_elapsed' | 'retries_exhausted' | 'rejected' }
+  | {
+      status: 'failed';
+      detail: 'gone' | 'ttl_elapsed' | 'retries_exhausted' | 'rejected' | 'invalid_payload';
+    }
   | { status: 'suppressed'; detail: 'ticket_changed' | 'subscription_revoked' }
   | { status: 'unknown'; detail: 'error' }
   | { status: 'retry'; delaySeconds: number }
@@ -103,6 +131,7 @@ export async function processTurnAlerts(
     retrying: 0,
     unknown: 0,
     superseded: 0,
+    errors: 0,
   };
 
   // Without a transport (push not configured in this worker) nothing is sent; rows past their
@@ -142,22 +171,34 @@ export async function processTurnAlerts(
   const workers = Array.from({ length: Math.min(opts.concurrency ?? 8, work.length) }, async () => {
     for (let row = work.shift(); row; row = work.shift()) {
       let outcome: Outcome;
-      try {
-        outcome = await attempt(sql, transport, cipher, row, {
-          ttl,
-          maxAttempts,
-          backoff: opts.backoffSeconds ?? 5,
-          lease,
-        });
-      } catch {
-        // decryption, payload or transport defects: honest "unknown", never a retry storm
-        outcome = { status: 'unknown', detail: 'error' };
+      if (!validPayload(row.payload)) {
+        // nothing to send and nothing to look up: close it once, honestly
+        outcome = { status: 'failed', detail: 'invalid_payload' };
+      } else {
+        try {
+          outcome = await attempt(sql, transport, cipher, row, {
+            ttl,
+            maxAttempts,
+            backoff: opts.backoffSeconds ?? 5,
+            lease,
+          });
+        } catch {
+          // decryption, payload or transport defects: honest "unknown", never a retry storm
+          outcome = { status: 'unknown', detail: 'error' };
+        }
       }
       if (outcome.status === 'superseded') {
         result.superseded += 1;
         continue;
       }
-      await finish(sql, row, outcome);
+      try {
+        await finish(sql, row, outcome);
+      } catch {
+        // One row's result could not be recorded: its transaction rolled back, so it is retried
+        // after its lease. It must never abort the rest of the batch.
+        result.errors += 1;
+        continue;
+      }
       if (outcome.status === 'retry') result.retrying += 1;
       else result[outcome.status] += 1;
     }
@@ -280,7 +321,12 @@ async function finish(
            SET revoked_at = NOW(), revoke_reason = 'gone', endpoint_ct = NULL, keys_ct = NULL
          WHERE id = ${row.payload.subscription_id} AND revoked_at IS NULL`;
     }
-    if (outcome.status === 'failed' && outcome.detail !== 'gone') {
+    // a row with no valid payload names no subscription: nothing to count against
+    if (
+      outcome.status === 'failed' &&
+      outcome.detail !== 'gone' &&
+      outcome.detail !== 'invalid_payload'
+    ) {
       await tx`UPDATE push_subscriptions SET failure_count = failure_count + 1 WHERE id = ${row.payload.subscription_id}`;
     }
   });

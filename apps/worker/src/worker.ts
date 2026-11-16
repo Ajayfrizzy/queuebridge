@@ -152,6 +152,11 @@ async function runOnce(force = false): Promise<void> {
       ttlSeconds: env.TURN_ALERT_TTL_SECONDS,
     });
     if (r.claimed + r.failed > 0) log('info', 'Turn alerts processed', { ...r });
+    if (r.errors > 0) {
+      log('error', 'Turn-alert results could not be recorded; retried after the lease', {
+        errors: r.errors,
+      });
+    }
   } catch (err) {
     log('error', 'Turn-alert delivery failed (other jobs continue)', {
       error: err instanceof Error ? err.message : String(err),

@@ -1091,3 +1091,33 @@ No known open security or integrity defect.
   full-run signature and the fixed test (waits for the server's confirmation) passes.
 - **Final full run:** Playwright 242 passed, 5 skipped, 0 failed; changed specs 147 / 147 over
   three repeats. Completion report: `docs/reports/M5-completion.md`.
+
+### First CI run (PR #8, 2026-11-16) and the worker fix
+
+CI ran twice (push and pull request). Ten jobs passed (lint and typecheck, tests without DB,
+build, security audit, migrations); **"Tests with PostgreSQL" failed in both**, one browser test
+each, 240 passed and 6 skipped (CI also skips the WebKit print variant):
+
+1. `turn-alerts.spec.ts` 14.3: after `worker --once` the alert stayed `pending`. **Root cause
+   (worker defect):** an outbox row without a payload (`{}`; written by two API database tests,
+   which in CI run in the same job and database just before the browser tests) crashed the batch:
+   closing it as failed ran `UPDATE push_subscriptions … WHERE id = undefined`, which the database
+   client rejects (`UNDEFINED_VALUE`) outside the per-row guard. The whole batch aborted every
+   pass, the row was never closed (seen locally re-claimed up to 87 times since 2026-11-14), and
+   rows claimed in the same batch were stranded. The product's own enqueue always writes a full
+   payload, but one malformed row must not stop delivery for others. **Fix:** a row whose payload
+   is not valid is closed once as `failed / invalid_payload` without being sent; a subscription is
+   only touched when the payload names one; an error while recording one row is counted
+   (`errors`) and logged and never aborts the rest of the batch. Regression tests
+   (`apps/worker/src/turn-alerts.db.test.ts`, "a malformed outbox row never blocks the batch"):
+   both fail on the old worker (`UNDEFINED_VALUE`; batch aborted by a refused delivery record) and
+   pass on the fix. Worker database suite 63 / 63.
+2. `offline-timing-handover.spec.ts` "lost acknowledgement": the known open intermittent
+   (open item 1), recurring once in CI. Not changed.
+
+Still open (local only, not seen in CI): under an artificial stress run (turn-alerts,
+device-health and offline-timing-handover repeated six times on two workers) some visitor pages
+did not update within 10 s after a staff call (1 and 9 failures in two rounds after the fix).
+Ruled out: worker speed, live-stream slot leaks (25 sequential pages all went live), server-side
+throttling, the status loader, notification channels, database locks. Cause unconfirmed. The
+regular full suite after the fix: 242 passed, 5 skipped, 0 failed.

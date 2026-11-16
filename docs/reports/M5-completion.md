@@ -102,7 +102,10 @@ only). Sequence: **M5 checkpoint → MQ → M6 → M7 → Set 2 acceptance → s
 
 ## Known limitations and remaining risks
 
-- **CI not run** for this tree (needs a push, which needs authorization).
+- **CI (PR #8):** the first run found a worker defect (a malformed outbox row aborted every
+  turn-alert batch); fixed with regression tests in a follow-up commit (evidence "First CI run").
+  `offline-timing-handover` "lost acknowledgement" recurred once in CI (open item). Under an
+  artificial local stress run some visitor pages updated late; cause unconfirmed, not seen in CI.
 - **Set 2 not run:** no real-device push, QR scanning on phones, device drills or screen-reader
   passes yet; the related exit criteria close at final acceptance.
 - **Worker housekeeping jobs** (turn-alert delivery, the retention purges) have no per-statement
