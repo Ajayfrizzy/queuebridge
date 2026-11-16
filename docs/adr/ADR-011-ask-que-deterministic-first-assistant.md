@@ -1,7 +1,10 @@
 # ADR-011: Ask Que — Deterministic-First, Read-Only Navigation Assistant
 
 **Date:** 2026-11-07  
-**Status:** Proposed (specification only; not implemented). Formal acceptance is task MQ.1.  
+**Status:** Accepted (2026-11-16). Specification only; implementation is milestone MQ, starting with task MQ.1.  
+**Acceptance:** direction approved by the product owner on 2026-11-07 (recorded below); formally
+accepted on 2026-11-16 in the MQ specification reconciliation after M5 was merged into `staging`
+(PR #8, `cebbe06`). Evidence: `docs/reports/MQ-design-readiness.md`.  
 **Feature:** F13 — Ask Que Anything (planned, milestone MQ)
 
 ## Context
@@ -72,7 +75,7 @@ Constraints that shape the decision:
   kept as a possible future adapter, not selected.
 - **No assistant (static docs only):** loses screen- and role-aware navigation; rejected.
 
-## Decisions recorded on 2026-11-07 (direction approved; ADR remains Proposed)
+## Decisions recorded on 2026-11-07 (direction approved by the product owner)
 
 - **No provider selected.** Free-tier or sponsored options are researched during MQ; selection or
   integration needs a separate explicit decision. Eligible only with no personal spending, no
@@ -82,6 +85,57 @@ Constraints that shape the decision:
 - **Offline staff help:** generic procedures only, never tenant-sensitive content; bound to user
   and role digest, expires no later than the session, purged on sign-out, 401 or role change
   (design §11.5).
+
+## Acceptance and M5 reconciliation (2026-11-16)
+
+The decision above is accepted unchanged. Every principle is retained:
+
+- deterministic first, and fully functional with the AI layer disabled;
+- offline and low-bandwidth operation from cached, text-only bundles;
+- role awareness and tenant isolation, with restricted content authorized server-side;
+- read-only: no mutation path, no tool calling, outside the authoritative sequence (ADR-004);
+- an optional AI layer behind a provider-neutral `InferenceAdapter`, disabled by default;
+- no personal spending, no payment card, no paid inference and no automatic paid overage;
+- truthful capability status from a manifest generated from server flags.
+  **No inference provider is selected.** Acceptance of this ADR does not select, approve or
+  integrate a provider; that still needs a separate explicit decision (REQ-F13.4.8).
+  M5 added behaviour that Que must explain (ticket recovery and the restricted staff procedure,
+  recovery activity audit, grace, self-resume and automatic no-show, device health, turn alerts and
+  accessibility preferences). Reconciling it needed no change to this decision. The specification
+  clarifications made at the same time are in design §11.2, §11.3, §11.10a and §11.11 and are listed
+  in `docs/reports/MQ-design-readiness.md` §3. They are:
+- `org_admin` receives every staff audience, because the API lets an organization administrator
+  satisfy every permission (`apps/api/src/auth/rbac.ts`);
+- route-registry entries need the domain transition roles as well as API permissions, because
+  counter actions are gated by the ticket state machine, not by a named permission;
+- a capability that is built but switched off in a deployment (Web Push without VAPID keys) must
+  never be shown as available (decided as D1 below);
+- the M5 knowledge-base inventory and capability entries are listed in design §11.10a.
+
+## Reconciliation decisions D1–D4 (approved by the product owner, 2026-11-16)
+
+All four are within this decision; none changes the architecture.
+
+- **D1 Capability availability.** The four statuses (`live`, `preview`, `sandbox`, `planned`)
+  stay as they are. A separate server-computed `availability` (`available` | `unavailable`, with
+  reason `not_implemented`, `not_configured` or `switched_off`) says whether a built capability
+  can be used in this deployment now. Que presents a capability as usable only when it is `live`
+  and `available`; REQ-F13.9.1 is unchanged (design §11.2).
+- **D2 Role fingerprint.** One server-side function computes the fingerprint of the user's
+  effective, facility-scoped role grants; the server issues it with the authenticated restricted
+  KB response. The browser compares opaque server values only and never decides authorization.
+  Offline expiry, role-change, sign-out and 401 handling are unchanged; `/auth/me` gains no field
+  unless a documented compatibility need is approved (design §11.5.4).
+- **D3 Permission synchronization.** The API permission map is shared with Que unchanged.
+  Consistency checks cover API permissions, Que route access, frontend role assumptions,
+  state-machine operation roles and cross-facility authorization. No RBAC redesign (design §11.3).
+- **D4 Recovery verification privacy.** Public help may describe the staff-assisted recovery
+  procedure but never the verification questions or expected answers, which stay in
+  role-restricted staff articles. The recovery procedure is unchanged (design §11.5.1).
+
+The AI layer remains disabled by default, no inference provider is selected, and the
+zero-out-of-pocket rule (no personal spending, payment card, paid inference or automatic overage)
+remains mandatory.
 
 ## Open decisions (do not block MQ.1)
 

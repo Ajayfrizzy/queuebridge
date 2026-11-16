@@ -3,6 +3,7 @@
 **Spec version:** 1.1 (2026-11-12)  
 **Status:** **M0–M4 complete and merged into `staging`** (PRs #1 M0, #2 M1, #3 F13 spec, #4 M2, #5 M3, #6 M4; `staging` at `01927e4`, M4 merged 2026-11-12 after CI green, manual acceptance 17/17 and Codex review with no open findings). **Next: M5** (Recovery, Accessibility, Device Health **and Smart Turn Alerts**), starting with stabilization task group M5.0. Planned after M5: MQ (Ask Que, F13), M6 (**SMS Turn Alerts** and USSD), M7 (**Final UI/UX, animated landing page**, hardening, demo, submission). Nothing in M5–M7 or MQ is implemented yet.  
 **Update (2026-11-16):** M5 is implemented on `feature/m5-recovery-accessibility-alerts` (not yet merged). M5 manual acceptance runs in two sets (approved 2026-11-16): **Set 1 (checks 1–14) closed, 14 / 14 Pass**; **Set 2 (checks 15–41) is final acceptance after M7**. Remaining sequence: **M5 checkpoint → MQ → M6 → M7 → Set 2 acceptance → submission**. Confirmed critical security or integrity defects are never deferred.  
+**Update (2026-11-16, MQ reconciliation):** **M5 merged into `staging`** (PR #8, merge commit `cebbe06`, all CI checks green). ADR-011 accepted. **Next: MQ** (entry criteria below). Reconciliation record: `docs/reports/MQ-design-readiness.md`.  
 **Each task:** implement → test → validate → mark done
 
 ---
@@ -407,7 +408,7 @@ Security follow-up from M5.1 (separate change, recorded in `M5-evidence.md`, "M5
 
 ### M5 exit criteria
 
-- [x] M5.0: the M1 sign-out test and the related flaky tests are root-caused and fixed (or recorded as open with evidence) and CI is stable across consecutive runs — **done locally:** 449–450 of 450 per test across five waves; one environment stall recorded as open (`M5-evidence.md`). CI confirmation pending (not pushed)
+- [x] M5.0: the M1 sign-out test and the related flaky tests are root-caused and fixed (or recorded as open with evidence) and CI is stable across consecutive runs — **done locally:** 449–450 of 450 per test across five waves; one environment stall recorded as open (`M5-evidence.md`). CI confirmation pending (not pushed) — _2026-11-16: CI green on PR #8 after two fixes found by CI (`2542263` worker malformed-row defect, `ee30105` handover test race)_
 - [ ] Groups 8 (recovery and device-health access/privacy), 11 (accessibility) and 14 (turn alerts) tests pass; Groups 1–7, 9 and 12 still pass (M1–M4 routing rules, coordinator fencing and the audit chain unchanged) — automated parts pass locally (2026-11-15, `M5-evidence.md` acceptance report); 11.A11 and 14.10 manual not executed
 - [ ] Keyboard-only visitor journey end-to-end verified, including the turn alert controls — automated (11.A1, turn-alert keyboard tests); manual check 34 not executed
 - [ ] Recovery: impossible from the public ticket code alone; 160-bit HMAC-stored keys; throttles that the guess cannot evade and that never lock out the rightful holder; uniform oracle-free errors; restricted staff procedure and audit verified; recovery creates no queue event and changes no ticket state, position or age (Group 8: 8.R1–8.R8, 8.R10, 8.R11)
@@ -417,7 +418,7 @@ Security follow-up from M5.1 (separate change, recorded in `M5-evidence.md`, "M5
 - [x] Device health dashboard shows last contact, sync health, coordinator status and failure reasons; stale detection and automatic alerts with recipients verified; evaluation leaves the single-coordinator authority model, queue state and event chain unchanged (Group 8: 8.D1–8.D6; Group 6)
 - [x] An alert failure of every kind leaves ticket state, queue revision and the event chain unchanged and never marks a visitor missed — M5.4 (14.7 worker, API and browser tests)
 - [ ] No copy, article or documentation promises alert delivery — UI copy and the service worker verified by `copyTruthfulness.test.ts`; KB articles do not exist until MQ
-- [ ] Full gate set green: format, lint, typecheck, build, `pnpm test`, `pnpm test:db`, Playwright (all projects), DB validation and security audit; no assertion weakened — **green locally (2026-11-15); CI not run**
+- [ ] Full gate set green: format, lint, typecheck, build, `pnpm test`, `pnpm test:db`, Playwright (all projects), DB validation and security audit; no assertion weakened — **green locally (2026-11-15); CI not run** — _2026-11-16: all six CI jobs green on PR #8 (CI runs Playwright on Chromium only; Firefox/WebKit locally)_
 - [ ] Evidence recorded in `docs/testing/M5-evidence.md` and `docs/reports/M5-completion.md` — evidence, Set 1 manual results and the completion report recorded (2026-11-16); Set 2 results at final acceptance
 
 ---
@@ -428,12 +429,31 @@ Security follow-up from M5.1 (separate change, recorded in `M5-evidence.md`, "M5
 > M0–M7. **Entry gate:** M5 exit criteria met (visitor join/status/recovery, sync states,
 > accessibility baseline, device health and turn alerts exist, so help can describe real behaviour;
 > turn-alert articles describe push, sound and vibration only as best effort).
+>
+> **Entry gate as reconciled on 2026-11-16** (`docs/reports/MQ-design-readiness.md` §8). The
+> original wording "M5 exit criteria met" predates the approved two-set acceptance schedule:
+> several M5 exit boxes stay open until Set 2 because they include manual checks. MQ entry is
+> therefore read as:
+>
+> - [x] M5 merged into `staging` (PR #8, `cebbe06`, 2026-11-16)
+> - [x] M5 manual acceptance Set 1 (checks 1–14): 14 / 14 Pass
+> - [x] Set 2 (checks 15–41) deferred to final acceptance after M7, as approved; the M5 exit boxes
+>       that depend on it remain open and are not claimed
+> - [x] CI green on the merged tree (all six jobs on PR #8)
+> - [x] No known open critical security or integrity defect
+> - [x] ADR-011 accepted; MQ specification reconciled with M5 (design §11.2, §11.3.1, §11.10a, §11.11)
+> - [x] Remaining M5 limitations recorded and accepted as non-blocking for MQ (`M5-completion.md`
+>       "Known limitations"); those that affect Que content are listed in the readiness report §8
+> - [x] Decisions D1–D4 approved by the product owner (2026-11-16): capability availability
+>       indicator, server-issued role fingerprint, permission synchronization checks, recovery
+>       verification privacy (readiness report §7; design §11.2, §11.5.4, §11.3, §11.5.1)
+>
 > The AI layer (MQ.4) is optional: MQ is complete with the AI layer disabled if no approved
 > free-tier or sponsored provider is available. No subscription or paid inference may be activated.
 
 ### MQ.1 Contracts and deterministic core (`packages/assist`)
 
-- [ ] ADR-011 formally accepted (it remains Proposed until this task); `packages/assist` added to package-boundary tables (imports `contracts` only)
+- [ ] ADR-011 formally accepted (it remains Proposed until this task); `packages/assist` added to package-boundary tables (imports `contracts` only) — _ADR-011 accepted 2026-11-16 (spec reconciliation); the boundary tables (`AGENTS.md` §2, architecture steering, adding `assist` to the `apps/web` row; `apps/api` already imports all packages) are updated when the package is created_
 - [ ] `KbArticle`, `CapabilityManifest`, `RouteId`, `QueAnswer` schemas in `packages/contracts`
 - [ ] Shared permission map moved to `packages/contracts` and used by both API and Que route registry
 - [ ] Route/screen registry with required permissions and default articles per screen
@@ -467,7 +487,7 @@ Security follow-up from M5.1 (separate change, recorded in `M5-evidence.md`, "M5
 
 ### MQ.5 Knowledge-base content (seed)
 
-- [ ] Articles for live M1–M5 behaviour per design §11.10 (visitor, reception, counter, supervisor, admin, auditor, connectivity)
+- [ ] Articles for live M1–M5 behaviour per design §11.10 (visitor, reception, counter, supervisor, admin, auditor, connectivity); M5 articles and capability entries per design §11.10a
 - [ ] Coverage check: every essential workflow step has a deterministic article and route (no AI-only answers)
 - [ ] Non-live capabilities (e.g. SMS/USSD before M6) documented only as `sandbox`/`planned`
 - [ ] Content review checklist: accurate, no promised times, no fabricated capabilities, plain language

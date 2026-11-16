@@ -159,8 +159,8 @@ See `M0-completion.md` for a detailed account of Kiro's contributions.
 | M2        | Online queue, visitor flows, staff console                                                                         | ✅ Merged (PR #4)                |
 | M3        | Continuity Engine, offline sync, conflict UI                                                                       | ✅ Merged (PR #5)                |
 | M4        | Fairness, overrides, audit, routing, ETA                                                                           | ✅ Merged (PR #6)                |
-| M5        | Recovery, accessibility, device health, Smart Turn Alerts (in-app, sound, vibration, opt-in Web Push; best effort) | Planned (next)                   |
-| MQ        | Ask Que Anything (after M5, before M6)                                                                             | Planned                          |
+| M5        | Recovery, accessibility, device health, Smart Turn Alerts (in-app, sound, vibration, opt-in Web Push; best effort) | ✅ Merged (PR #8)                |
+| MQ        | Ask Que Anything (after M5, before M6)                                                                             | Planned (next)                   |
 | M6        | SMS turn alerts and USSD adapters, sandbox tests                                                                   | Planned                          |
 | M7        | Final UI/UX, branding, animated landing page, hardening, demo data, submission                                     | Planned                          |
 

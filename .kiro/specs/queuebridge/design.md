@@ -595,7 +595,16 @@ No deployment workflow at M0 — deployment decisions are deferred per architect
 ## 11. Ask Que Anything (F13) — design (planned, milestone MQ)
 
 > Added 2026-11-07. Specification only — nothing in this section is implemented yet. Governing
-> decision: ADR-011. Requirements: REQ-F13. This section is additive and does not modify §1–§10.
+> decision: ADR-011 (Accepted 2026-11-16). Requirements: REQ-F13. This section is additive and does
+> not modify §1–§10.
+>
+> **Reconciled with M5 on 2026-11-16** (`docs/reports/MQ-design-readiness.md`). Clarifications:
+> §11.2 topics and `org_admin` audience, §11.3 transition roles and the verified route/permission
+> map, §11.10a M5 knowledge-base inventory and capability entries, §11.11 competitive position.
+> Product-owner decisions approved the same day: **D1** capability availability (§11.2), **D2**
+> server-issued role fingerprint (§11.5.4), **D3** permission synchronization checks (§11.3),
+> **D4** recovery verification privacy (§11.5.1). No architecture decision changed; the AI layer
+> stays disabled by default and no inference provider is selected.
 
 ### 11.1 Principles
 
@@ -615,7 +624,7 @@ interface KbArticle {
   id: string; // stable, e.g. 'visitor.join.qr'
   title: string;
   audiences: Audience[]; // 'visitor' | 'reception' | 'counter' | 'supervisor' | 'facility_admin' | 'org_admin' | 'auditor'
-  topics: KbTopic[]; // 'registration' | 'ticket_status' | 'recovery' | 'staff_operations' | 'facility_configuration' | 'connectivity'
+  topics: KbTopic[]; // 'registration' | 'ticket_status' | 'recovery' | 'staff_operations' | 'facility_configuration' | 'connectivity' | 'turn_alerts' | 'accessibility' | 'audit' (last three added at M5 reconciliation)
   requiresCapabilities: CapabilityId[]; // every listed capability must be at least 'preview' to show
   relatedRoutes: RouteId[];
   availableSince: MilestoneId; // 'M1' | 'M2' | ... | 'MQ'
@@ -626,22 +635,70 @@ interface KbArticle {
 }
 
 type CapabilityStatus = 'live' | 'preview' | 'sandbox' | 'planned';
+// D1 (approved 2026-11-16): usability in this deployment, separate from the lifecycle status
+type CapabilityAvailability = 'available' | 'unavailable';
+type UnavailableReason = 'not_implemented' | 'not_configured' | 'switched_off';
+interface CapabilityEntry {
+  status: CapabilityStatus; // what is built (unchanged meaning)
+  availability: CapabilityAvailability; // whether it can be used here, now (server-computed)
+  unavailableReason?: UnavailableReason; // required when availability is 'unavailable'
+  since?: MilestoneId;
+  note?: string;
+}
 interface CapabilityManifest {
   version: number;
-  capabilities: Record<
-    CapabilityId,
-    { status: CapabilityStatus; since?: MilestoneId; note?: string }
-  >;
+  generatedAt: string; // server time; diagnostic and for offline wording only
+  capabilities: Record<CapabilityId, CapabilityEntry>;
 }
 ```
 
 - Audience → role mapping: `visitor` = `visitor_anonymous`; `reception` = `staff_reception`;
-  `counter` = `staff_counter`; others map 1:1. `org_admin` inherits facility-admin articles.
+  `counter` = `staff_counter`; others map 1:1. `org_admin` receives **every staff audience**
+  (reception, counter, supervisor, facility admin, auditor) in its own organization, because the
+  API lets an organization administrator satisfy every permission and act with supervisor
+  authority in queue operations (`isOrgAdmin`, `queueActorRoles` in `apps/api/src/auth/rbac.ts`).
+  (Corrected 2026-11-16: the earlier text said "inherits facility-admin articles", which would
+  have hidden recovery approval, audit and device-health help from a role that can use them.)
+- A staff user's audiences are the union over the facilities where they hold a role. Navigation
+  links are still filtered per facility (§11.3), so an article visible because of a role at
+  facility A never yields a link into facility B.
 - The capability manifest is generated from authoritative server flags (e.g. M1's
   `VISITOR_JOIN_OPERATIONAL`, channel `mode: sandbox|live`) and served at
   `GET /api/v1/que/capabilities` (public subset) so content cannot drift from reality.
 - Articles whose capabilities are `planned` are never shown as instructions; Que instead states
   "not available yet" using the manifest note.
+- **Capability availability (D1, approved 2026-11-16).** The four statuses are unchanged and
+  describe what is built. `availability` is a separate, server-computed indicator of whether the
+  capability can be used in this deployment at the time the manifest is generated:
+  - `status` answers "is it built, and how mature is it"; `availability` answers "can someone use
+    it here, now". Neither is derived from the other, except that `planned` is always
+    `unavailable` with reason `not_implemented`.
+  - `not_configured`: built, but required deployment configuration is missing (Web Push without
+    the VAPID key pair and subject). `switched_off`: built and configured or configurable, but
+    an operator setting turns it off (the AI layer while `QUE_AI_ENABLED` is false or
+    `QUE_AI_COST_MODE` is not `free_tier` or `sponsored`).
+  - Availability is computed at request time by the same server check that gates the feature
+    itself (for Web Push, the condition behind `GET /api/v1/push/capability` returning
+    `web_push: 'live'`), so the manifest cannot disagree with the feature. That endpoint is not
+    changed.
+  - **Usable rule.** Que may present a capability as usable now only when `status` is `live` and
+    `availability` is `available`. A `preview` or `sandbox` capability that is available is shown
+    with its label (REQ-F13.9.1). Anything `unavailable` is never offered as usable: Que says it
+    is "not set up here" (`not_configured`, `switched_off`) or "not available yet"
+    (`not_implemented`), uses the manifest note, and points to the reliable fallback where one
+    exists (ticket page, public board, staff calling). Missing, unknown or malformed
+    availability is treated as `unavailable`.
+  - **Not deployment availability:** per-service policy (self-resume, automatic no-show, staff
+    recovery) is read online per service (§11.10a), and browser or device support (push
+    permission, vibration) is detected by the existing UI. Both can only narrow what Que offers,
+    never widen it.
+  - **Offline:** the cached manifest snapshot keeps `generatedAt`. While offline, capabilities
+    whose availability depends on deployment configuration are described conditionally ("if this
+    site has it set up") and never confirmed as usable.
+  - REQ-F13.9.1 and REQ-F13.9.3 are unchanged; the output guard also rejects AI text that offers
+    an `unavailable` capability as usable. Group 13.5 adds a fixture with VAPID absent: the
+    manifest reports Web Push `live` / `unavailable` / `not_configured`, and no answer offers push
+    as usable.
 
 ### 11.3 Route / screen registry
 
@@ -652,6 +709,67 @@ starts), and default articles for that screen.
 - Navigation suggestions are filtered by the user's roles at the current facility.
 - Contract test: every registered route exists in `apps/web` router; every permission name exists
   in the API permission map; every article's `relatedRoutes` are registered.
+- **Permission synchronization (D3, approved 2026-11-16).** The API `Permission` map moves to
+  `packages/contracts` unchanged (same names, same roles, same `org_admin` rule) and is used by
+  the API and the Que route registry, as MQ.1 already plans. Authorization semantics and the
+  state-machine role rules are not changed, and this is not an RBAC redesign. The existing web
+  hint lists (`lib/permissions.ts`, `AUDIT_ROLES` in `StaffConsole.tsx`, the inline list in
+  `StaffHome.tsx`) are not rewired; they are checked instead. Consistency checks (Vitest, in CI):
+  1. **API permissions:** the shared map equals the map the API enforces (snapshot of names and
+     roles), and every protected route handler still calls `requireFacilityPermission` with a
+     name from it.
+  2. **Que route access:** every registry entry names an existing permission (or `public` /
+     signed-in), every path exists in the router, and for each role the set of permitted
+     `RouteId`s equals the expected matrix in §11.3.1.
+  3. **Frontend role assumptions:** each web hint list equals the role set of the permission it
+     stands for (`QUEUE_MANAGER_ROLES` = `QUEUE_MANAGE`, `WALK_IN_ROLES` = `WALK_IN`,
+     `AUDIT_ROLES` = `AUDIT_VIEW`, the connectivity link list = `OPERATIONS_VIEW`) and
+     `COUNTER_ROLES` equals the call-next transition roles. A mismatch fails CI.
+  4. **State-machine operations:** each article step that names a queue action references a
+     transition in `packages/domain/src/state-machine.ts`, and the role Que names as required is
+     exactly that transition's `allowedRoles` (plus the `org_admin` supervisor rule).
+  5. **Cross-facility authorization:** a user with roles at facility A only gets no link, article
+     audience or facility context for facility B, and Que endpoints probed with facility B
+     return the same 404 / filtered results as the rest of the API (with Group 13.2).
+- **Two kinds of gate** (added at M5 reconciliation). Screens are gated by API permissions
+  (`Permission` in `rbac.ts`); in-screen steps such as call, serve, complete, miss, recall and
+  transfer are gated by the ticket state machine's role preconditions
+  (`packages/domain/src/state-machine.ts`, for example call-next is `staff_counter` or
+  `supervisor`). A registry entry therefore carries the screen permission, and an article step
+  that describes a queue action carries the domain transition it depends on, so Que can say
+  which role is required (REQ-F13.1.3) without a second hand-written role list.
+- The web router guards protected screens by sign-in only (`RequireAuth`); permission is enforced
+  by the API calls each screen makes. Que's registry is the place where the screen's permission is
+  written down, and the contract test above keeps it equal to the API.
+
+#### 11.3.1 Route and permission map (verified against the code on 2026-11-16)
+
+Proposed `RouteId`s; the permission is the one the API enforces for the screen's primary data.
+
+| RouteId (proposed)     | Path                                                  | Screen permission (API)                                                                                 | Notes                                                                                                                               |
+| ---------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `public.home`          | `/`                                                   | none                                                                                                    | Becomes the landing page in M7                                                                                                      |
+| `public.signup`        | `/signup`                                             | none                                                                                                    | Organization sign-up                                                                                                                |
+| `public.login`         | `/login`                                              | none                                                                                                    |                                                                                                                                     |
+| `public.accept_invite` | `/accept-invite`                                      | invitation token                                                                                        | Never linked with a token                                                                                                           |
+| `visitor.join`         | `/join/:orgSlug/:facilitySlug`                        | none                                                                                                    | Linked only from context (needs slugs)                                                                                              |
+| `visitor.ticket`       | `/ticket/:code`                                       | device status token                                                                                     | Que never builds this link; the ticket is resolved from the saved ticket on the device                                              |
+| `visitor.recover`      | `/recover`, `/recover/:orgSlug/:facilitySlug[/:code]` | none (key or grant in the URL fragment only)                                                            | Que links to `/recover` only, never with a fragment                                                                                 |
+| `public.display`       | `/display/:orgSlug/:facilitySlug`                     | none                                                                                                    | Ticket codes only                                                                                                                   |
+| `admin.home`           | `/admin`                                              | signed in; create facility needs `org_admin`                                                            |                                                                                                                                     |
+| `admin.facility`       | `/admin/facilities/:id` (+ `services`, `counters`)    | `FACILITY_READ`; edits need `FACILITY_CONFIGURE`                                                        | Policy fields `rejoin_policy`, `auto_miss`, `staff_recovery`, `grace_window_seconds` are edited under services                      |
+| `admin.facility.staff` | `/admin/facilities/:id/staff`                         | `STAFF_MANAGE`                                                                                          | Deactivation needs `org_admin`                                                                                                      |
+| `staff.home`           | `/staff`                                              | signed in                                                                                               |                                                                                                                                     |
+| `staff.facility`       | `/staff/facilities/:fid`                              | `QUEUE_VIEW`                                                                                            |                                                                                                                                     |
+| `staff.console`        | `/staff/queues/:queueId`                              | `QUEUE_VIEW`; walk-in and staff recovery `WALK_IN`; approve `QUEUE_MANAGE`; actions by transition roles | Recovery approval list is queue-scoped (`GET /queues/:id/recovery/requests`, `QUEUE_MANAGE`)                                        |
+| `staff.audit`          | `/staff/queues/:queueId/audit`                        | `AUDIT_VIEW`                                                                                            | Includes recovery activity (`GET /queues/:id/recovery/audit`, `AUDIT_VIEW`; ADR-015 amendment 1)                                    |
+| `staff.connectivity`   | `/staff/facilities/:fid/connectivity`                 | `OPERATIONS_VIEW`; acting needs `QUEUE_MANAGE`                                                          | Device health, alerts, conflicts, turn-alert counters; reception and counter staff see only their own-device warning in the console |
+| _(not registered)_     | `/supervisor/*`                                       | signed in                                                                                               | Placeholder page; device health lives on `staff.connectivity`. Que must not link here (readiness report §3, finding F7)             |
+
+Permission → roles (from `rbac.ts`; `org_admin` satisfies all): `FACILITY_READ` and `QUEUE_VIEW`
+reception, counter, supervisor, facility_admin, auditor · `FACILITY_CONFIGURE` and `STAFF_MANAGE`
+facility_admin · `QUEUE_MANAGE` supervisor, facility_admin · `OPERATIONS_VIEW` and `AUDIT_VIEW`
+supervisor, facility_admin, auditor · `WALK_IN` reception, counter, supervisor, facility_admin.
 
 ### 11.4 Deterministic answering and search
 
@@ -702,13 +820,22 @@ interface QueAnswer {
   already read, and are never written to the Que cache.
 - A KB build check rejects articles containing tenant placeholders or data-like patterns (emails,
   phone numbers, UUIDs).
+- **Recovery verification privacy (D4, approved 2026-11-16).** The public (visitor) bundle may
+  describe the staff-assisted recovery procedure (ask staff, questions about the visit, a second
+  staff approver, finishing on the visitor's own phone) but never the exact verification
+  questions, the facts checked or the expected answers. Those live only in restricted staff
+  articles served through the authenticated endpoint to the roles that may perform
+  staff-assisted recovery (`WALK_IN`) or approve it (`QUEUE_MANAGE`), never to visitors or
+  auditors. A build check fails if any public-audience
+  article contains the staff verification content (fixture phrases kept with the staff
+  article). The recovery procedure itself (ADR-015, design §15.5a) is unchanged.
 
 #### 11.5.2 Offline authorization expiry
 
 ```typescript
 interface CachedRestrictedBundle {
   userId: string;
-  roleDigest: string; // SHA-256 of sorted role grants (role + facility_id) at issue time
+  roleDigest: string; // server-issued (D2); opaque to the browser
   audiences: Audience[];
   kbVersion: number;
   issuedAt: string; // server time (diagnostic; never compared with the device clock)
@@ -761,6 +888,7 @@ always takes effect at the first online contact.
 | Sign-out failed (server not confirmed)                               | Keep cache; the user is still signed in (M1 behaviour)                                                    |
 | Any 401 on an authenticated request                                  | Delete restricted caches; show public help                                                                |
 | `/auth/me` or Que response with a different `userId` or `roleDigest` | Delete, then refetch for current roles                                                                    |
+| Successful `/auth/me` while online (same `userId`)                   | Revalidate the restricted bundle before showing restricted help; the response carries the current digest  |
 | A different user signs in on the device                              | Delete every other user's restricted cache                                                                |
 | `authorizedUntil` passed                                             | Hide restricted articles; delete at next online check                                                     |
 | KB bundle version changed                                            | Replace bundle atomically                                                                                 |
@@ -768,6 +896,32 @@ always takes effect at the first online contact.
 
 Server-side authorization remains authoritative: the restricted endpoint re-evaluates roles on
 every request, like the rest of the API.
+
+#### 11.5.4 Role fingerprint (D2, approved 2026-11-16)
+
+- **One server-side calculation.** A single function in `apps/api` (for example
+  `apps/api/src/auth/role-digest.ts`) computes the fingerprint of the user's effective,
+  facility-scoped role grants from the authenticated `AuthContext`. Every Que endpoint that
+  issues or checks restricted content uses this function; nothing else computes a digest.
+- **Input (canonical):** domain separator `qb.que.role-digest.v1`, organization ID, staff user
+  ID, the KB audience-mapping version, and the sorted list of grants `(facility_id or null,
+role)` exactly as the server holds them for the session. `org_admin` appears as its org-wide
+  grant; its expansion to every staff audience (§11.2) is a server rule, and changing that rule
+  bumps the mapping version, so every existing digest changes.
+- **Output:** lowercase hex SHA-256, sent as `roleDigest` with the authenticated restricted KB
+  response (and on its revalidation responses, including not-modified). It is not secret but is
+  returned only to the session's own user.
+- **Browser role:** the browser stores the digest with the bundle and compares only opaque
+  server-issued values (`userId`, `roleDigest`). It never computes a digest and never decides
+  what it is allowed to see: a mismatch can only purge or hide restricted help, never show it.
+  After every successful `/auth/me` while online it revalidates the restricted bundle before
+  showing restricted help (§11.5.3), so a role change is caught at the first online contact.
+- **Unchanged:** offline elapsed-time expiry and clock-rollback rules (§11.5.2), the confirmed
+  sign-out, failed sign-out, 401, different-user and version triggers (§11.5.3), and server-side
+  re-authorization on every request.
+- **`/auth/me` is not changed.** A `role_digest` field would be added only if implementation
+  shows a compatibility need (for example, revalidation cost on slow links), documented and
+  approved first.
 
 - Bundle `version` lets clients refresh incrementally; unchanged articles are not re-downloaded.
 
@@ -851,9 +1005,91 @@ details. If none qualifies, the AI layer stays disabled and MQ is still complete
 | M7        | Landing page and onboarding guide; final review of every article against the capability manifest                                                                                     |
 
 Because the KB package is built in MQ, articles for M1–M5 are authored in MQ.5 against the
-behaviour that is live at that point. From MQ onward, every milestone that changes user-visible
+behaviour that is live at that point (M5 detail in §11.10a). From MQ onward, every milestone that changes user-visible
 behaviour (M6, M7 and later) also updates the affected articles and capability entries in the same
 change; the KB consistency test (Group 13.5) enforces it.
+
+---
+
+### 11.10a M5 knowledge-base inventory and capability entries (reconciled 2026-11-16)
+
+Articles MQ.5 must author for M5 behaviour as merged (PR #8). Audience shorthand: V visitor,
+R reception, C counter, S supervisor, FA facility admin, A auditor; `org_admin` receives every
+staff audience (§11.2). Proposed IDs; content follows the stated behaviour, not this summary.
+
+| Proposed article ID        | Audience                   | Must explain (as built)                                                                                                                                                                                                                                                                                  | Must not say                                                                         |
+| -------------------------- | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `visitor.join.status`      | V                          | Join by QR/link without an account; the ticket page shows state, position and the F6 estimate with its uncertainty; the ticket is saved on this device                                                                                                                                                   | An exact serving time                                                                |
+| `visitor.recovery.key`     | V                          | The recovery key is shown once at join; save it as QR/link, print or text; the public ticket code alone never recovers; keep the key private; a new key replaces the old one; up to 3 devices; "sign out other devices"                                                                                  | That staff or the board code can restore access; exact throttle numbers are optional |
+| `visitor.recovery.how`     | V                          | Recover on `/recover` with the key; after several wrong tries wait up to 15 minutes; never permanently locked out; a temporary offline ticket can be recovered only after it is confirmed; recovery does not change your place                                                                           | That recovery moves you in the queue                                                 |
+| `visitor.recovery.staff`   | V                          | Without the key, ask staff; they ask some questions about the visit and may need a second staff member to approve; you finish on your own phone from a QR; staff never see your key                                                                                                                      | The verification questions or expected answers (D4; staff article only)              |
+| `staff.recovery.assist`    | R, C, S, FA                | The two answers (asked before showing any detail; service and join time within 10 minutes); no confirmation means restricted assistance and no credential; a grant needs a different supervisor or facility admin; single use, 10 minutes, QR only                                                       | Reading a key or grant aloud; that knowing the code proves identity                  |
+| `staff.recovery.approve`   | S, FA                      | Approving a request from the queue's approval list; you cannot approve your own request; the facility can switch the path off (`staff_recovery`)                                                                                                                                                         |                                                                                      |
+| `staff.recovery.activity`  | S, FA, A                   | The recovery activity view on the audit screen: who requested, who approved, reason, assurance; no secrets recorded; visible to supervisors, facility admins and auditors only; names shown are current display names                                                                                    | That reception or counter staff can open it                                          |
+| `visitor.missed.grace`     | V                          | What "missed" means; the grace window (`grace_window_seconds`, default 5 minutes) and what the ticket page shows (`rejoin_available`, `grace_ends_at`); self-resume only where the facility allows it, inside the window; otherwise ask staff or join again                                              | That a failed alert marks you missed                                                 |
+| `staff.missed.rejoin`      | C, S, FA                   | `staff_resume` (default) vs `self_resume`; resuming a missed ticket; the window                                                                                                                                                                                                                          |                                                                                      |
+| `admin.policy.recovery`    | FA                         | Editing `rejoin_policy`, `grace_window_seconds`, `auto_miss` (off by default; 60–3600 s) and `staff_recovery`; each change is a new policy version                                                                                                                                                       |                                                                                      |
+| `visitor.auto_miss`        | V                          | Some services miss a called ticket automatically after a stated time; the ticket page shows the rule (`auto_miss_after_seconds`) when it applies; time counts from the call, by the server                                                                                                               | That it depends on whether a notification arrived                                    |
+| `staff.auto_miss`          | C, S, FA, A                | Off by default; runs on the server through the normal command path as actor `system`, reason `call_window_elapsed`; never while a coordinator holds the queue; the clock restarts after an outage                                                                                                        |                                                                                      |
+| `staff.sync.states`        | R, C, S, FA, A             | `local_only`, `pending_sync`, `committed`, `duplicate`, `needs_review`, `rejected`; devices must be registered online first, per browser address; offline walk-ins get a temporary reference                                                                                                             | "Conflict-free" or "globally final" before `committed`                               |
+| `visitor.offline`          | V                          | Offline, the page shows the last saved state and says so; nothing is confirmed until the server confirms it                                                                                                                                                                                              |                                                                                      |
+| `staff.device.health`      | S, FA, A (R, C own device) | Health states and alert kinds (`coordinator_offline`, `coordinator_expiring`, `coordinator_expired`, `device_stale_pending`, `sync_failing`, `conflicts_unreviewed`, `recovery_abuse`, `alert_pipeline_failing`); acknowledging (supervisor, facility admin); lost-device revoke                         | That health alerts fail over or reassign the coordinator                             |
+| `staff.coordinator.limits` | C, S, FA                   | One coordinator per queue; offline actions are provisional; failover is an explicit supervisor action that fences the old device; an expired coordinator can only capture tickets                                                                                                                        | That two devices can advance one queue offline                                       |
+| `visitor.alerts`           | V                          | In-app alert on the ticket page (no permission needed); optional sound (off by default); vibration only while the page is open on supported devices; Web Push opt-in where supported and set up here; best effort; the board and staff calling remain the reliable signal                                | Background vibration; that push will arrive                                          |
+| `staff.alerts.status`      | C, S, FA, A                | Per-device states and their UI labels: `pending` "Push not sent yet", `sent` "Push sent, not confirmed", `delivered` "Seen on device" (page acknowledgement only), `failed`, `suppressed` "ticket changed", `unknown`; dashboard counters include "Attempted"; an alert outcome never changes the ticket | That `sent` means the visitor saw it                                                 |
+| `visitor.accessibility`    | V (and staff)              | Display settings: contrast, text size, reduced motion, quiet alerts; stored on this device only; work offline; reset                                                                                                                                                                                     | That settings follow the user to another device                                      |
+| `staff.roles.workflows`    | all staff                  | Which role does what (the permission map in §11.3.1), stated by role name                                                                                                                                                                                                                                | Names of individuals                                                                 |
+
+**Capability manifest entries for M5** (as of 2026-11-16; `status` and `availability` per §11.2,
+availability computed by the server at request time):
+
+| Capability id (proposed)  | Status           | Availability in a deployment                                                                                                               | Source of truth                                       |
+| ------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
+| `visitor_join`            | `live`           | `available` while `VISITOR_JOIN_OPERATIONAL`; facility readiness is per-facility context                                                   | `apps/api/src/readiness.ts`                           |
+| `ticket_recovery_key`     | `live`           | `available`                                                                                                                                | M5.1                                                  |
+| `staff_assisted_recovery` | `live`           | `available`; per service off when `staff_recovery = false` (policy, not availability)                                                      | M5.1, service policy                                  |
+| `recovery_audit_view`     | `live`           | `available`                                                                                                                                | ADR-015 amendment 1                                   |
+| `self_resume`             | `live`           | `available`; per service only under `self_resume` (default `staff_resume`)                                                                 | service policy                                        |
+| `auto_miss`               | `live`           | `available`; per service off by default                                                                                                    | service policy                                        |
+| `offline_coordinator`     | `live`           | `available`                                                                                                                                | M3                                                    |
+| `device_health`           | `live`           | `available`                                                                                                                                | M5.3                                                  |
+| `turn_alert_in_app`       | `live`           | `available`                                                                                                                                | M5.4                                                  |
+| `turn_alert_sound`        | `live`           | `available`; off by default, device support detected by the UI                                                                             | M5.4                                                  |
+| `turn_alert_vibration`    | `live`           | `available`; foreground only, device support detected by the UI                                                                            | M5.4                                                  |
+| `turn_alert_web_push`     | `live`           | `available` only with the VAPID key pair and subject configured; otherwise `not_configured`                                                | same check as `GET /api/v1/push/capability`           |
+| `accessibility_prefs`     | `live`           | `available`                                                                                                                                | M5.2                                                  |
+| `sms_turn_alerts`         | `planned` (M6)   | `unavailable` / `not_implemented`; becomes `sandbox` when M6 ships the sandbox path                                                        | `SMS_PROVIDER` (worker); no live provider approved    |
+| `ussd`                    | `planned` (M6)   | `unavailable` / `not_implemented`                                                                                                          | `USSD_PROVIDER`; no USSD code or network relationship |
+| `ask_que_ai`              | `planned` (MQ.4) | `unavailable` / `not_implemented`; after MQ.4 `switched_off` by default, `available` only with an approved free-tier or sponsored provider | `QUE_AI_ENABLED`, `QUE_AI_COST_MODE`                  |
+
+Per-service policy (self-resume, automatic no-show, staff recovery) is a property of a facility's
+service, not of the deployment. Generic articles describe the rule conditionally ("where your
+facility allows it"); the concrete setting is read online from endpoints the user can already
+read (visitor ticket status for visitors, facility services for staff) and is never written to a
+Que cache (§11.5.1).
+
+### 11.11 Competitive position (what MQ must demonstrate)
+
+Grounded in behaviour that exists or is already specified; no new features.
+
+- **In-context guidance tied to real screens.** Every article is attached to registered routes
+  (§11.3.1) and every link is checked against the router in CI, so help points at screens that
+  exist and the user can open.
+- **Grounded answers.** Deterministic answers are KB articles; AI output, if ever enabled, must
+  cite authorized articles and is rejected otherwise (§11.7 output guard).
+- **Role-specific help without leaks.** Restricted bundles are filtered server-side; visitors get
+  the public bundle; the verification questions for staff-assisted recovery stay in staff
+  articles; links are filtered per facility.
+- **Offline usefulness.** Search and navigation run in the browser from precached bundles, which
+  matters most for staff during the outages the Continuity Engine handles.
+- **Help during outages.** Sync states, coordinator limits, provisional tickets and lost-device
+  steps are explained offline in the words the UI uses.
+- **Accessibility.** Same WCAG 2.1 A/AA checks, keyboard and live-region rules as the rest of the
+  app, at 320/375 px and desktop; respects the device-local display preferences.
+- **Zero paid AI.** The product is complete with AI off; no provider, payment card or paid mode.
+
+Limits to state honestly: content is English only; quality depends on KB maintenance (MQ.6);
+offline expiry is a display bound, not a confidentiality control (§11.5.2).
 
 ---
 

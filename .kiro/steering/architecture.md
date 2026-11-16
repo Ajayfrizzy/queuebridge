@@ -20,7 +20,7 @@ inclusion: always
 | ADR-008 | Relational outbox for channel dispatch                                       | Yes                          |
 | ADR-009 | Provider-neutral SMS and USSD adapters                                       | Yes                          |
 | ADR-010 | Audit hash chain with external checkpoint option                             | Yes                          |
-| ADR-011 | Ask Que: deterministic-first, read-only assistant (Proposed)                 | Yes — applies from MQ        |
+| ADR-011 | Ask Que: deterministic-first, read-only assistant (Accepted 2026-11-16)      | Yes — applies from MQ        |
 | ADR-012 | Versioned fairness policy, waiting-age order, pull routing, HMAC checkpoints | Yes                          |
 | ADR-013 | Smart Turn Alerts: in-app first, best-effort Web Push, never blocking        | Yes — applies from M5        |
 | ADR-014 | Final UI/UX: design tokens, original branding, code-split landing page       | Yes — applies from M7        |
@@ -28,10 +28,10 @@ inclusion: always
 
 Full ADRs live in `docs/adr/`.
 
-## Milestone order (reconciled 2026-11-12)
+## Milestone order (reconciled 2026-11-12; status updated 2026-11-16)
 
-M0–M4 merged into `staging`. Next: **M5** (recovery, accessibility, device health, Smart Turn Alerts;
-stabilization M5.0 first) → **MQ** (Ask Que) → **M6** (SMS turn alerts + USSD) → **M7** (final UI/UX,
+M0–M5 merged into `staging` (M5: PR #8, `cebbe06`, 2026-11-16). Done: **M5** (recovery, accessibility, device health, Smart Turn Alerts;
+stabilization M5.0 first). Next: **MQ** (Ask Que) → **M6** (SMS turn alerts + USSD) → **M7** (final UI/UX,
 animated landing page, hardening, demo, submission). No renumbering. M5 manual acceptance Set 2
 (checks 15–41) runs after M7, before submission; Set 1 (checks 1–14) is closed (2026-11-16).
 
@@ -242,7 +242,7 @@ Before implementing offline queue advancement, code AND tests must answer:
 - No alert outcome may change ticket state or cause a `missed` transition.
 - The M5.4 migration is additive (new table, new column, widened CHECK constraints); nothing dropped.
 
-## Ask Que (F13) — planned architecture constraints (from MQ; ADR-011 Proposed)
+## Ask Que (F13) — planned architecture constraints (from MQ; ADR-011 Accepted 2026-11-16)
 
 - New package `packages/assist` (planned): KB schema, search, route registry, capability gating,
   answer guard. Imports `contracts` only; zero I/O. `apps/web` and `apps/api` may import it.

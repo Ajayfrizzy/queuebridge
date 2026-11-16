@@ -36,8 +36,9 @@ and ADR-011. Do not implement before MQ.
   organizational onboarding path, accessibility/performance/security/cross-browser verification.
   REQ-F15, design §14, ADR-014.
 
-**Milestone status (2026-11-12):** M0–M4 are implemented and merged into `staging` (PRs #1–#6).
-Order from here: **M5 → MQ → M6 → M7**. Do not implement a later milestone's scope early.
+**Milestone status (updated 2026-11-16):** M0–M5 are implemented and merged into `staging`
+(PRs #1–#6 and #8; M5 merged as `cebbe06`). ADR-011 (Ask Que) is accepted. Order from here:
+**MQ → M6 → M7**. Do not implement a later milestone's scope early.
 M5 manual acceptance runs in two sets (approved 2026-11-16): Set 1 (checks 1–14) closed during
 development; Set 2 (checks 15–41) is final acceptance after M7, before submission
 (`docs/testing/M5-manual-acceptance.md` §0a). A confirmed critical security or integrity defect is
@@ -264,7 +265,7 @@ Before marking any milestone complete, ALL of the following must pass:
 - [ ] `pnpm db:migrate` — migrations apply to a fresh PostgreSQL database without errors
 - [ ] CI workflow passes on push to `feature/m0-foundation`
 
-### M1–M7 gates (M1–M4 met and merged; M5–M7 and MQ pending)
+### M1–M7 gates (M1–M5 met and merged, M5 manual Set 2 after M7; MQ and M6–M7 pending)
 
 Each milestone adds its own domain-specific acceptance criteria defined in `.kiro/specs/queuebridge/tasks.md`.
 
