@@ -85,7 +85,7 @@
   - `SandboxSmsAdapter` — logs `[SANDBOX]`, never real network
   - `SandboxUssdAdapter` — stateful in-memory session for testing
   - Provider adapter registry: `getAdapter(provider: string) → ChannelAdapter`
-  - _(Planned, M5, ADR-013)_ `PushTransport` interface with `SandboxPushTransport` (test-only label, no network) and `WebPushTransport` (VAPID, `web-push`). Separate from `ChannelAdapter`, which is SMS/USSD-shaped (it carries `handleUssdSession`). See §12.5.
+  - _(M5.4, ADR-013)_ `PushTransport` interface with `SandboxPushTransport` (test-only label, no network) and `WebPushTransport` (RFC 8291 encryption with `http_ece` (MIT), RFC 8292 VAPID with `node:crypto`; not the MPL-2.0 `web-push` package). Separate from `ChannelAdapter`, which is SMS/USSD-shaped (it carries `handleUssdSession`). See §12.5.
 
 ### packages/ui
 
@@ -859,7 +859,10 @@ change; the KB consistency test (Group 13.5) enforces it.
 
 ## 12. Smart Turn Alerts (F14) — design (planned, milestone M5)
 
-> Added 2026-11-12. Specification only; nothing here is implemented. Governing decision: ADR-013.
+> Added 2026-11-12. Implemented in M5.4 (uncommitted at the time of writing); the differences from
+> the text below (transport library and licence, registered enqueue hook, extra public click
+> parameters `seq`/`rp`, endpoint allow-list, push controls on the ticket page) are recorded in
+> ADR-013 "Implementation notes and deviations". Governing decision: ADR-013.
 > Requirements: REQ-F14. Additive to §1–§11. The M5 recovery (F4), accessibility (F7) and device
 > health (F9) requirements and tasks are unchanged; alerts are task group M5.4 and must also satisfy
 > the M5.2 accessibility work.
@@ -1442,8 +1445,8 @@ ALTER TABLE ticket_recovery_credentials
   ADD COLUMN IF NOT EXISTS revoked_reason TEXT,
   ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMPTZ;
 DROP INDEX IF EXISTS ticket_recovery_creds_ticket_idx;          -- unique(ticket_id) -> plain partial index
-CREATE INDEX IF NOT EXISTS ticket_recovery_creds_ticket_idx2 ON ticket_recovery_credentials (ticket_id)
-  WHERE revoked_at IS NULL;
+CREATE INDEX IF NOT EXISTS ticket_recovery_creds_active_idx ON ticket_recovery_credentials (ticket_id, created_at)
+  WHERE revoked_at IS NULL;   -- as implemented; revoked rows are KEPT and purged by retention (15.14), not deleted
 -- `attempts` (M0, unused) stays, documented as legacy. Only a superseded index is dropped.
 
 CREATE TABLE IF NOT EXISTS ticket_recovery_proofs (          -- one recovery key per ticket
@@ -1462,15 +1465,22 @@ CREATE TABLE IF NOT EXISTS ticket_recovery_grants (          -- staff hand-off, 
   grant_hmac      TEXT NOT NULL UNIQUE,
   assurance       TEXT NOT NULL CHECK (assurance IN ('basic', 'strong')),
   created_by      UUID NOT NULL REFERENCES staff_users (id),
-  approved_by     UUID REFERENCES staff_users (id),          -- required when assurance = 'basic'
+  approved_by     UUID REFERENCES staff_users (id),          -- required to REDEEM when assurance = 'basic' (see the CHECKs below)
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   expires_at      TIMESTAMPTZ NOT NULL,                      -- created_at + 10 minutes
   redeemed_at     TIMESTAMPTZ,
-  CHECK (assurance <> 'basic' OR (approved_by IS NOT NULL AND approved_by <> created_by))
+  -- As implemented (0007). The original single CHECK would reject a PENDING request (created, not yet
+  -- approved), so the rule is split: a different approver is always required once approved, and a
+  -- 'basic' grant can never be redeemed without that approval. Also added: reason_code, approved_at,
+  -- revoked_at, facility_id.
+  CONSTRAINT ticket_recovery_grants_second_person_chk CHECK (approved_by IS NULL OR approved_by <> created_by),
+  CONSTRAINT ticket_recovery_grants_approval_pair_chk CHECK ((approved_by IS NULL) = (approved_at IS NULL)),
+  CONSTRAINT ticket_recovery_grants_redeem_requires_approval_chk
+    CHECK (redeemed_at IS NULL OR assurance <> 'basic' OR approved_by IS NOT NULL)
 );
 
 CREATE TABLE IF NOT EXISTS recovery_throttle (               -- self-expiring counters; keys never contain the guess
-  scope             TEXT NOT NULL CHECK (scope IN ('source', 'target_source', 'target', 'facility')),
+  scope             TEXT NOT NULL CHECK (scope IN ('source', 'target_source', 'target', 'facility', 'facility_source')),   -- 'facility_source' added at implementation: lets L4 refuse only sources that already failed in this facility
   key_hash          TEXT NOT NULL,          -- HMAC(pepper, scope | public identifiers | source); no PII, no secret
   window_started_at TIMESTAMPTZ NOT NULL,
   attempts          INTEGER NOT NULL DEFAULT 0,
@@ -1681,8 +1691,39 @@ After an automatic miss the normal grace window and rejoin policy apply (§15.7)
 | `POST /queues/:id/tickets/:ticketId/recovery/assist`     | `WALK_IN` staff | Records the verification outcome; creates a single-use grant (basic assurance needs an approver); returns the grant QR once |
 | `POST /queues/:id/tickets/:ticketId/recovery/approve`    | `QUEUE_MANAGE`  | Second-person approval for a basic-assurance grant                                                                          |
 | `POST /queues/:id/tickets/:ticketId/recovery/revoke-all` | `WALK_IN` staff | Revoke all visitor access; regenerate the key                                                                               |
+| `GET /queues/:id/recovery/requests`                      | `QUEUE_MANAGE`  | Approval list: requests for tickets of this queue only (scoped to the queue, as approval is; manual check 9, 2026-11-15)    |
+| `GET /queues/:id/recovery/audit?after&limit`             | `AUDIT_VIEW`    | Read-only Recovery activity for this queue's tickets (§15.9a; approved extension, 2026-11-16)                               |
 
 There is no unlock endpoint because there is no lock (§15.10).
+
+#### 15.9a Recovery activity audit view (approved extension, 2026-11-16; ADR-015 amendment 1)
+
+Recovery audit records are `admin_events` (rule 8 above); recovery never writes queue events
+(8.R6). The M4 queue Audit trail shows only the queue's hash-chained events, so before this
+extension no screen showed who requested or approved a staff-assisted recovery (manual check 12).
+
+- **Endpoint:** `GET /api/v1/queues/:id/recovery/audit?after=<cursor>&limit=<1–100, default 50>`.
+  Same authorization as the queue audit view (`AUDIT_VIEW`: auditor, supervisor, facility admin;
+  organization admins through their facility permission); read-only; tenant, facility and queue
+  scoped on the server; another tenant's or facility's queue is 404.
+- **Rows:** the existing `ticket_recovery.*` `admin_events` whose target is a ticket of this queue
+  session, oldest first, ordered by `(created_at, id)`; keyset pagination (`next_after` is the
+  last row's event id). Nothing is written, rewritten or backfilled.
+- **Fields:** time, public ticket code, event kind, who performed it, reason code, assurance,
+  method, outcome and revoked-device count where the event recorded them. Details are copied
+  through an allow-list; nothing else from `details` is returned.
+- **Attribution:** staff events (`assist`, `approved`, `restricted_assistance`, `revoke_all`) are
+  attributed to the event's immutable `actor_id`. The name shown is the account's current
+  `display_name`, resolved at read time within the same organization: a display label, not a
+  historical snapshot; a renamed account shows its new name, and a deactivated or suspended one
+  is still named and marked as such (staff are never deleted). Visitor actions (`recovered`,
+  `key_regenerated`, `sessions_revoked`) are shown as the visitor's device, never as a staff
+  member; `abuse_detected` as the system. An event without a recorded actor is shown as "not
+  recorded", never guessed. Requests, approvals and redemptions are related only by their ticket
+  and time: the events carry no request id, so no further link is claimed.
+- **Never returned:** recovery keys, grants, status tokens, hashes, links, staff emails or ids.
+- **Limit:** events of a ticket transferred from another queue stay on its original (root)
+  ticket's queue.
 
 ### 15.10 Rate limiting and abuse prevention
 
@@ -1832,7 +1873,8 @@ every control has a visible label and hint, changes apply immediately, and "Rese
 - Logical order follows the visual order; landmarks (`banner`, `nav`, `main`, `contentinfo`) and one
   `h1` per route; the skip link targets `main`.
 - **Route change rule:** on navigation, the document title updates and focus moves to the route's
-  `h1` (tabindex -1), and the title is announced politely once. The browser Back button restores
+  `h1` (tabindex -1). _As implemented:_ the focused heading is what a screen reader reads, so no second
+  live announcement is made (it would be heard twice); the manual pass verifies it is heard once. The browser Back button restores
   position sensibly.
 - **Dialogs and panels** (settings, confirmations, staff hand-off): focus moves in on open, is
   contained, Escape closes, and focus returns to the opener. Toasts never take focus.
@@ -2052,6 +2094,24 @@ Heartbeat values overwrite the device row; no heartbeat history is kept. Revoked
 Evaluation errors are logged and the previous alert state stays (no spurious resolve). A flapping
 condition is damped: an alert resolves only after the condition has been clear for two evaluations.
 An alert-system failure never blocks any queue action or any device operation.
+
+### 17.11a As implemented (M5.3; deviations recorded)
+
+- Migration `0008_device_health.sql`: `health_alerts` as specified plus `clear_count` (damping) and
+  `subject_type`; `health_evaluations` (single row, last completed evaluation); `devices.failure_streak`
+  (consecutive identical failure reports, written by the device's own heartbeat and reset by a
+  successful sync; the evaluator never writes it). Partial indexes for the evaluator's scans.
+- A subject that is gone (device revoked, queue closed) resolves at once with `subject_gone`; all
+  other alerts follow the two-evaluation damping.
+- The evaluator runs in one transaction under a try-lock (other instances skip); `--once` waits for
+  the lock instead, so a manual or scheduled single run always evaluates. Every pass is bounded
+  (`lock_timeout` 30 s, `statement_timeout` 60 s): a stuck pass rolls back and the next one retries. Deduplication does not depend
+  on the lock: the unique partial index enforces it.
+- Own-device warnings: `coordinator_expiring`, `coordinator_expired`, `sync_failing`. A
+  "stale with pending" warning to the device itself is not shown: a device that can read it is, by
+  definition, not silent.
+- Change signal: `pg_notify('qb_health_events', {"f": facility})`. The dashboard still refreshes by
+  polling every 5 s (no SSE consumer was added); the banner polls every 30 s.
 
 ### 17.12 Verification (Group 8, items 8.D1–8.D6; Group 6 regression; Group 11, item 11.A10)
 

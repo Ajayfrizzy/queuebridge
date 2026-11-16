@@ -20,15 +20,24 @@ import { formatTime } from '../lib/format.js';
 import { QUEUE_MANAGER_ROLES, hasFacilityRole } from '../lib/permissions.js';
 import { useOffline } from '../offline/OfflineProvider.js';
 import { useLoad } from '../lib/useLoad.js';
+import { HealthAlertsPanel } from '../components/HealthAlertsPanel.js';
+import { HEALTH_LABEL, HEALTH_RANK } from '../lib/healthText.js';
 
 const REFRESH_MS = 5000;
 
-const HEALTH_LABEL: Record<DeviceHealth['health'], { symbol: string; text: string }> = {
-  healthy: { symbol: '●', text: 'Healthy' },
-  pending: { symbol: '↑', text: 'Has unsent actions' },
-  offline: { symbol: '○', text: 'Offline / not heard from' },
-  needs_review: { symbol: '!', text: 'Needs review' },
-  revoked: { symbol: '✕', text: 'Revoked' },
+type DeviceFilter = 'all' | 'attention' | 'silent' | 'revoked';
+const FILTER_LABEL: Record<DeviceFilter, string> = {
+  all: 'All devices',
+  attention: 'Needing attention',
+  silent: 'Offline or stale',
+  revoked: 'Revoked',
+};
+const REVOKE_REASON_LABEL: Record<string, string> = {
+  lost: 'Lost',
+  stolen: 'Stolen',
+  retired: 'No longer used',
+  compromised: 'Compromised',
+  other: 'Other reason',
 };
 
 const words = (code: string): string => code.replace(/_/g, ' ');
@@ -47,6 +56,7 @@ export function Connectivity(): ReactElement {
   const conflicts = useLoad(() => api.conflicts(fid, true), `conflicts-${fid}`);
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
   const [wipeConfirm, setWipeConfirm] = useState(false);
+  const [filter, setFilter] = useState<DeviceFilter>('all');
   const reloadHealth = health.reload;
   const reloadConflicts = conflicts.reload;
 
@@ -91,6 +101,17 @@ export function Connectivity(): ReactElement {
   const h = health.data.health;
   const canAct = hasFacilityRole(user, fid, QUEUE_MANAGER_ROLES);
   const liveDevices = h.devices.filter((d) => !d.revoked_at);
+  const shownDevices = h.devices
+    .filter((d) =>
+      filter === 'all'
+        ? true
+        : filter === 'revoked'
+          ? d.health === 'revoked'
+          : filter === 'silent'
+            ? d.health === 'offline' || d.health === 'stale'
+            : d.health !== 'healthy' && d.health !== 'revoked',
+    )
+    .sort((a, b) => HEALTH_RANK[a.health] - HEALTH_RANK[b.health]);
   const list = conflicts.data?.conflicts ?? [];
   const open = list.filter((c) => c.status === 'needs_review');
   const past = list.filter((c) => c.status !== 'needs_review');
@@ -103,7 +124,10 @@ export function Connectivity(): ReactElement {
       <h1>Connectivity and recovery</h1>
       <p className="muted">
         Server health is checked separately from each device&apos;s connection. A device&apos;s
-        unsent-action count is reported by the device itself, so treat it as approximate.
+        unsent-action count is reported by the device itself, so treat it as approximate. A silent
+        device may be offline, asleep, closed or lost: the server cannot tell which. Offline means
+        no contact for {Math.round(h.offline_after_seconds / 60)} min; stale means no contact for{' '}
+        {Math.round(h.stale_after_seconds / 60)} min.
       </p>
       {message ? (
         <p
@@ -114,6 +138,56 @@ export function Connectivity(): ReactElement {
           {message.text}
         </p>
       ) : null}
+
+      <HealthAlertsPanel
+        alerts={h.alerts}
+        evaluation={h.evaluation}
+        canAcknowledge={canAct}
+        onAcknowledge={(a) => void act('Alert acknowledged', () => api.acknowledgeAlert(fid, a.id))}
+      />
+
+      <dl className="stat-row" data-testid="health-counters">
+        <div className="stat">
+          <dt>Recovery-abuse signals (24 h)</dt>
+          <dd>{h.counters.recovery_abuse_24h}</dd>
+        </div>
+        <div className="stat">
+          <dt>Failed turn alerts (1 h)</dt>
+          <dd>{h.counters.turn_alert_failures_1h}</dd>
+        </div>
+      </dl>
+      <section
+        aria-labelledby="turn-alerts-heading"
+        className="card"
+        data-testid="turn-alert-counters"
+      >
+        <h2 id="turn-alerts-heading" className="card-title">
+          Visitor push alerts (last hour)
+        </h2>
+        <p className="hint">
+          Push alerts are best effort. “Sent” means the push service accepted the alert; only “seen
+          on device” is confirmed by the visitor’s page. An expired browser subscription is not
+          counted as a failure. The public board and calling aloud remain the reliable fallback.
+        </p>
+        <dl className="stat-row">
+          {(
+            [
+              ['Attempted', h.turn_alerts.attempted],
+              ['Sent, not confirmed', h.turn_alerts.sent],
+              ['Seen on device', h.turn_alerts.delivered],
+              ['Failed', h.turn_alerts.failed],
+              ['Not sent (ticket changed)', h.turn_alerts.suppressed],
+              ['Outcome unknown', h.turn_alerts.unknown],
+              ['Could not be queued', h.turn_alerts.enqueue_errors],
+            ] as const
+          ).map(([label, n]) => (
+            <div className="stat" key={label}>
+              <dt>{label}</dt>
+              <dd>{n}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
 
       <section aria-labelledby="this-device" className="card">
         <h2 id="this-device" className="card-title">
@@ -213,12 +287,28 @@ export function Connectivity(): ReactElement {
 
       <section aria-labelledby="devices-heading">
         <h2 id="devices-heading">Devices</h2>
+        <div className="field device-filter">
+          <label htmlFor="device-filter">Show</label>
+          <select
+            id="device-filter"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value as DeviceFilter)}
+          >
+            {(Object.keys(FILTER_LABEL) as DeviceFilter[]).map((k) => (
+              <option key={k} value={k}>
+                {FILTER_LABEL[k]}
+              </option>
+            ))}
+          </select>
+        </div>
+        <p className="hint">Most urgent first.</p>
         {h.devices.length === 0 ? (
           <p className="muted">
             No device has registered yet. Devices register when staff open a queue console.
           </p>
         ) : (
-          <div className="table-scroll">
+          // Keyboard users can scroll a table that is wider than a narrow screen (WCAG 2.1.1)
+          <div className="table-scroll" tabIndex={0} role="region" aria-label="Devices table">
             <table className="data-table" data-testid="device-table">
               <caption className="visually-hidden">
                 Registered devices and their sync health
@@ -233,8 +323,8 @@ export function Connectivity(): ReactElement {
                   <th scope="col">Action</th>
                 </tr>
               </thead>
-              <tbody>
-                {h.devices.map((d) => (
+              <tbody data-testid="device-rows">
+                {shownDevices.map((d) => (
                   <DeviceRow key={d.id} d={d} canAct={canAct} act={act} />
                 ))}
               </tbody>
@@ -488,7 +578,24 @@ function DeviceRow({
         {d.last_failure_code ? (
           <>
             <br />
-            <span className="muted">{words(d.last_failure_code)}</span>
+            <span className="muted">
+              {words(d.last_failure_code)}
+              {d.failure_streak > 1 ? ` (${d.failure_streak} times in a row)` : ''}
+            </span>
+          </>
+        ) : null}
+        {d.revoked_at ? (
+          <>
+            <br />
+            <span className="muted" data-testid="revoked-detail">
+              {REVOKE_REASON_LABEL[d.revoked_reason ?? ''] ?? 'Revoked'} at{' '}
+              {formatTime(d.revoked_at)}.
+              {d.pending_count > 0
+                ? ` Up to ${d.pending_count} ${d.pending_count === 1 ? 'action was' : 'actions were'} pending on this device and may be lost.`
+                : ''}{' '}
+              Its unsent actions can never be sent. If it is found, it stays revoked; register it
+              again as a new device.
+            </span>
           </>
         ) : null}
       </td>
@@ -498,7 +605,10 @@ function DeviceRow({
         {d.coordinator_for.length === 0
           ? '—'
           : d.coordinator_for
-              .map((c) => `${c.service_name}${c.expired ? ' (expired)' : ''}`)
+              .map(
+                (c) =>
+                  `${c.service_name}${c.expired ? ' (expired)' : c.expiring ? ' (ending soon)' : ''}`,
+              )
               .join(', ')}
       </td>
       <td>
@@ -514,11 +624,22 @@ function DeviceRow({
                 >
                   {DEVICE_REVOKE_REASONS.map((r) => (
                     <option key={r} value={r}>
-                      {r}
+                      {REVOKE_REASON_LABEL[r] ?? r}
                     </option>
                   ))}
                 </select>
               </div>
+              <p className="hint" data-testid="revoke-warning">
+                Last contact {d.last_seen_at ? formatTime(d.last_seen_at) : 'never'}.{' '}
+                {d.pending_count > 0
+                  ? `It reported about ${d.pending_count} unsent ${d.pending_count === 1 ? 'action' : 'actions'}; after revoking they cannot be sent and may be lost. `
+                  : ''}
+                {d.coordinator_for.length > 0
+                  ? 'It is a coordinator: revoking ends that authority and fences it, so its offline actions go to review. '
+                  : ''}
+                The owner&apos;s sign-in is not ended by this; deactivate or sign out the user if
+                needed.
+              </p>
               <div className="btn-row">
                 <button
                   type="button"

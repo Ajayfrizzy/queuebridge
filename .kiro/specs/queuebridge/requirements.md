@@ -361,7 +361,7 @@
 - REQ-F14.10.1: Push subscription data (endpoint and keys) SHALL be encrypted at rest with an environment-injected key, never returned by any API, and treated as a secret. The endpoint, its hash, the keys and every bearer credential SHALL NOT appear in logs, audit records, URLs, notification tags, payloads or deduplication keys; the non-secret `subscription_id` MAY appear in logs and metrics.
 - REQ-F14.10.2: Subscribe/unsubscribe endpoints SHALL require the ticket's status credential, enforce tenant scope, be CSRF-protected and rate-limited, and cap active subscriptions per ticket.
 - REQ-F14.10.3: VAPID keys SHALL be provided by environment variables only; when absent, the web-push capability SHALL report `disabled` and the UI SHALL not offer it.
-- REQ-F14.10.4: The feature SHALL use only free, open-standard components (Web Push protocol, VAPID, an MIT-licensed library); no paid push service or SaaS.
+- REQ-F14.10.4: The feature SHALL use only free, open-standard components (Web Push protocol, VAPID, an MIT-licensed library); no paid push service or SaaS. _(M5.4: met with `http_ece` (MIT) for RFC 8291 encryption and `node:crypto` for VAPID; the `web-push` package is MPL-2.0 and is not used. ADR-013.)_
 - REQ-F14.10.5: Alert attempts and outcomes SHALL be counted (aggregate, non-PII) and visible to supervisors on the connectivity dashboard.
 
 ### REQ-F14.11 Verification

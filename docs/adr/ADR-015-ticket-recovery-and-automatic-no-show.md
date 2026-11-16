@@ -91,3 +91,28 @@ someone's ticket. Constraints:
   event append as every command, and correctness must not depend on a single instance.
 
 ## Verification (see testing steering, Group 8: items 8.R1–8.R12)
+
+## Amendment 1 (2026-11-16): Recovery activity audit view
+
+**Status:** Approved by the project owner on 2026-11-16 (manual acceptance check 12).
+
+**Context.** Staff-assisted recovery is audited in `admin_events` (requester, approver, reason,
+assurance, factor booleans; no secrets), as decided above. Recovery deliberately writes no queue
+events, so the M4 queue Audit trail, which shows only the hash-chained queue events, never showed
+these records, and no other screen or API did. Manual check 12 found that supervisors and auditors
+could not see who requested or approved a recovery.
+
+**Decision.** Add a read-only `GET /api/v1/queues/:id/recovery/audit` and a "Recovery activity"
+section on the queue Audit trail page (design §15.9a). Same permission as the queue audit view
+(`AUDIT_VIEW`); server-side tenant, facility and queue scoping; keyset pagination in
+`(created_at, id)` order; details through an allow-list; staff names resolved at read time from
+the immutable `actor_id` (a display label, not a snapshot); visitor actions never attributed to
+staff; no keys, grants, tokens, hashes, links, emails or staff ids returned.
+
+**Unchanged.** The queue event chain and its verification, the separation of recovery from queue
+events, every recovery credential and throttle rule, and the existing records (nothing is
+rewritten or backfilled).
+
+**Consequences.** Audit viewers can now see recovery attribution. Names follow renames; the
+immutable reference remains the stored `actor_id`. Requests, approvals and redemptions are related
+only by ticket and time, because the events carry no request id.

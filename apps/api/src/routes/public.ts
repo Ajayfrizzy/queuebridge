@@ -90,6 +90,7 @@ export async function publicRoutes(app: FastifyInstance, deps: RouteDeps): Promi
         operationId: body.operation_id,
         proofHash: hashJoinProof(body.join_proof),
         staffUserId: null,
+        recovery: deps.recovery,
       });
       return reply.status(result.disposition === 'committed' ? 201 : 200).send({ ticket: result });
     },
@@ -97,7 +98,9 @@ export async function publicRoutes(app: FastifyInstance, deps: RouteDeps): Promi
 
   app.get<{ Params: { code: string } }>('/tickets/:code/status', publicRead, async (req, reply) => {
     const resolved = await resolveTicket(req);
-    return reply.send({ status: await ticketStatusView(db, resolved) });
+    return reply.send({
+      status: await ticketStatusView(db, resolved, { recoveryEnabled: deps.recovery !== null }),
+    });
   });
 
   app.get<{ Params: { code: string } }>('/tickets/:code/stream', publicRead, async (req, reply) => {

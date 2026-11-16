@@ -181,6 +181,28 @@ export const ServicePolicySchema = z
       .refine((v) => new Set(v).size === v.length, 'override_reasons must not repeat')
       .default([...DEFAULT_OVERRIDE_REASONS]),
     transfer_placement: TransferPlacementSchema.default('by_original_join_time'),
+    /**
+     * M5.1 (REQ-F4.13): `staff_resume` (default, the M2 behaviour) or `self_resume`, which also
+     * lets the visitor return a missed ticket to the queue inside the grace window.
+     */
+    rejoin_policy: z.enum(['staff_resume', 'self_resume']).default('staff_resume'),
+    /**
+     * M5.1 (REQ-F4.14): automatic no-show is OFF by default. When enabled the call-response time
+     * must be entered explicitly; there is no default value.
+     */
+    auto_miss: z
+      .object({
+        enabled: z.boolean(),
+        after_seconds: z.number().int().min(60).max(3600).optional(),
+      })
+      .strict()
+      .refine((v) => !v.enabled || v.after_seconds !== undefined, {
+        message: 'Enter the number of seconds before an unanswered call is marked missed',
+        path: ['after_seconds'],
+      })
+      .default({ enabled: false }),
+    /** M5.1 (REQ-F4.11): a facility may switch staff-assisted recovery off entirely. */
+    staff_recovery: z.boolean().default(true),
   })
   .strict();
 export type ServicePolicy = z.infer<typeof ServicePolicySchema>;
@@ -195,6 +217,9 @@ export const CreateServiceRequestSchema = z
       grace_window_seconds: 300,
       override_reasons: [...DEFAULT_OVERRIDE_REASONS],
       transfer_placement: 'by_original_join_time',
+      rejoin_policy: 'staff_resume',
+      auto_miss: { enabled: false },
+      staff_recovery: true,
     }),
   })
   .strict();

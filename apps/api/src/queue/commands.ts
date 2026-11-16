@@ -8,6 +8,8 @@ import {
   type QueueCommandAction,
   type QueueCommandRequest,
   type Role,
+  type SystemActor,
+  type TransitionActor,
 } from '@queuebridge/contracts';
 import {
   ACTIVE_TICKET_STATES,
@@ -103,7 +105,7 @@ function canManage(roles: Role[]): boolean {
  *  - a policy precondition fails (grace window)        → rejected 'grace_window_expired'
  */
 function authorizeTransition(
-  roles: Role[],
+  roles: readonly TransitionActor[],
   from: TicketState,
   action: QueueAction,
   satisfiedPolicies: string[] = [],
@@ -387,6 +389,38 @@ export async function applyCommand(
     }
   }
 
+  const ev = await applyTicketTransition(tx, session, ticket, action, to, {
+    actorId: auth.staffUserId,
+    operationId: command.operation_id,
+  });
+  return {
+    ...base,
+    server_revision: ev.revision,
+    server_sequence: ev.sequence,
+    ticket_id: ticket.id,
+    public_code: ticket.public_code,
+  };
+}
+
+/**
+ * The single place a generic ticket transition is written: ticket columns, the hash-chained
+ * event with its transition row, the revision. Used by staff commands and by the M5.1 system
+ * actors alike, so a visitor rejoin or an automatic no-show produces exactly the same records as
+ * the staff action it mirrors (and replays and verifies like it).
+ */
+export async function applyTicketTransition(
+  tx: Db,
+  session: LockedSession,
+  ticket: TicketRow,
+  action: QueueAction,
+  to: TicketState,
+  actor: {
+    actorId: string | null;
+    operationId: string | null;
+    /** Extra non-personal facts for the event (reason code, actor kind, call sequence) */
+    payload?: Record<string, unknown>;
+  },
+): Promise<{ revision: number; sequence: number }> {
   // Column side-effects per transition
   const counterAfter =
     to === TicketState.WAITING || to === TicketState.CANCELLED ? null : ticket.current_counter_id;
@@ -402,8 +436,8 @@ export async function applyCommand(
     WHERE id = ${ticket.id}`;
   const ev = await appendEvent(tx, session, {
     eventType: action,
-    actorId: auth.staffUserId,
-    operationId: command.operation_id,
+    actorId: actor.actorId,
+    operationId: actor.operationId,
     payload: {
       ticket_id: ticket.id,
       public_code: ticket.public_code,
@@ -411,17 +445,136 @@ export async function applyCommand(
       to_state: to,
       counter_id: counterAfter,
       policy_version: session.policy.version,
+      ...(actor.payload ?? {}),
     },
     transition: { ticketId: ticket.id, from: ticket.state, to },
   });
-  return {
-    ...base,
-    server_revision: ev.revision,
-    server_sequence: ev.sequence,
-    ticket_id: ticket.id,
-    public_code: ticket.public_code,
-  };
+  return { revision: ev.revision, sequence: ev.sequence };
 }
+
+// ---------------------------------------------------------------------------
+// M5.1 system actors: visitor rejoin and automatic no-show (REQ-F4.13, REQ-F4.14)
+// ---------------------------------------------------------------------------
+
+/** A precondition that does not hold for a SYSTEM transition: skip, record nothing. */
+export class SystemTransitionSkipped extends Error {
+  public constructor(public readonly reasonCode: string) {
+    super(reasonCode);
+    this.name = 'SystemTransitionSkipped';
+  }
+}
+
+export interface SystemTransitionInput {
+  organizationId: string;
+  queueId: string;
+  ticketId: string;
+  /** UUID v7: visitor-supplied (rejoin) or deterministic (automatic no-show) */
+  operationId: string;
+  actor: SystemActor;
+  action: QueueAction;
+  /** Extra non-personal facts for the event */
+  payload?: Record<string, unknown>;
+  /**
+   * Evaluated UNDER the session and ticket locks, with database time. Returns the satisfied
+   * policy names. Throw CommandRejected to record a rejection (visitor), or
+   * SystemTransitionSkipped to leave nothing behind (system).
+   */
+  preconditions: (tx: Db, session: LockedSession, ticket: TicketRow) => Promise<string[]>;
+}
+
+/**
+ * Execute one transition for a non-staff actor through the same machinery as staff commands:
+ * session lock, `(organization_id, operation_id)` deduplication, the M3 coordinator fence, the
+ * ticket row lock, the domain transition table, the shared event append and a
+ * `client_operations` record. An identical operation id never applies twice.
+ */
+export async function executeSystemTransition(
+  db: Db,
+  input: SystemTransitionInput,
+): Promise<CommandOutcome> {
+  const replay = (stored: StoredOperation): CommandOutcome => {
+    if (
+      stored.queue_session_id !== input.queueId ||
+      stored.action !== input.action ||
+      stored.result_json.ticket_id !== input.ticketId
+    ) {
+      throw problems.conflict('This operation id was already used for a different command.');
+    }
+    return stored.status === 'committed'
+      ? { ...stored.result_json, disposition: 'duplicate' }
+      : stored.result_json;
+  };
+  try {
+    return await db.begin(async (tx) => {
+      const locked = await lockSessions(tx, input.organizationId, [input.queueId]);
+      const session = locked.get(input.queueId);
+      if (!session) throw problems.notFound();
+      const prior = await tx<StoredOperation[]>`
+        SELECT queue_session_id, action, status, result_json FROM client_operations
+         WHERE organization_id = ${input.organizationId} AND operation_id = ${input.operationId}`;
+      if (prior[0]) return replay(prior[0]);
+      // M3 fence (ADR-006): while a coordinator is designated, nobody else advances the queue
+      if (session.coordinator_device_id !== null) {
+        throw new ApiProblem(409, 'coordinator-active', 'Offline coordinator active', {
+          detail: 'This queue is being run offline right now. Please speak to a member of staff.',
+        });
+      }
+      const ticket = await lockTicket(tx, session, input.ticketId);
+      let outcome: CommandOutcome;
+      try {
+        const policies = await input.preconditions(tx, session, ticket);
+        const to = authorizeTransition([input.actor], ticket.state, input.action, policies);
+        const ev = await applyTicketTransition(tx, session, ticket, input.action, to, {
+          actorId: null,
+          operationId: input.operationId,
+          payload: { actor_kind: input.actor, ...(input.payload ?? {}) },
+        });
+        outcome = {
+          disposition: 'committed',
+          operation_id: input.operationId,
+          action: input.action as QueueCommandAction,
+          server_revision: ev.revision,
+          server_sequence: ev.sequence,
+          ticket_id: ticket.id,
+          public_code: ticket.public_code,
+          reason_code: null,
+          message: null,
+        };
+      } catch (err) {
+        if (!(err instanceof CommandRejected)) throw err;
+        outcome = {
+          disposition: 'rejected',
+          operation_id: input.operationId,
+          action: input.action as QueueCommandAction,
+          server_revision: session.revision,
+          server_sequence: null,
+          ticket_id: ticket.id,
+          public_code: ticket.public_code,
+          reason_code: err.reasonCode,
+          message: err.message,
+        };
+      }
+      await tx`
+        INSERT INTO client_operations
+          (organization_id, queue_session_id, device_id, actor_id, operation_id, client_sequence,
+           action, status, result_json, source)
+        VALUES (${input.organizationId}, ${session.id}, NULL, NULL, ${input.operationId},
+                0, ${input.action}, ${outcome.disposition}, ${tx.json(outcome as never)}, 'online')`;
+      return outcome;
+    });
+  } catch (err) {
+    // The same operation id committed concurrently (e.g. two API instances): report the stored one
+    if (isUniqueViolation(err, 'client_operations_org_op_idx')) {
+      const rows = await db<StoredOperation[]>`
+        SELECT queue_session_id, action, status, result_json FROM client_operations
+         WHERE organization_id = ${input.organizationId} AND operation_id = ${input.operationId}`;
+      if (rows[0]) return replay(rows[0]);
+    }
+    throw err;
+  }
+}
+
+export type { TicketRow };
 
 async function transfer(
   tx: Db,

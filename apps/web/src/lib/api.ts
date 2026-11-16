@@ -35,6 +35,22 @@ import type {
   CounterTransferRequest,
   PolicyVersion,
   PriorityOverrideRequest,
+  RecoveredTicket,
+  RecoveryAssistRequest,
+  RecoveryAssistResponse,
+  RecoveryKeyResponse,
+  RecoveryAuditPage,
+  RecoveryRequestStatus,
+  RecoveryRequestSummary,
+  RecoveryRevokeAllRequest,
+  RevokeOtherDevicesResponse,
+  AlertSummary,
+  HealthAlert,
+  OwnDeviceHealth,
+  PushCapability,
+  PushSubscribeRequest,
+  PushSubscribeResponse,
+  StaffTicketAlerts,
 } from '@queuebridge/contracts';
 
 const BASE: string =
@@ -44,7 +60,29 @@ let onUnauthenticated: (() => void) | null = null;
 let networkObserver: ((reachable: boolean) => void) | null = null;
 let sessionObserver: ((expiresAt: string) => void) | null = null;
 
-/** Observe API reachability: true after any HTTP response, false after a network failure. */
+/**
+ * API reachability, as the rest of the app sees it (M5.0).
+ *
+ * Negative signals take effect at once: the browser's `offline` event and any network failure
+ * report "unreachable" and start a new outage epoch. Restoring "reachable" after an outage needs
+ * actual server health validation: a `/health` probe that was SENT and ANSWERED within the
+ * current epoch while the browser reports being online. Ordinary API responses can only keep an
+ * already reachable state; during an outage they trigger a probe instead of restoring it, and a
+ * response to a request sent before the outage began never counts.
+ */
+let apiReachable = typeof navigator === 'undefined' ? true : navigator.onLine;
+let outageEpoch = 0;
+const browserOnline = (): boolean => typeof navigator === 'undefined' || navigator.onLine;
+
+function reportUnreachable(): void {
+  outageEpoch += 1;
+  apiReachable = false;
+  networkObserver?.(false);
+}
+
+if (typeof window !== 'undefined') window.addEventListener('offline', reportUnreachable);
+
+/** Observe API reachability (see above): false at once on an outage, true only after a probe. */
 export function setNetworkObserver(fn: ((reachable: boolean) => void) | null): void {
   networkObserver = fn;
 }
@@ -102,6 +140,7 @@ async function request<T>(
   extraHeaders: Record<string, string> = {},
 ): Promise<T> {
   let res: Response;
+  const sentInEpoch = outageEpoch;
   try {
     res = await fetch(`${BASE}/api/v1${path}`, {
       method,
@@ -116,10 +155,12 @@ async function request<T>(
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
   } catch {
-    networkObserver?.(false);
+    reportUnreachable();
     throw new ApiRequestError(0, null, 'Cannot reach the server. Check your connection and retry.');
   }
-  networkObserver?.(true);
+  // A response is never by itself proof that an outage is over (see `apiReachable`). If the app
+  // is in an outage, ask the health probe; otherwise the state simply stays "reachable".
+  if (!apiReachable && browserOnline() && sentInEpoch === outageEpoch) void api.ping();
 
   if (res.status === 204) return undefined as T;
   let parsed: unknown = null;
@@ -178,7 +219,7 @@ export interface CoordinatorResult {
 }
 
 export const TICKET_TOKEN_HEADER = 'X-QB-Ticket-Token';
-
+const tokenHeader = (token: string): Record<string, string> => ({ [TICKET_TOKEN_HEADER]: token });
 export const api = {
   signupOrganization: (body: CreateOrganizationRequest): Promise<{ user: SessionUser }> =>
     request('POST', '/organizations', body),
@@ -294,6 +335,12 @@ export const api = {
     request('GET', `/queues/${queueId}/audit?after_sequence=${afterSequence}&limit=${limit}`),
   verifyAudit: (queueId: string): Promise<{ verification: AuditVerification }> =>
     request('GET', `/queues/${queueId}/audit/verify`),
+  /** Read-only Recovery activity of this queue's tickets (design §15.9a) */
+  recoveryAudit: (queueId: string, after: string | null, limit = 50): Promise<RecoveryAuditPage> =>
+    request(
+      'GET',
+      `/queues/${queueId}/recovery/audit?limit=${limit}${after ? `&after=${encodeURIComponent(after)}` : ''}`,
+    ),
 
   // ---- M2: public / visitor ----
   publicFacility: (org: string, fac: string): Promise<{ facility: PublicFacility }> =>
@@ -311,6 +358,95 @@ export const api = {
     request('GET', `/tickets/${encodeURIComponent(code)}/status`, undefined, {
       [TICKET_TOKEN_HEADER]: token,
     }),
+
+  // ---- M5.1: ticket recovery (visitor) ----
+  /** Exchange the recovery key (with the PUBLIC identifiers) or a staff grant for a new token. */
+  recoverTicket: (
+    body:
+      | { org_slug: string; facility_slug: string; ticket_code: string; recovery_key: string }
+      | { grant: string },
+  ): Promise<{ ticket: RecoveredTicket }> => request('POST', '/tickets/recover', body),
+  newRecoveryKey: (code: string, token: string): Promise<RecoveryKeyResponse> =>
+    request('POST', `/tickets/${encodeURIComponent(code)}/recovery-key`, {}, tokenHeader(token)),
+  signOutOtherDevices: (code: string, token: string): Promise<RevokeOtherDevicesResponse> =>
+    request(
+      'POST',
+      `/tickets/${encodeURIComponent(code)}/sessions/revoke-others`,
+      {},
+      tokenHeader(token),
+    ),
+  rejoin: (
+    code: string,
+    token: string,
+    operationId: string,
+  ): Promise<{ outcome: { disposition: string; reason_code: string | null } }> =>
+    request(
+      'POST',
+      `/tickets/${encodeURIComponent(code)}/rejoin`,
+      { operation_id: operationId },
+      tokenHeader(token),
+    ),
+
+  // ---- M5.4: Smart Turn Alerts (Web Push is optional and best effort) ----
+  pushCapability: (): Promise<PushCapability> => request('GET', '/push/capability'),
+  subscribePush: (
+    code: string,
+    token: string,
+    body: PushSubscribeRequest,
+  ): Promise<PushSubscribeResponse> =>
+    request(
+      'POST',
+      `/tickets/${encodeURIComponent(code)}/push-subscription`,
+      body,
+      tokenHeader(token),
+    ),
+  unsubscribePush: (code: string, token: string, ref: string): Promise<void> =>
+    request(
+      'DELETE',
+      `/tickets/${encodeURIComponent(code)}/push-subscription`,
+      { subscription_ref: ref },
+      tokenHeader(token),
+    ),
+  /** First-party "seen on this device" (only the page can send it: it holds the token). */
+  ackTurnAlert: (code: string, token: string, ref: string, sequence: number): Promise<void> =>
+    request(
+      'POST',
+      `/tickets/${encodeURIComponent(code)}/alerts/ack`,
+      { subscription_ref: ref, event_sequence: sequence },
+      tokenHeader(token),
+    ),
+  queueAlerts: (queueId: string): Promise<{ alerts: StaffTicketAlerts[] }> =>
+    request('GET', `/queues/${queueId}/alerts`),
+
+  // ---- M5.1: staff-assisted recovery (restricted procedure) ----
+  recoveryAssist: (
+    queueId: string,
+    ticketId: string,
+    body: RecoveryAssistRequest,
+  ): Promise<RecoveryAssistResponse> =>
+    request('POST', `/queues/${queueId}/tickets/${ticketId}/recovery/assist`, body),
+  recoveryApprove: (
+    queueId: string,
+    ticketId: string,
+    requestId: string,
+  ): Promise<{ status: RecoveryRequestStatus }> =>
+    request('POST', `/queues/${queueId}/tickets/${ticketId}/recovery/approve`, {
+      request_id: requestId,
+    }),
+  recoveryRequestStatus: (
+    queueId: string,
+    ticketId: string,
+    requestId: string,
+  ): Promise<{ status: RecoveryRequestStatus }> =>
+    request('GET', `/queues/${queueId}/tickets/${ticketId}/recovery/requests/${requestId}`),
+  recoveryRequests: (queueId: string): Promise<{ requests: RecoveryRequestSummary[] }> =>
+    request('GET', `/queues/${queueId}/recovery/requests`),
+  recoveryRevokeAll: (
+    queueId: string,
+    ticketId: string,
+    body: RecoveryRevokeAllRequest,
+  ): Promise<{ revoked_tokens: number }> =>
+    request('POST', `/queues/${queueId}/tickets/${ticketId}/recovery/revoke-all`, body),
 
   // ---- M3: continuity engine ----
   registerDevice: (facilityId: string, label?: string): Promise<{ device: Device }> =>
@@ -345,6 +481,12 @@ export const api = {
     request('POST', `/queues/${queueId}/coordinator${kind === 'assign' ? '' : `/${kind}`}`, body),
   operationsHealth: (fid: string): Promise<{ health: OperationsHealth }> =>
     request('GET', `/facilities/${fid}/operations/health`),
+  // ---- M5.3: device-health alerts (in-product only) ----
+  acknowledgeAlert: (fid: string, alertId: string): Promise<{ alert: HealthAlert }> =>
+    request('POST', `/facilities/${fid}/health/alerts/${alertId}/acknowledge`, {}),
+  alertSummary: (): Promise<{ summary: AlertSummary }> => request('GET', '/health/alerts/summary'),
+  ownDeviceHealth: (deviceId: string): Promise<{ device: OwnDeviceHealth }> =>
+    request('GET', `/devices/${deviceId}/health`),
   conflicts: (fid: string, includeResolved = false): Promise<{ conflicts: SyncConflict[] }> =>
     request('GET', `/facilities/${fid}/sync/conflicts${includeResolved ? '?include=all' : ''}`),
   resolveConflict: (
@@ -352,14 +494,24 @@ export const api = {
     body: { resolution: 'apply' | 'dismiss'; reason_code: string },
   ): Promise<{ result: { resolution: string; already_resolved: boolean } }> =>
     request('POST', `/sync/conflicts/${operationId}/resolve`, body),
-  /** Lightweight reachability probe: separates "server reachable" from navigator.onLine. */
+  /**
+   * Server health validation: the only way to restore "reachable" after an outage. The answer
+   * counts only if no outage began while the probe was in flight and the browser is online.
+   */
   ping: async (): Promise<boolean> => {
+    const sentInEpoch = outageEpoch;
     try {
       const res = await fetch(`${BASE}/health`, { cache: 'no-store' });
-      networkObserver?.(res.ok);
-      return res.ok;
+      if (!res.ok) {
+        reportUnreachable();
+        return false;
+      }
+      if (sentInEpoch !== outageEpoch || !browserOnline()) return false;
+      apiReachable = true;
+      networkObserver?.(true);
+      return true;
     } catch {
-      networkObserver?.(false);
+      reportUnreachable();
       return false;
     }
   },

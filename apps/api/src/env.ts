@@ -48,6 +48,49 @@ const EnvSchema = z
     PUBLIC_READ_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(240),
     /** Max staff queue commands / walk-ins per minute per client IP. */
     COMMAND_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(240),
+    /**
+     * M5.1 (REQ-F4.10, L1): ticket-recovery attempts per request source per minute. Every
+     * attempt counts, including malformed ones. Shared by all API instances (stored in the DB).
+     */
+    RECOVERY_RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(1000).default(10),
+    /**
+     * M5.1 (REQ-F4.14): interval of the automatic no-show sweep. The feature itself is off for
+     * every service unless enabled in its policy. 0 disables the sweep in this process.
+     */
+    AUTO_MISS_SWEEP_SECONDS: z.coerce.number().int().min(0).max(3600).default(15),
+    /**
+     * M5.3 (REQ-F9.6, F9.7): device-health thresholds, by server time. The worker reads the same
+     * variables; keep the values identical for both (see .env.example).
+     */
+    DEVICE_STALE_AFTER_SECONDS: z.coerce.number().int().min(121).max(86_400).default(900),
+    COORDINATOR_EXPIRY_WARN_SECONDS: z.coerce.number().int().min(30).max(7200).default(300),
+    CONFLICT_REVIEW_WARN_SECONDS: z.coerce.number().int().min(60).max(86_400).default(900),
+    /** Interval of the worker's health evaluation; 3 missed intervals = "alerts are paused" */
+    HEALTH_EVALUATION_INTERVAL_SECONDS: z.coerce.number().int().min(5).max(3600).default(30),
+    /**
+     * M5.4 Web Push (REQ-F14.10.3). The capability is `live` only with a valid VAPID public key
+     * AND CONTACT_ENCRYPTION_KEY (subscriptions are stored encrypted). The PRIVATE key belongs to
+     * the worker only and is never read by the API. Absent or invalid: push is `disabled`, the
+     * API still starts, and the in-app alert works as always.
+     */
+    VAPID_PUBLIC_KEY: z.string().trim().optional(),
+    /** Active push subscriptions per ticket (design §12.12: default 3) */
+    PUSH_MAX_SUBSCRIPTIONS_PER_TICKET: z.coerce.number().int().min(1).max(10).default(3),
+    /** Push TTL in seconds (default 120); the worker enforces it, the API only reports it */
+    TURN_ALERT_TTL_SECONDS: z.coerce.number().int().min(30).max(3600).default(120),
+    /**
+     * Extra push-service host suffixes accepted for subscription endpoints (comma-separated), in
+     * addition to the major browsers' push services. Anything else is refused (SSRF defence).
+     */
+    PUSH_ENDPOINT_HOSTS: z
+      .string()
+      .optional()
+      .transform((v) =>
+        (v ?? '')
+          .split(',')
+          .map((h) => h.trim().toLowerCase())
+          .filter((h) => /^[a-z0-9.-]+$/.test(h)),
+      ),
     /** Set true only when running behind a trusted reverse proxy (honours X-Forwarded-For). */
     TRUST_PROXY: z
       .enum(['true', 'false'])

@@ -9,10 +9,15 @@ import {
   type StaffQueue,
   type TicketStatus,
 } from '@queuebridge/contracts';
-import { DEFAULT_OVERRIDE_REASONS } from '@queuebridge/contracts';
+import {
+  DEFAULT_OVERRIDE_REASONS,
+  recoveryPolicyOf,
+  type TicketRecoveryInfo,
+} from '@queuebridge/contracts';
 import { describeOrderingPolicy, orderWaiting, ticketsAhead } from '@queuebridge/domain';
 import { hashToken } from '../auth/tokens.js';
 import type { Db } from '../db.js';
+import { recoveryPath } from '../recovery/credentials.js';
 import { loadEstimate } from './estimate.js';
 
 interface SessionRow {
@@ -319,6 +324,11 @@ export interface ResolvedStatusTicket {
   originalCode: string;
   codes: string[];
   facilityId: string;
+  /** The ticket the credentials belong to (the one created at join; transfers follow it) */
+  rootTicketId: string;
+  /** The status token used for this request (row id; never the secret) */
+  tokenId: string;
+  tokenCreatedAt: Date;
 }
 
 /**
@@ -333,15 +343,28 @@ export async function resolveStatusToken(
 ): Promise<ResolvedStatusTicket | null> {
   const cols = db.unsafe(`t.id, t.organization_id, t.queue_session_id, t.public_code, t.state,
     t.current_counter_id, t.transferred_to_ticket_id, t.joined_at, t.updated_at`);
-  const root = await db<(ResolvedTicket & { facility_id: string })[]>`
-    SELECT ${cols}, qs.facility_id
+  // M5.1: a revoked token (signed out elsewhere, replaced at the cap, staff revoke-all, join
+  // replay) is as dead as an expired one
+  const root = await db<
+    (ResolvedTicket & { facility_id: string; token_id: string; token_created_at: Date })[]
+  >`
+    SELECT ${cols}, qs.facility_id, trc.id AS token_id, trc.created_at AS token_created_at
       FROM ticket_recovery_credentials trc
       JOIN tickets t ON t.id = trc.ticket_id
       JOIN queue_sessions qs ON qs.id = t.queue_session_id
-     WHERE trc.credential_hash = ${hashToken(token)} AND trc.expires_at > NOW()`;
+     WHERE trc.credential_hash = ${hashToken(token)} AND trc.expires_at > NOW()
+       AND trc.revoked_at IS NULL`;
   type Row = ResolvedTicket & { facility_id: string };
-  const first: Row | undefined = root[0];
-  if (!first) return null;
+  const head = root[0];
+  if (!head) return null;
+  const first: Row = head;
+  // Housekeeping only (at most one write per token per minute); never blocks the read
+  void db`
+    UPDATE ticket_recovery_credentials SET last_used_at = NOW()
+     WHERE id = ${head.token_id}
+       AND (last_used_at IS NULL OR last_used_at < NOW() - INTERVAL '1 minute')`.catch(
+    () => undefined,
+  );
   let current: Row = first;
   const originalCode = current.public_code;
   const codes = [current.public_code];
@@ -355,7 +378,15 @@ export async function resolveStatusToken(
     codes.push(current.public_code);
   }
   if (!codes.includes(publicCode)) return null;
-  return { ticket: current, originalCode, codes, facilityId: current.facility_id };
+  return {
+    ticket: current,
+    originalCode,
+    codes,
+    facilityId: current.facility_id,
+    rootTicketId: first.id,
+    tokenId: head.token_id,
+    tokenCreatedAt: head.token_created_at,
+  };
 }
 
 function statusMessage(
@@ -389,9 +420,62 @@ function statusMessage(
   }
 }
 
+/** M5.1 recovery, rejoin and access facts for the visitor's own ticket (no secret). */
+async function recoveryInfo(
+  db: Db,
+  resolved: ResolvedStatusTicket,
+  session: SessionRow,
+  recoveryEnabled: boolean,
+): Promise<TicketRecoveryInfo> {
+  const t = resolved.ticket;
+  const rp = recoveryPolicyOf(session.policy);
+  const [facts] = await db<
+    {
+      org_slug: string;
+      facility_slug: string;
+      grace_ends_at: Date | null;
+      grace_open: boolean;
+      coordinator: boolean;
+      granted_elsewhere: Date | null;
+    }[]
+  >`
+    SELECT o.slug AS org_slug, f.slug AS facility_slug,
+           tk.missed_at + make_interval(secs => ${session.policy.grace_window_seconds}) AS grace_ends_at,
+           (tk.state = 'missed' AND tk.missed_at IS NOT NULL
+             AND NOW() <= tk.missed_at + make_interval(secs => ${session.policy.grace_window_seconds})) AS grace_open,
+           (qs.coordinator_device_id IS NOT NULL) AS coordinator,
+           (SELECT MAX(c.created_at) FROM ticket_recovery_credentials c
+             WHERE c.ticket_id = ${resolved.rootTicketId} AND c.source IN ('recovery', 'staff')
+               AND c.id <> ${resolved.tokenId} AND c.created_at > ${resolved.tokenCreatedAt}) AS granted_elsewhere
+      FROM tickets tk
+      JOIN queue_sessions qs ON qs.id = tk.queue_session_id
+      JOIN facilities f ON f.id = qs.facility_id
+      JOIN organizations o ON o.id = f.organization_id
+     WHERE tk.id = ${t.id} AND tk.organization_id = ${t.organization_id}`;
+  return {
+    self_service_available: recoveryEnabled,
+    recovery_path: recoveryPath(
+      facts?.org_slug ?? '',
+      facts?.facility_slug ?? '',
+      resolved.originalCode,
+    ),
+    rejoin_available: Boolean(
+      t.state === TicketState.MISSED &&
+        rp.rejoin_policy === 'self_resume' &&
+        facts?.grace_open &&
+        !facts.coordinator,
+    ),
+    grace_ends_at:
+      t.state === TicketState.MISSED ? (facts?.grace_ends_at?.toISOString() ?? null) : null,
+    auto_miss_after_seconds: rp.auto_miss.enabled ? rp.auto_miss.after_seconds : null,
+    access_granted_elsewhere_at: facts?.granted_elsewhere?.toISOString() ?? null,
+  };
+}
+
 export async function ticketStatusView(
   db: Db,
   resolved: ResolvedStatusTicket,
+  opts: { recoveryEnabled: boolean } = { recoveryEnabled: false },
 ): Promise<TicketStatus> {
   const t = resolved.ticket;
   const sessions = await db<(SessionRow & { facility_name: string })[]>`
@@ -444,5 +528,16 @@ export async function ticketStatusView(
     transferred_from_code:
       resolved.codes.length > 1 ? (resolved.codes[resolved.codes.length - 2] ?? null) : null,
     revision: session.revision,
+    recovery: await recoveryInfo(db, resolved, session, opts.recoveryEnabled),
+    call_sequence: t.state === TicketState.CALLED ? await currentCallSequence(db, t.id) : null,
   };
+}
+
+/** The committed event sequence of the call a ticket is answering (its latest move INTO called). */
+export async function currentCallSequence(db: Db, ticketId: string): Promise<number | null> {
+  const [r] = await db<{ sequence: number }[]>`
+    SELECT e.sequence FROM ticket_transitions tt JOIN queue_events e ON e.id = tt.queue_event_id
+     WHERE tt.ticket_id = ${ticketId} AND tt.to_state = 'called'
+     ORDER BY e.sequence DESC LIMIT 1`;
+  return r?.sequence ?? null;
 }

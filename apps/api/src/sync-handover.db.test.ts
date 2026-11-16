@@ -115,9 +115,15 @@ describe('lost acknowledgement and duplicate retries', () => {
     const code = results[0]?.public_code ?? '';
     const validity = await Promise.all(results.map((r) => valid(code, r?.status_token)));
     expect(validity.filter(Boolean)).toHaveLength(1);
-    expect(
-      await db`SELECT 1 FROM ticket_recovery_credentials rc JOIN tickets t ON t.id = rc.ticket_id WHERE t.queue_session_id = ${f.queueId}`,
-    ).toHaveLength(1);
+    // M5.1: replaced credentials are kept (revoked) for audit and retention, not overwritten;
+    // exactly one is still ACTIVE, and every other one is revoked as a join replay
+    const rows = await db<{ revoked_at: Date | null; revoked_reason: string | null }[]>`
+      SELECT rc.revoked_at, rc.revoked_reason FROM ticket_recovery_credentials rc
+        JOIN tickets t ON t.id = rc.ticket_id WHERE t.queue_session_id = ${f.queueId}`;
+    expect(rows.filter((r) => r.revoked_at === null)).toHaveLength(1);
+    expect(rows.filter((r) => r.revoked_at !== null).map((r) => r.revoked_reason)).toEqual(
+      Array.from({ length: rows.length - 1 }, () => 'join_replayed'),
+    );
   });
 });
 

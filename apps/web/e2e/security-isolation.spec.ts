@@ -65,6 +65,35 @@ test.describe('authentication boundaries', () => {
     expect(replay.status()).toBe(401);
   });
 
+  // M5.0 regression. On a slow device React can fold the sign-out navigation, the route guard's
+  // redirect and an immediate Back into ONE render whose final location equals the first. The
+  // guard used to be a one-shot <Navigate>, so it never fired again and a signed-out user was left
+  // on a blank protected URL. CPU throttling makes that coalescing likely: before the fix this
+  // test failed in roughly three of four cycles (31 of 40 single-cycle runs at 20x).
+  test('signing out and pressing Back on a slow device never leaves a blank protected page', async ({
+    page,
+  }) => {
+    const org = await apiSignup(page.request);
+    await apiFacility(page.request, 'Private Clinic');
+    for (let cycle = 1; cycle <= 4; cycle++) {
+      await page.context().clearCookies();
+      await uiLogin(page, org.slug, org.email);
+      await expect(page.getByRole('link', { name: 'Private Clinic' })).toBeVisible();
+      const cdp = await page.context().newCDPSession(page);
+      await cdp.send('Emulation.setCPUThrottlingRate', { rate: 20 });
+      await page.getByRole('button', { name: 'Sign out' }).click();
+      await expect(page, `cycle ${cycle}: lands on home`).toHaveURL(/\/$/);
+      await page.goBack();
+      await expect(page, `cycle ${cycle}: Back to /admin bounces to sign-in`).toHaveURL(/\/login$/);
+      await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+      await expect(page.getByText('Private Clinic')).toHaveCount(0);
+      await cdp.detach();
+    }
+    // The server session really ended each time
+    expect((await page.request.get('/api/v1/auth/me')).status()).toBe(401);
+  });
+
   test('session survives a page reload', async ({ page }) => {
     await apiSignup(page.request);
     await page.goto('/admin');

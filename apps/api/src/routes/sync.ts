@@ -17,7 +17,8 @@ import { parseInput, problems } from '../errors.js';
 import { coordinatorCommand, type CoordinatorKind } from '../queue/coordinator.js';
 import { resolveConflict, listConflicts } from '../queue/conflicts.js';
 import { recordHeartbeat, registerDevice, revokeDevice } from '../queue/devices.js';
-import { operationsHealth } from '../queue/health.js';
+import { healthConfig, operationsHealth } from '../queue/health.js';
+import { acknowledgeAlert, alertSummary, ownDeviceHealth } from '../queue/health-alerts.js';
 import { buildSnapshot } from '../queue/snapshot.js';
 import { processSyncBatch } from '../queue/sync.js';
 import { queueFacility } from '../queue/views.js';
@@ -161,7 +162,45 @@ export async function syncRoutes(app: FastifyInstance, deps: RouteDeps): Promise
         uuidParam(req.params.id),
         'OPERATIONS_VIEW',
       );
-      return reply.send({ health: await operationsHealth(db, auth.organizationId, f.id) });
+      return reply.send({
+        health: await operationsHealth(db, auth.organizationId, f.id, healthConfig(env)),
+      });
+    },
+  );
+
+  // ---- M5.3 device-health alerts (in-product only; never SMS or email to staff) --------------
+
+  /** POST /facilities/:id/health/alerts/:alertId/acknowledge — QUEUE_MANAGE; idempotent; audited. */
+  app.post<{ Params: { id: string; alertId: string } }>(
+    '/facilities/:id/health/alerts/:alertId/acknowledge',
+    { preHandler: authenticate, config: limited },
+    async (req, reply) => {
+      const auth = requireAuth(req);
+      return reply.send({
+        alert: await acknowledgeAlert(
+          db,
+          auth,
+          uuidParam(req.params.id),
+          uuidParam(req.params.alertId),
+        ),
+      });
+    },
+  );
+
+  /** GET /health/alerts/summary — open alerts the caller may see (signed-in banner). */
+  app.get('/health/alerts/summary', { preHandler: authenticate }, async (req, reply) => {
+    return reply.send({ summary: await alertSummary(db, requireAuth(req)) });
+  });
+
+  /** GET /devices/:id/health — warnings about the caller's OWN device (owner only). */
+  app.get<{ Params: { id: string } }>(
+    '/devices/:id/health',
+    { preHandler: authenticate },
+    async (req, reply) => {
+      const auth = requireAuth(req);
+      return reply.send({
+        device: await ownDeviceHealth(db, auth, uuidParam(req.params.id), healthConfig(env)),
+      });
     },
   );
 

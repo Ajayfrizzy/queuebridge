@@ -16,9 +16,13 @@
  *           AUDIT_SIGNING_KEY_ID, so checkpoints
  *           signed with an old key are reported "incomplete", never mistaken for tampering.
  *           The file is rewritten atomically with mode 0600; other lines are preserved.
+ *           With --vapid, also creates a Web Push (VAPID, P-256) key pair where it is missing
+ *           (M5.4; push is optional). An existing pair is replaced only with --rotate-vapid,
+ *           because every browser subscription is bound to the public key and would have to
+ *           opt in again. VAPID_SUBJECT (a contact URL) is never invented: set it yourself.
  */
 
-import { randomBytes } from 'node:crypto';
+import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import { chmod, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -96,6 +100,29 @@ async function generate() {
       report.push(`AUDIT_SIGNING_KEY_ID: set to ${id} (new key ⇒ new id)`);
     }
   }
+  if (args.includes('--vapid')) {
+    const has = Boolean(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY);
+    if (has && !args.includes('--rotate-vapid')) {
+      report.push(
+        'VAPID key pair: kept (--rotate-vapid to replace — every visitor must opt in to push again)',
+      );
+    } else {
+      const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+      const pub = publicKey.export({ format: 'jwk' });
+      const priv = privateKey.export({ format: 'jwk' });
+      const raw = Buffer.concat([
+        Buffer.from([4]),
+        Buffer.from(pub.x, 'base64url'),
+        Buffer.from(pub.y, 'base64url'),
+      ]);
+      next = setValue(next, 'VAPID_PUBLIC_KEY', raw.toString('base64url'));
+      next = setValue(next, 'VAPID_PRIVATE_KEY', priv.d);
+      report.push(`VAPID key pair: generated (${has ? 'rotated' : 'was missing'})`);
+    }
+    if (!env.VAPID_SUBJECT) {
+      report.push('VAPID_SUBJECT: not set — add a mailto: or https: contact before sending push');
+    }
+  }
   if (next !== text) {
     const tmp = `${FILE}.tmp-${process.pid}`;
     await writeFile(tmp, next, { mode: 0o600 });
@@ -168,6 +195,25 @@ async function check() {
     }
   }
 
+  // M5.4 Web Push is optional; if any VAPID value is set, the pair must be complete and match
+  if (env.VAPID_PUBLIC_KEY || env.VAPID_PRIVATE_KEY || env.VAPID_SUBJECT) {
+    try {
+      const ch = await load('packages/channels/dist/index.js');
+      ch.assertVapidKeys({
+        publicKey: env.VAPID_PUBLIC_KEY ?? '',
+        privateKey: env.VAPID_PRIVATE_KEY ?? '',
+        subject: env.VAPID_SUBJECT ?? '',
+      });
+      console.log(
+        '  ok   VAPID key pair and subject are valid (API and worker read the same file)',
+      );
+    } catch (e) {
+      fail(`Web Push: ${e instanceof Error ? e.message : 'invalid VAPID configuration'}`);
+    }
+  } else {
+    console.log('  info Web Push not configured (optional): the in-app alert still works');
+  }
+
   for (const key of ['DATABASE_URL', 'TEST_DATABASE_URL']) {
     if (!env[key]) {
       fail(`${key}: missing`);
@@ -211,7 +257,7 @@ if (command === 'generate') await generate();
 else if (command === 'check') await check();
 else {
   console.error(
-    'Usage: node infra/scripts/local-env.js check [--db] | generate [--rotate] [--file .env]',
+    'Usage: node infra/scripts/local-env.js check [--db] | generate [--rotate] [--vapid [--rotate-vapid]] [--file .env]',
   );
   process.exitCode = 2;
 }

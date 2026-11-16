@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { TicketStatus } from '@queuebridge/contracts';
 import {
   beginJoin,
   finishJoin,
@@ -96,5 +97,38 @@ describe('pending joins survive storage failure for the life of the page', () =>
     finishJoin('q2');
     expect(isPendingVolatile('q2')).toBe(false);
     expect(pendingJoins()).toHaveLength(0);
+  });
+});
+
+describe('offline last-confirmed ticket copy (REQ-F7.16)', () => {
+  const status = {
+    public_code: 'A001',
+    state: 'waiting',
+  } as unknown as TicketStatus;
+  it('holds no credential and is removed when the ticket is forgotten', async () => {
+    const { forgetTicket, loadSnapshot, saveSnapshot, saveTicket } = await import('./tickets.js');
+    const saved = saveTicket({
+      code: 'A001',
+      token: 'T'.repeat(43),
+      facilityName: 'F',
+      serviceName: 'S',
+      joinPath: null,
+      savedAt: new Date().toISOString(),
+    });
+    expect(saved).not.toBeNull();
+    saveSnapshot(saved!.id, status);
+    expect(loadSnapshot(saved!.id)?.status.public_code).toBe('A001');
+    // the stored copy never contains the token
+    expect(localStorage.getItem('qb.ticketView.v1')).not.toContain('T'.repeat(43));
+    forgetTicket(saved!.id);
+    expect(loadSnapshot(saved!.id)).toBeNull();
+  });
+  it('dropSnapshot removes only that ticket', async () => {
+    const { dropSnapshot, loadSnapshot, saveSnapshot } = await import('./tickets.js');
+    saveSnapshot('a', status);
+    saveSnapshot('b', status);
+    dropSnapshot('a');
+    expect(loadSnapshot('a')).toBeNull();
+    expect(loadSnapshot('b')).not.toBeNull();
   });
 });

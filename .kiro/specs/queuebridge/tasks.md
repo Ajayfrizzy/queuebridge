@@ -2,6 +2,7 @@
 
 **Spec version:** 1.1 (2026-11-12)  
 **Status:** **M0–M4 complete and merged into `staging`** (PRs #1 M0, #2 M1, #3 F13 spec, #4 M2, #5 M3, #6 M4; `staging` at `01927e4`, M4 merged 2026-11-12 after CI green, manual acceptance 17/17 and Codex review with no open findings). **Next: M5** (Recovery, Accessibility, Device Health **and Smart Turn Alerts**), starting with stabilization task group M5.0. Planned after M5: MQ (Ask Que, F13), M6 (**SMS Turn Alerts** and USSD), M7 (**Final UI/UX, animated landing page**, hardening, demo, submission). Nothing in M5–M7 or MQ is implemented yet.  
+**Update (2026-11-16):** M5 is implemented on `feature/m5-recovery-accessibility-alerts` (not yet merged). M5 manual acceptance runs in two sets (approved 2026-11-16): **Set 1 (checks 1–14) closed, 14 / 14 Pass**; **Set 2 (checks 15–41) is final acceptance after M7**. Remaining sequence: **M5 checkpoint → MQ → M6 → M7 → Set 2 acceptance → submission**. Confirmed critical security or integrity defects are never deferred.  
 **Each task:** implement → test → validate → mark done
 
 ---
@@ -293,117 +294,131 @@ Deferred to M2 (not implemented here): routing-engine eligibility tests, visitor
 > Planned; next milestone. M5.1–M5.3 (recovery, accessibility, device health) are the original M5
 > scope and are unchanged. M5.0 (stabilization) and M5.4 (Smart Turn Alerts, REQ-F14, ADR-013,
 > design §12) are added by the 2026-11-12 plan. Branch: `feature/m5-recovery-accessibility-alerts`
-> from `staging`. Evidence: `docs/testing/M5-evidence.md`. Report: `M5-completion.md`.
+> from `staging`. Evidence: `docs/testing/M5-evidence.md`. Report: `docs/reports/M5-completion.md`.
 > **Order:** M5.0 first (a green, trustworthy test base), then M5.1–M5.4.
 > **Migrations** follow implementation order and are numbered at implementation time (indicatively M5.1 `0007`, M5.3 `0008`, M5.4 `0009`); all are additive.
 > Confirm the open decisions in design §12.12 at kickoff.
 
 ### M5.0 Stabilization of known intermittent tests (carry-over from M4; no assertion may be weakened)
 
-- [ ] `e2e/security-isolation.spec.ts` "sign out ends the server session; the back button does not resurrect data" (M1): failed once in the PR #6 pull-request CI run (URL stayed `/admin` for 10 s after Sign out + Back) on unchanged code; passed in the push run on the same commit and 15/15 under local stress. Reproduce under CI-like conditions (2 workers, constrained CPU, repeated runs), find the root cause (candidates: Back-forward cache restoring the page, race between logout response and navigation, `pageshow` handling in `RequireAuth.tsx`/`auth.tsx`), fix the product code or the test's synchronization, and prove it with a recorded stress run (≥ 50 consecutive passes in CI-equivalent conditions) and, where the cause is product code, a regression test that fails before the fix
-- [ ] `e2e/review-fixes.spec.ts` "the notice can be dismissed without signing out" (M1, same logout area): fails locally and passes in CI because an aborted logout can also raise the offline toast, so `getByRole('button', { name: 'Dismiss' })` matches two buttons (strict mode). Make the locator unambiguous (scope to `logout-error` or use `exact: true`) without weakening what it asserts, and record why CI and local differed
-- [ ] `e2e/offline.spec.ts` "a browser that cannot store offline data says so and refuses to pretend" (M3): failed once in seven local runs; likely clicks before the app registers the loss of connectivity. Synchronize on the app's connectivity state instead of timing; stress 50 runs
-- [ ] Record each root cause, fix and stress result in `docs/testing/M5-evidence.md`; any flake that cannot be reproduced stays listed there as open with its observed frequency, never deleted
+- [x] `e2e/security-isolation.spec.ts` "sign out ends the server session; the back button does not resurrect data" (M1): failed once in the PR #6 pull-request CI run (URL stayed `/admin` for 10 s after Sign out + Back) on unchanged code; passed in the push run on the same commit and 15/15 under local stress. Reproduce under CI-like conditions (2 workers, constrained CPU, repeated runs), find the root cause (candidates: Back-forward cache restoring the page, race between logout response and navigation, `pageshow` handling in `RequireAuth.tsx`/`auth.tsx`), fix the product code or the test's synchronization, and prove it with a recorded stress run (≥ 50 consecutive passes in CI-equivalent conditions) and, where the cause is product code, a regression test that fails before the fix — **done:** root cause in `RequireAuth` (one-shot redirect lost under render coalescing); fixed in product code; slow-device regression test fails 15/15 before, passes after (`M5-evidence.md`)
+- [x] `e2e/review-fixes.spec.ts` "the notice can be dismissed without signing out" (M1, same logout area): fails locally and passes in CI because an aborted logout can also raise the offline toast, so `getByRole('button', { name: 'Dismiss' })` matches two buttons (strict mode). Make the locator unambiguous (scope to `logout-error` or use `exact: true`) without weakening what it asserts, and record why CI and local differed — **done:** ambiguous locator raced with the offline toast; scoped and exact (`M5-evidence.md`)
+- [x] `e2e/offline.spec.ts` "a browser that cannot store offline data says so and refuses to pretend" (M3): failed once in seven local runs; likely clicks before the app registers the loss of connectivity. Synchronize on the app's connectivity state instead of timing; stress 50 runs — **done:** click-before-offline (test sync, `goOffline`) plus stale in-flight success flipping the app online (product fix in `api.ts`, unit regression) (`M5-evidence.md`)
+- [x] Record each root cause, fix and stress result in `docs/testing/M5-evidence.md`; any flake that cannot be reproduced stays listed there as open with its observed frequency, never deleted — **done**
 
 ### M5.1 Ticket recovery (F4; design §15; ADR-015; Group 8: 8.R1–8.R12)
 
 Original tasks (unchanged):
 
-- [ ] Recovery credential generation and secure storage
-- [ ] Rate-limited recovery endpoint
-- [ ] Grace window and rejoin policy configuration
-- [ ] Recovery UI flow
+- [x] Recovery credential generation and secure storage
+- [x] Rate-limited recovery endpoint
+- [x] Grace window and rejoin policy configuration
+- [x] Recovery UI flow
 
 Design-derived tasks (revised 2026-11-12; ADR-015, design §15):
 
-- [ ] Contracts: recovery request/response (key or grant), staff assist/approve, policy additions (`rejoin_policy`, `auto_miss`, `staff_recovery`), error problem types; `JoinQueueResponse` gains the one-time `recovery_key`
-- [ ] M5.1 migration (additive; indicatively `0007`): `ticket_recovery_credentials` gains `source`, `revoked_at`, `revoked_reason`, `last_used_at` and the unique `ticket_id` index is replaced by a plain partial index; new `ticket_recovery_proofs` (no failure/lock columns), `ticket_recovery_grants` (basic assurance needs a different approver, enforced by CHECK), `recovery_throttle`, `auto_miss_sweeps`; migration guard and idempotency tests updated
-- [ ] Credential service: 160-bit CSPRNG recovery key (Crockford base32, 32 chars), HMAC-SHA-256 with an HKDF-derived pepper from `CONTACT_ENCRYPTION_KEY`, constant-time compare, tolerant input normalization; status tokens capped at 3 active with the rotation/invalidation matrix of design §15.6; join replay keeps its proof-based re-issue; "access granted elsewhere" notice to existing devices
-- [ ] Presentation: QR + link with the key in the URL fragment only (read, then removed with `history.replaceState`, sent in a POST body), readable 8×4 grouped text, Copy/Share/Save/Print; key never in `localStorage`, outbox or logs
-- [ ] `POST /tickets/recover` (key or grant): uniform failure and constant work; throttle layers L1–L5 keyed only on public identifiers and the source (never the guess), `RECOVERY_RATE_LIMIT_MAX` = 10 per minute, 5 failures per 15 min per ticket code per source, no lifetime lock, no unlock endpoint, clean sources always verified; atomic counters; `recovery_abuse` alert
-- [ ] `POST /tickets/:code/recovery-key`, `…/sessions/revoke-others`
-- [ ] Staff-assisted recovery per design §15.5a: `…/recovery/assist`, `…/recovery/approve`, `…/recovery/revoke-all`; assurance rules (no factor ⇒ restricted assistance and no credential; basic factor ⇒ second `QUEUE_MANAGE` approver; strong factor only from M6), single-use 10-minute grants redeemed on the visitor's device, reason code, rate limits, audit without values, `staff_recovery` policy switch, restricted-assistance script in the console
-- [ ] `rejoin_policy`: `POST /tickets/:code/rejoin` through the standard command path (`visitor_self` role for `missed → waiting` in `grace_window_active` only), idempotent, fenced while a coordinator holds the queue; default `staff_resume` leaves current behaviour unchanged; policy replay of earlier snapshots verified
-- [ ] Automatic no-show (opt-in, default off) per design §15.8: policy form with required seconds (60–3600) and visitor-facing rule text; API sweep (every `AUTO_MISS_SWEEP_SECONDS`, initial 15) that calls the standard command executor with a `system` role for `called → missed` only; per-candidate transaction (session then ticket lock, re-check with database time and current policy version); deterministic version-7-layout `operation_id`; refused while a coordinator is assigned; clock restarts after the last coordinator event and after a detected outage (`auto_miss_sweeps`); stateless restart; no import path to notification code
-- [ ] Web: recovery key display, `/recover` and fragment-link page (offline message, no CAPTCHA), "Sign out other devices", rejoin button with grace text, access-granted banner, staff console procedure, supervisor approval queue, admin policy fields, offline-ticket "recovery unavailable until confirmed" message
-- [ ] Retention job: tokens 24 h after expiry, `key_hmac` 24 h after ticket end, grants and throttle rows 24 h after expiry/window (idempotent; shares the §12.13 job)
-- [ ] Group 8 items 8.R1–8.R12 implemented on real PostgreSQL; Playwright for the visitor and staff flows; evidence in `docs/testing/M5-evidence.md`
+- [x] Contracts: recovery request/response (key or grant), staff assist/approve, policy additions (`rejoin_policy`, `auto_miss`, `staff_recovery`), error problem types; `JoinQueueResponse` gains the one-time `recovery_key`
+- [x] M5.1 migration (additive; indicatively `0007`): `ticket_recovery_credentials` gains `source`, `revoked_at`, `revoked_reason`, `last_used_at` and the unique `ticket_id` index is replaced by a plain partial index; new `ticket_recovery_proofs` (no failure/lock columns), `ticket_recovery_grants` (basic assurance needs a different approver, enforced by CHECK), `recovery_throttle`, `auto_miss_sweeps`; migration guard and idempotency tests updated
+- [x] Credential service: 160-bit CSPRNG recovery key (Crockford base32, 32 chars), HMAC-SHA-256 with an HKDF-derived pepper from `CONTACT_ENCRYPTION_KEY`, constant-time compare, tolerant input normalization; status tokens capped at 3 active with the rotation/invalidation matrix of design §15.6; join replay keeps its proof-based re-issue; "access granted elsewhere" notice to existing devices
+- [x] Presentation: QR + link with the key in the URL fragment only (read, then removed with `history.replaceState`, sent in a POST body), readable 8×4 grouped text, Copy/Share/Save/Print; key never in `localStorage`, outbox or logs
+- [x] `POST /tickets/recover` (key or grant): uniform failure and constant work; throttle layers L1–L5 keyed only on public identifiers and the source (never the guess), `RECOVERY_RATE_LIMIT_MAX` = 10 per minute, 5 failures per 15 min per ticket code per source, no lifetime lock, no unlock endpoint, clean sources always verified; atomic counters; `recovery_abuse` alert
+- [x] `POST /tickets/:code/recovery-key`, `…/sessions/revoke-others`
+- [x] Staff-assisted recovery per design §15.5a: `…/recovery/assist`, `…/recovery/approve`, `…/recovery/revoke-all`; assurance rules (no factor ⇒ restricted assistance and no credential; basic factor ⇒ second `QUEUE_MANAGE` approver; strong factor only from M6), single-use 10-minute grants redeemed on the visitor's device, reason code, rate limits, audit without values, `staff_recovery` policy switch, restricted-assistance script in the console
+- [x] `rejoin_policy`: `POST /tickets/:code/rejoin` through the standard command path (`visitor_self` role for `missed → waiting` in `grace_window_active` only), idempotent, fenced while a coordinator holds the queue; default `staff_resume` leaves current behaviour unchanged; policy replay of earlier snapshots verified
+- [x] Automatic no-show (opt-in, default off) per design §15.8: policy form with required seconds (60–3600) and visitor-facing rule text; API sweep (every `AUTO_MISS_SWEEP_SECONDS`, initial 15) that calls the standard command executor with a `system` role for `called → missed` only; per-candidate transaction (session then ticket lock, re-check with database time and current policy version); deterministic version-7-layout `operation_id`; refused while a coordinator is assigned; clock restarts after the last coordinator event and after a detected outage (`auto_miss_sweeps`); stateless restart; no import path to notification code
+- [x] Web: recovery key display, `/recover` and fragment-link page (offline message, no CAPTCHA), "Sign out other devices", rejoin button with grace text, access-granted banner, staff console procedure, supervisor approval queue, admin policy fields, offline-ticket "recovery unavailable until confirmed" message
+- [x] Retention job: tokens 24 h after expiry, `key_hmac` 24 h after ticket end, grants and throttle rows 24 h after expiry/window (idempotent; shares the §12.13 job)
+- [x] Group 8 items 8.R1–8.R12 implemented on real PostgreSQL; Playwright for the visitor and staff flows; evidence in `docs/testing/M5-evidence.md` (manual device passes still to be recorded; strong-factor tests arrive with M6)
 
 ### M5.2 Accessibility (F7; design §16; Group 11: 11.A1–11.A11)
 
 Original tasks (unchanged):
 
-- [ ] Keyboard navigation for all visitor flows
-- [ ] ARIA live regions for status updates
-- [ ] High-contrast and large-text modes
-- [ ] `prefers-reduced-motion` support
-- [ ] Mobile viewport testing at 320px and 375px
+- [x] Keyboard navigation for all visitor flows
+- [x] ARIA live regions for status updates
+- [x] High-contrast and large-text modes
+- [x] `prefers-reduced-motion` support
+- [x] Mobile viewport testing at 320px and 375px
 
 Design-derived tasks:
 
-- [ ] Preferences module (`qb.a11y.v1`) applied before first render via `data-contrast`, `data-text-size`, `data-motion`; "Display and alerts" panel in the shared header and on the ticket page; reset; no server copy
-- [ ] High-contrast and text-size (100/125/150 %) styles on the existing CSS custom properties; 4.5:1 / 3:1 normal and 7:1 high-contrast; reflow at 320 px and 200 % zoom; forced-colors kept
-- [ ] Route-change focus and title announcement; dialog focus handling; scroll-padding for sticky bars; target-size audit (24 px minimum, 44 px primary)
-- [ ] Announcement policy implemented in `Announcer` (assertive vs polite, 15 s position throttle, 2 s dedup, catalog strings)
-- [ ] Reduced-motion override (system or app) across toasts, banners, spinners and the alert banner
-- [ ] Vibration/audio preference controls with feature detection, explanations, quiet mode and "Test alert" (shared with M5.4)
-- [ ] Offline accessibility: preferences and shell precached; recover page and outbox panel verified offline; connectivity/sync text announcements
-- [ ] Remove `orientation: 'portrait'` from the PWA manifest; verify installed/portrait/landscape layouts
-- [ ] Group 11 items 11.A1–11.A9 automated; 11.A11 manual screen-reader, zoom, contrast and motion passes recorded with limits stated (no conformance claim)
+- [x] Preferences module (`qb.a11y.v1`) applied before first render via `data-contrast`, `data-text-size`, `data-motion`; "Display and alerts" panel in the shared header and on the ticket page; reset; no server copy
+- [x] High-contrast and text-size (100/125/150 %) styles on the existing CSS custom properties; 4.5:1 / 3:1 normal and 7:1 high-contrast; reflow at 320 px and 200 % zoom; forced-colors kept
+- [x] Route-change focus and title announcement; dialog focus handling; scroll-padding for sticky bars; target-size audit (24 px minimum, 44 px primary)
+- [x] Announcement policy implemented in `Announcer` (assertive vs polite, 15 s position throttle, 2 s dedup, catalog strings)
+- [x] Reduced-motion override (system or app) across toasts, banners, spinners and the alert banner
+- [x] Vibration/audio preference controls with feature detection, explanations, quiet mode and "Test alert" (shared with M5.4)
+- [x] Offline accessibility: preferences and shell precached; recover page and outbox panel verified offline; connectivity/sync text announcements
+- [x] Remove `orientation: 'portrait'` from the PWA manifest; verify installed/portrait/landscape layouts
+- [x] Group 11 items 11.A1–11.A9 automated (`accessibility-m52.spec.ts`); **11.A11 manual passes are OUTSTANDING** (listed in `M5-evidence.md`; no conformance claim)
 
 ### M5.3 Device health dashboard (F9; design §17; Group 8: 8.D1–8.D6; Group 11: 11.A10)
 
 Original tasks (unchanged):
 
-- [ ] Device last-contact display
-- [ ] Sync health indicators
-- [ ] Coordinator status and failover controls
-- [ ] Automatic alerting for unhealthy devices (carried over from the explicit M3 deferral "automatic alerting/notification → M5"; in-dashboard flags first, no new external channel)
+- [x] Device last-contact display
+- [x] Sync health indicators
+- [x] Coordinator status and failover controls
+- [x] Automatic alerting for unhealthy devices (carried over from the explicit M3 deferral "automatic alerting/notification → M5"; in-dashboard flags first, no new external channel)
 
 Design-derived tasks:
 
-- [ ] `stale` state and thresholds from server time (`DEVICE_STALE_AFTER_SECONDS` = 900, `COORDINATOR_EXPIRY_WARN_SECONDS` = 300, `CONFLICT_REVIEW_WARN_SECONDS` = 900 as accepted initial defaults; all configurable); `deviceHealthState` extended; honest "approximate / may be offline, asleep or lost" wording
-- [ ] M5.3 migration (additive; indicatively `0008`): `health_alerts` with a unique partial index for one open alert per (facility, kind, subject)
-- [ ] Worker `evaluateDeviceHealth` (every 30 s): read-only on queue/coordinator/ticket tables, upsert/resolve alerts with two-evaluation damping, facility change signal, "paused" indicator when stale; never assigns, fails over, renews or revokes anything
-- [ ] Alert kinds and severities of design §17.4 including `recovery_abuse` and `alert_pipeline_failing`; recipients and acknowledge rules (`OPERATIONS_VIEW` view, `QUEUE_MANAGE` acknowledge, own-device warning); audited acknowledge/clear
-- [ ] Dashboard: state filter/sort, alerts panel, last-evaluated line, counters for recovery and turn alerts; supervisor/admin alert banner; staff console own-device warning
-- [ ] Lost-device flow: revoke-as-lost with last-contact/pending wording; revoked device re-registers as new; revoked device's unsent actions shown read-only, never auto-applied; confirm failover stays explicit with the existing fencing warning
-- [ ] Privacy review: no IP/user agent/fingerprint/location fields or logs; minimal heartbeat schema (unknown fields rejected); label guidance text
-- [ ] Retention: resolved alerts deleted after 30 days (shares the retention job)
-- [ ] Group 8 items 8.D1–8.D6; Group 6 fencing tests re-run unchanged; Group 11 item 11.A10
+- [x] `stale` state and thresholds from server time (`DEVICE_STALE_AFTER_SECONDS` = 900, `COORDINATOR_EXPIRY_WARN_SECONDS` = 300, `CONFLICT_REVIEW_WARN_SECONDS` = 900 as accepted initial defaults; all configurable); `deviceHealthState` extended; honest "approximate / may be offline, asleep or lost" wording
+- [x] M5.3 migration (additive; indicatively `0008`): `health_alerts` with a unique partial index for one open alert per (facility, kind, subject)
+- [x] Worker `evaluateDeviceHealth` (every 30 s): read-only on queue/coordinator/ticket tables, upsert/resolve alerts with two-evaluation damping, facility change signal, "paused" indicator when stale; never assigns, fails over, renews or revokes anything
+- [x] Alert kinds and severities of design §17.4 including `recovery_abuse` and `alert_pipeline_failing`; recipients and acknowledge rules (`OPERATIONS_VIEW` view, `QUEUE_MANAGE` acknowledge, own-device warning); audited acknowledge/clear
+- [x] Dashboard: state filter/sort, alerts panel, last-evaluated line, counters for recovery and turn alerts; supervisor/admin alert banner; staff console own-device warning
+- [x] Lost-device flow: revoke-as-lost with last-contact/pending wording; revoked device re-registers as new; revoked device's unsent actions shown read-only, never auto-applied; confirm failover stays explicit with the existing fencing warning
+- [x] Privacy review: no IP/user agent/fingerprint/location fields or logs; minimal heartbeat schema (unknown fields rejected); label guidance text
+- [x] Retention: resolved alerts deleted after 30 days (shares the retention job)
+- [x] Group 8 items 8.D1–8.D6; Group 6 fencing tests re-run unchanged; Group 11 item 11.A10 (automated; manual screen-reader pass of the dashboard still outstanding, see `M5-evidence.md`)
+
+Security follow-up from M5.1 (separate change, recorded in `M5-evidence.md`, "M5 hardening"):
+
+- [x] Per-staff assisted-recovery limit made atomic (organization- and staff-scoped advisory lock, lock order staff → ticket, 3 s lock timeout → retryable 503); concurrency regression test (20 simultaneous requests → exactly 5)
+- [x] Grant redemption lock order corrected (ticket → grant, as revoke-all), removing a deadlock found while reviewing lock order; deterministic and repeated regression tests
 
 ### M5.4 Smart Turn Alerts (F14; ADR-013, design §12)
 
-- [ ] Contracts: alert/subscription/payload schemas, `ticket.called` template key, alert state enum (`sent | delivered | failed | suppressed | unknown`) in `packages/contracts`
-- [ ] M5.4 migration (additive; take the next free number after the M5.1 and M5.3 migrations): `push_subscriptions` (random `id` = the non-secret `subscription_id`), `notifications.push_subscription_id`, `notification_deliveries.detail_code`, widen `notifications.channel` (+`web_push`) and `notifications.status` (+`suppressed`) CHECKs; migration guard and idempotency tests updated
-- [ ] `enqueueTurnAlerts` helper called from every committed-call path including sync, inside a savepoint: **one `notifications` + `notification_outbox` pair per active subscription**, created together in one CTE with `ON CONFLICT (dedup_key) DO NOTHING`; dedup key `web_push:ticket.called:<ticket_id>:<event_sequence>:<subscription_id>` (the global unique index on `dedup_key` requires the subscription in the key); service transfer re-binds subscriptions to the destination ticket; failure logged and counted, never propagated
-- [ ] `PushTransport` interface, `SandboxPushTransport` (test-only label, no network) and `WebPushTransport` (`web-push`, exact-pinned version, VAPID from env) in `packages/channels`
-- [ ] Worker `processNotificationOutbox` for `web_push`: `FOR UPDATE SKIP LOCKED` claim with a lease so concurrent workers never double-claim, one device per row, `Topic = subscription_id`, stale suppression, TTL, bounded backoff, 404/410 revokes only that subscription, honest outcome codes, at-least-once with collapse (never claim exactly-once); never writes to ticket or queue tables
-- [ ] API: `GET /push/capability`, subscribe/unsubscribe/ack on `/tickets/:publicCode/…` (status credential, CSRF, rate limit, strict Zod, tenant scope; subscribe returns the non-secret `subscription_ref`, ack takes `{ subscription_ref, event_sequence }`, a ref that does not belong to the token's ticket is 404), staff `GET /queues/:id/alerts` (per device); subscription data encrypted with the derived key; endpoint, hash, keys and credentials never returned, logged, audited or placed in URLs, tags or dedup keys
-- [ ] Web: `TurnAlert` banner + live region + title prefix; settings panel (sound off by default with "Enable sound" gesture and "Test alert", vibration toggle, push opt-in/opt-out with plain-language unsupported/denied/iOS-install states); once-per-call-event rule; offline "alerts may be delayed" note
-- [ ] Saved-ticket identity for push: `StoredTicket.pushRef` (non-secret, saved when subscribe returns), `resolveByPushRef`, `resolveSaved`/`TicketPage` extended so `?ref=` (or `?k=`, which must agree) wins and a bare code is never used to guess; neutral "not saved on this device" screen with no status request and credential-based recovery paths; focused-window hand-off compares `ref`
-- [ ] Service worker push handler via `workbox.importScripts` (payload v2; tag `qb-call-<ref>`; click opens `/ticket/<code>?ref=<ref>`; focused-window hand-off; no credentials in the worker); the page sends the first-party ack; M3 offline shell behaviour re-verified unchanged
-- [ ] Staff console: per-called-ticket alert state in plain text with the public-board fallback reminder; supervisor alert counters panel on the connectivity dashboard
-- [ ] `.env.example`, `docs/local-environment.md` and `pnpm env:generate` extended for VAPID keys, TTL and subscription cap (placeholders only; no secrets committed)
-- [ ] Copy review: no text promises delivery; push/vibration/sound described as best effort; platform limits stated
-- [ ] Group 14 tests (testing steering, 14.1–14.14): per-subscription outbox entries, notification identity and safe opening, savepoint isolation, no state change and no `ticket.miss` on any failure path, idempotency, stale suppression, committed-only triggering, honest states, minimal payload, encryption at rest, tenant isolation, keyboard/axe/reduced-motion at 320 and 375 px
-- [ ] Real-device checks recorded in `docs/testing/M5-evidence.md` (Android Chrome; iOS Safari including installed-app); results as observed, gaps stated
-- [ ] Knowledge-base inventory (design §11.10) row for M5 includes turn alerts, so MQ.5 authors the articles
+- [x] Contracts: alert/subscription/payload schemas, `ticket.called` template key, alert state enum (`sent | delivered | failed | suppressed | unknown`) in `packages/contracts` — done (`packages/contracts/src/push.ts`; states also include `pending`)
+- [x] M5.4 migration (additive; take the next free number after the M5.1 and M5.3 migrations): `push_subscriptions` (random `id` = the non-secret `subscription_id`), `notifications.push_subscription_id`, `notification_deliveries.detail_code`, widen `notifications.channel` (+`web_push`) and `notifications.status` (+`suppressed`) CHECKs; migration guard and idempotency tests updated — done (`0009_turn_alerts.sql`; also `notification_outbox.processed_at`, `health_evaluations.worker_config`)
+- [x] `enqueueTurnAlerts` helper called from every committed-call path including sync, inside a savepoint: **one `notifications` + `notification_outbox` pair per active subscription**, created together in one CTE with `ON CONFLICT (dedup_key) DO NOTHING`; dedup key `web_push:ticket.called:<ticket_id>:<event_sequence>:<subscription_id>` (the global unique index on `dedup_key` requires the subscription in the key); service transfer re-binds subscriptions to the destination ticket; failure logged and counted, never propagated — done as a savepoint-isolated transition hook registered on `appendEvent` (ADR-013 implementation note 2)
+- [x] `PushTransport` interface, `SandboxPushTransport` (test-only label, no network) and `WebPushTransport` (VAPID from env) in `packages/channels` — done with `http_ece@1.2.1` (MIT, exact-pinned) + `node:crypto` VAPID; the `web-push` package originally named here is MPL-2.0 and is not used (ADR-013 decision 8, as corrected); endpoint policy re-checked at every send and connected address must be public
+- [x] Worker `processNotificationOutbox` for `web_push`: `FOR UPDATE SKIP LOCKED` claim with a lease so concurrent workers never double-claim, one device per row, `Topic = subscription_id`, stale suppression, TTL, bounded backoff, 404/410 revokes only that subscription, honest outcome codes, at-least-once with collapse (never claim exactly-once); never writes to ticket or queue tables — done (`processTurnAlerts`, `apps/worker/src/turn-alerts.ts`)
+- [x] API: `GET /push/capability`, subscribe/unsubscribe/ack on `/tickets/:publicCode/…` (status credential, CSRF, rate limit, strict Zod, tenant scope; subscribe returns the non-secret `subscription_ref`, ack takes `{ subscription_ref, event_sequence }`, a ref that does not belong to the token's ticket is 404), staff `GET /queues/:id/alerts` (per device); subscription data encrypted with the derived key; endpoint, hash, keys and credentials never returned, logged, audited or placed in URLs, tags or dedup keys — done (`apps/api/src/routes/push.ts`; plus an endpoint allow-list against SSRF)
+- [x] Web: `TurnAlert` banner + live region + title prefix; settings panel (sound off by default with "Enable sound" gesture and "Test alert", vibration toggle, push opt-in/opt-out with plain-language unsupported/denied/iOS-install states); once-per-call-event rule; offline "alerts may be delayed" note — done; push opt-in/out is on the ticket page (per ticket, needs its token), sound/vibration/"Test alert" stay in the M5.2 settings dialog (ADR-013 note 5)
+- [x] Saved-ticket identity for push: `StoredTicket.pushRef` (non-secret, saved when subscribe returns), `resolveByPushRef`, `resolveSaved`/`TicketPage` extended so `?ref=` (or `?k=`, which must agree) wins and a bare code is never used to guess; neutral "not saved on this device" screen with no status request and credential-based recovery paths; focused-window hand-off compares `ref` — done
+- [x] Service worker push handler via `workbox.importScripts` (payload v2; tag `qb-call-<ref>`; click opens `/ticket/<code>?ref=<ref>`; focused-window hand-off; no credentials in the worker); the page sends the first-party ack; M3 offline shell behaviour re-verified unchanged — done (`public/push-handler.js`; click URL also carries public `seq` and `rp`, ADR-013 note 3); the real built service worker is exercised in `e2e/turn-alerts-sw.spec.ts`; M3 offline suites re-run
+- [x] Staff console: per-called-ticket alert state in plain text with the public-board fallback reminder; supervisor alert counters panel on the connectivity dashboard — done
+- [x] `.env.example`, `docs/local-environment.md` and `pnpm env:generate` extended for VAPID keys, TTL and subscription cap (placeholders only; no secrets committed) — done (`pnpm env:generate --vapid`, `env:check` validates the pair)
+- [x] Copy review: no text promises delivery; push/vibration/sound described as best effort; platform limits stated — done (`src/lib/copyTruthfulness.test.ts`)
+- [x] Group 14 tests (testing steering, 14.1–14.14): per-subscription outbox entries, notification identity and safe opening, savepoint isolation, no state change and no `ticket.miss` on any failure path, idempotency, stale suppression, committed-only triggering, honest states, minimal payload, encryption at rest, tenant isolation, keyboard/axe/reduced-motion at 320 and 375 px — done (automated; real devices are the next item)
+- [ ] Real-device checks recorded in `docs/testing/M5-evidence.md` (Android Chrome; iOS Safari including installed-app); results as observed, gaps stated — **not done:** procedure and support matrix recorded in `M5-evidence.md`; no real device was tested in this session
+- [x] Knowledge-base inventory (design §11.10) row for M5 includes turn alerts, so MQ.5 authors the articles — already present in design §11.10 (M5 row)
+- [x] M5 final integration (2026-11-15): cross-feature journeys (`m5-integration.db.test.ts`), recovery L2 limit made atomic under concurrency (defect fix), recover-page note for temporary tickets (REQ-F4.12), manual acceptance guide (`docs/testing/M5-manual-acceptance.md`)
+- [x] Final review (2026-11-15): send-time SSRF policy and connect-time address check, database-backed per-ticket change limit shared across instances, lease renewal before each send, deleted-token revocation, bounded `worker --once` (deadline, stop signal, idle-transaction guard); each with a regression test and a killed mutation; licence wording corrected across AGENTS.md, steering, design, requirements, ADR-013 and the architecture document (`M5-evidence.md`)
+
+### M5 manual acceptance schedule (approved by the product owner, 2026-11-16)
+
+- [x] **Set 1 — development acceptance (manual checks 1–14): closed 2026-11-16, 14 / 14 Pass.** Product defects found were fixed with regression tests (print, recover form, approval-list scope, restricted-assistance answers, recovery audit view per ADR-015 amendment 1, policy editor on pre-M5 policies); results and history in `docs/testing/M5-manual-acceptance.md` and `M5-evidence.md`
+- [ ] **Set 2 — final acceptance (manual checks 15–41, desktop and device variants):** run at the final integration and pre-submission stage, after M7 (see M7.6). Until then each record is "Not tested — scheduled for final acceptance (Set 2)". The manual parts of the M5 exit criteria below (11.A11 screen readers, zoom and orientation; 14.10 real-device push; device-drill checks) are verified there
+- Rules: a confirmed critical security or integrity defect is never deferred (fixed and re-verified before the next checkpoint); automated regression, security, database, integration and CI testing continues on every change; no out-of-pocket spending
+- Remaining sequence: **M5 checkpoint → MQ → M6 → M7 → Set 2 acceptance → submission**
 
 ### M5 exit criteria
 
-- [ ] M5.0: the M1 sign-out test and the related flaky tests are root-caused and fixed (or recorded as open with evidence) and CI is stable across consecutive runs
-- [ ] Groups 8 (recovery and device-health access/privacy), 11 (accessibility) and 14 (turn alerts) tests pass; Groups 1–7, 9 and 12 still pass (M1–M4 routing rules, coordinator fencing and the audit chain unchanged)
-- [ ] Keyboard-only visitor journey end-to-end verified, including the turn alert controls
+- [x] M5.0: the M1 sign-out test and the related flaky tests are root-caused and fixed (or recorded as open with evidence) and CI is stable across consecutive runs — **done locally:** 449–450 of 450 per test across five waves; one environment stall recorded as open (`M5-evidence.md`). CI confirmation pending (not pushed)
+- [ ] Groups 8 (recovery and device-health access/privacy), 11 (accessibility) and 14 (turn alerts) tests pass; Groups 1–7, 9 and 12 still pass (M1–M4 routing rules, coordinator fencing and the audit chain unchanged) — automated parts pass locally (2026-11-15, `M5-evidence.md` acceptance report); 11.A11 and 14.10 manual not executed
+- [ ] Keyboard-only visitor journey end-to-end verified, including the turn alert controls — automated (11.A1, turn-alert keyboard tests); manual check 34 not executed
 - [ ] Recovery: impossible from the public ticket code alone; 160-bit HMAC-stored keys; throttles that the guess cannot evade and that never lock out the rightful holder; uniform oracle-free errors; restricted staff procedure and audit verified; recovery creates no queue event and changes no ticket state, position or age (Group 8: 8.R1–8.R8, 8.R10, 8.R11)
-- [ ] Grace/rejoin use the existing `grace_window_seconds`; `self_resume` works only inside the window; automatic no-show is off by default, executes only through the authoritative command path with locking and idempotency across API instances and restarts, respects coordinator fencing, and is never alert-driven (Group 8: 8.R9, 8.R12)
-- [ ] Push subscription retention and deletion verified (design §12.13; Group 14.11); confirmed defaults verified (Group 14.12)
+- [x] Grace/rejoin use the existing `grace_window_seconds`; `self_resume` works only inside the window; automatic no-show is off by default, executes only through the authoritative command path with locking and idempotency across API instances and restarts, respects coordinator fencing, and is never alert-driven (Group 8: 8.R9, 8.R12)
+- [x] Push subscription retention and deletion verified (design §12.13; Group 14.11); confirmed defaults verified (Group 14.12) — M5.4 worker/API DB tests
 - [ ] Accessibility: preferences, keyboard, announcement policy, contrast/reflow, reduced motion, vibration/audio preferences, offline and 320/375 px verified (Group 11: 11.A1–11.A10); manual passes recorded with limits stated (11.A11); manifest orientation unlocked
-- [ ] Device health dashboard shows last contact, sync health, coordinator status and failure reasons; stale detection and automatic alerts with recipients verified; evaluation leaves the single-coordinator authority model, queue state and event chain unchanged (Group 8: 8.D1–8.D6; Group 6)
-- [ ] An alert failure of every kind leaves ticket state, queue revision and the event chain unchanged and never marks a visitor missed
-- [ ] No copy, article or documentation promises alert delivery
-- [ ] Full gate set green: format, lint, typecheck, build, `pnpm test`, `pnpm test:db`, Playwright (all projects), DB validation and security audit; no assertion weakened
-- [ ] Evidence recorded in `docs/testing/M5-evidence.md` and `M5-completion.md`
+- [x] Device health dashboard shows last contact, sync health, coordinator status and failure reasons; stale detection and automatic alerts with recipients verified; evaluation leaves the single-coordinator authority model, queue state and event chain unchanged (Group 8: 8.D1–8.D6; Group 6)
+- [x] An alert failure of every kind leaves ticket state, queue revision and the event chain unchanged and never marks a visitor missed — M5.4 (14.7 worker, API and browser tests)
+- [ ] No copy, article or documentation promises alert delivery — UI copy and the service worker verified by `copyTruthfulness.test.ts`; KB articles do not exist until MQ
+- [ ] Full gate set green: format, lint, typecheck, build, `pnpm test`, `pnpm test:db`, Playwright (all projects), DB validation and security audit; no assertion weakened — **green locally (2026-11-15); CI not run**
+- [ ] Evidence recorded in `docs/testing/M5-evidence.md` and `docs/reports/M5-completion.md` — evidence, Set 1 manual results and the completion report recorded (2026-11-16); Set 2 results at final acceptance
 
 ---
 
@@ -565,7 +580,16 @@ Design-derived tasks:
 - [ ] Kiro contribution documented with concrete artifacts
 - [ ] Public demo video ≤ 3 minutes
 
+### M7.6 Final acceptance (Set 2 of the M5 manual acceptance; before submission)
+
+- [ ] Re-read M5 manual checks 15–41 against the final screens; update wording only where a screen or label changed, never a criterion
+- [ ] Run Set 2 by environment group (`docs/testing/M5-manual-acceptance.md` section 0a): Mac and desktop browser; phones on the local network; Android and Web Push; iOS if a device is available; device health and failover; accessibility and screen readers
+- [ ] Record each result as observed; a check without a compatible device is "Not tested — no compatible device", never a Pass
+- [ ] Any confirmed critical security or integrity defect is fixed and re-verified before submission
+
 ### M7 exit criteria
+
+- [ ] M5 manual acceptance Set 2 (checks 15–41) recorded in `docs/testing/M5-manual-acceptance.md` (M7.6)
 
 - [ ] All ten core feature groups demonstrated in integrated workflows
 - [ ] All test groups 1–12 passing, plus Group 14 (turn alerts) and Group 15 (final UI/UX, landing, cross-browser)

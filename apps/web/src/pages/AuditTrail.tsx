@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import type { AuditEvent, AuditPage, AuditVerification } from '@queuebridge/contracts';
 import { useAnnounce } from '../components/Announcer.js';
 import { reasonLabel } from '../components/FairnessControls.js';
+import { RecoveryActivity } from '../components/RecoveryActivity.js';
 import { Loading } from '../components/Form.js';
 import { api, apiUrl, ApiRequestError } from '../lib/api.js';
 import { classLabel } from '../lib/policy.js';
@@ -341,6 +342,8 @@ export function AuditTrail(): ReactElement {
           <p className="muted">End of the record.</p>
         )}
       </section>
+
+      <RecoveryActivity queueId={queueId} />
     </>
   );
 }

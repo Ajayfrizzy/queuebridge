@@ -112,7 +112,8 @@ test.describe('M2 exit journey: online join → call → serve → complete (web
     // Open the exact link the QR encodes, the way the visitor's phone would
     await page.getByText('Show status link').click();
     const link = await page.getByTestId('walkin-link').innerText();
-    expect(link).toMatch(/\/ticket\/G001#t=[A-Za-z0-9_-]{43}$/);
+    // M5.1: the fragment also carries the recovery key (never sent to a server)
+    expect(link).toMatch(/\/ticket\/G001#t=[A-Za-z0-9_-]{43}&k=[0-9A-Z]{32}$/);
     const visitor = await freshContext(browser);
     await visitor.page.goto(link);
     await expect(visitor.page.getByTestId('ticket-code')).toHaveText('G001');
@@ -324,9 +325,9 @@ test.describe('@responsive M2 screens: accessibility and layout at 320/375/deskt
     await expect(button).toBeFocused();
     await visitor.page.keyboard.press('Enter');
     await expect(visitor.page.getByTestId('ticket-code')).toHaveText('G001');
-    // Status message is a polite live region; focus moved to main on navigation
+    // Status message is a polite live region; focus moved to the page heading on navigation
     await expect(visitor.page.getByTestId('status-message')).toHaveAttribute('role', 'status');
-    await expect(visitor.page.locator('#main')).toBeFocused();
+    await expect(visitor.page.locator('#main h1')).toBeFocused();
     const box = await visitor.page
       .getByRole('button', { name: 'Forget this ticket on this device' })
       .boundingBox();

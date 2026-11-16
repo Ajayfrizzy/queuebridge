@@ -17,3 +17,6 @@ export * from './ids.js';
 export * from './sync.js';
 export * from './fairness.js';
 export * from './audit-key.js';
+export * from './recovery.js';
+export * from './health.js';
+export * from './push.js';

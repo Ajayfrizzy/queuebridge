@@ -10,6 +10,18 @@ import { PASSWORD, uid } from './helpers.js';
 
 const CSRF = { 'X-QB-CSRF': '1' };
 
+/**
+ * Take a browser context offline and wait until the APP has registered it (the connectivity bar
+ * reads "Offline"). `setOffline(true)` only changes the network; the page learns about it from a
+ * later browser `offline` event. Clicking before that makes the app take its ONLINE path, whose
+ * (correct) "Cannot reach the server" outcome differs from the offline behaviour under test
+ * (M5.0: the cause of an intermittent failure in the storage-unavailable test).
+ */
+export async function goOffline(ctx: BrowserContext, page: Page): Promise<void> {
+  await ctx.setOffline(true);
+  await expect(page.getByTestId('connection-state')).toContainText('Offline');
+}
+
 export interface Persona {
   ctx: BrowserContext;
   page: Page;

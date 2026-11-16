@@ -5,6 +5,7 @@ import { useAnnounce } from '../components/Announcer.js';
 import { Loading } from '../components/Form.js';
 import { api, apiUrl, ApiRequestError } from '../lib/api.js';
 import { formatEstimate } from '../lib/format.js';
+import { stashRecoveryKey } from '../lib/recoveryKey.js';
 import { useLiveUpdates } from '../lib/live.js';
 import {
   beginJoin,
@@ -85,6 +86,14 @@ export function JoinPage(): ReactElement {
         savedAt: new Date().toISOString(),
       });
       finishJoin(q.queue_id);
+      // The recovery key is shown once on the ticket page; it is held in page memory only
+      if (res.ticket.recovery_key) {
+        stashRecoveryKey({
+          code: res.ticket.public_code,
+          key: res.ticket.recovery_key,
+          path: res.ticket.recovery_path,
+        });
+      }
       announce(`Your ticket is ${res.ticket.public_code}.`);
       void navigate(
         saved ? ticketPath(saved) : `/ticket/${encodeURIComponent(res.ticket.public_code)}`,
@@ -140,6 +149,12 @@ export function JoinPage(): ReactElement {
           </label>
         </div>
       ) : null}
+
+      <p>
+        <Link to={`/recover/${orgSlug}/${facilitySlug}`} data-testid="lost-ticket-link">
+          Lost your ticket? Get it back with your recovery key
+        </Link>
+      </p>
 
       {f.queues.length === 0 ? (
         <p role="status" data-testid="no-open-queues">

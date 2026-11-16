@@ -4,6 +4,7 @@ import { SyncStateIndicator } from '@queuebridge/ui';
 import { useAuth } from '../auth.js';
 import { useAnnounce } from './Announcer.js';
 import { useOffline } from '../offline/OfflineProvider.js';
+import { raiseUrgentAlert } from './DisplaySettings.js';
 
 /**
  * Always-visible connectivity and sync status for signed-in staff.
@@ -30,8 +31,28 @@ export function ConnectivityBar(): ReactElement | null {
     );
   }, [o.reachable, announce]);
 
+  // Sync-state changes (REQ-F7.16): said in words, politely, only when the situation changes
+  const prevUnsynced = useRef(o.summary.unsynced);
+  const prevReview = useRef(o.summary.needs_review);
   useEffect(() => {
-    if (o.problem) trouble.current?.focus();
+    const was = prevUnsynced.current;
+    const wasReview = prevReview.current;
+    prevUnsynced.current = o.summary.unsynced;
+    prevReview.current = o.summary.needs_review;
+    if (o.summary.needs_review > wasReview) {
+      announce(
+        `${o.summary.needs_review} ${o.summary.needs_review === 1 ? 'action needs' : 'actions need'} a supervisor to review. Needs review.`,
+      );
+    } else if (was > 0 && o.summary.unsynced === 0) {
+      // Truthful wording: also true when work was discarded on purpose, so it never says "confirmed"
+      announce('No unsent actions remain on this device.');
+    }
+  }, [o.summary.unsynced, o.summary.needs_review, announce]);
+  useEffect(() => {
+    if (!o.problem) return;
+    // Close the settings dialog first, then take focus (inert content cannot be focused)
+    raiseUrgentAlert();
+    requestAnimationFrame(() => trouble.current?.focus());
   }, [o.problem]);
 
   if (!user && o.summary.unsynced === 0 && o.reachable) return null;

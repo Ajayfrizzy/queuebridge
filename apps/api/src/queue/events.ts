@@ -3,6 +3,69 @@ import type { Db } from '../db.js';
 import { computeEventHash, GENESIS_HASH } from './hash.js';
 import { QUEUE_CHANNEL, type QueueSignal } from './notifier.js';
 
+/** A ticket transition that has just been appended (inside the still-open queue transaction). */
+export interface AppendedTransition {
+  ticketId: string;
+  from: string;
+  to: string;
+  sequence: number;
+  payload: Record<string, unknown>;
+}
+
+/**
+ * A side effect that follows committed transitions (M5.4 turn alerts). The queue core does not
+ * import any hook implementation: hooks are registered when the application is composed
+ * (`app.ts`), so the command executor and the automatic no-show sweep have no import path to
+ * alert code (testing 8.R12(f)). Every hook runs inside its OWN SAVEPOINT; any error rolls back
+ * to the savepoint, is reported through `onError`, and the queue event still commits.
+ */
+export interface TransitionHook {
+  name: string;
+  run: (
+    sp: Db,
+    session: { id: string; organization_id: string; facility_id: string },
+    t: AppendedTransition,
+  ) => Promise<void>;
+  onError: (
+    err: unknown,
+    ids: { queue_session_id: string; facility_id: string; sequence: number },
+  ) => void;
+}
+
+const transitionHooks = new Map<string, TransitionHook>();
+
+/** Register (or replace, by name) a transition hook. Returns an unregister function. */
+export function registerTransitionHook(hook: TransitionHook): () => void {
+  transitionHooks.set(hook.name, hook);
+  return () => {
+    if (transitionHooks.get(hook.name) === hook) transitionHooks.delete(hook.name);
+  };
+}
+
+async function runTransitionHooks(
+  tx: Db,
+  session: { id: string; organization_id: string; facility_id: string },
+  t: AppendedTransition,
+): Promise<void> {
+  for (const hook of transitionHooks.values()) {
+    try {
+      await (
+        tx as unknown as { savepoint: (cb: (sp: Db) => Promise<void>) => Promise<void> }
+      ).savepoint((sp) => hook.run(sp, session, t));
+    } catch (err) {
+      try {
+        hook.onError(err, {
+          queue_session_id: session.id,
+          facility_id: session.facility_id,
+          sequence: t.sequence,
+        });
+      } catch {
+        // a failing reporter must not fail the queue command either
+      }
+    }
+  }
+}
+
 /** A queue session row locked FOR UPDATE for the duration of a transaction. */
 export interface LockedSession {
   id: string;
@@ -134,6 +197,14 @@ export async function appendEvent(
     await tx`
       INSERT INTO ticket_transitions (ticket_id, from_state, to_state, queue_event_id)
       VALUES (${input.transition.ticketId}, ${input.transition.from}, ${input.transition.to}, ${eventId})`;
+    // Registered side effects (M5.4 turn alerts), each savepoint-isolated: never fail this event
+    if (transitionHooks.size > 0) {
+      await runTransitionHooks(tx, session, {
+        ...input.transition,
+        sequence,
+        payload: eventPayload,
+      });
+    }
   }
 
   const signal: QueueSignal = { f: session.facility_id, s: session.id, r: session.revision };

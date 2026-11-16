@@ -116,23 +116,25 @@ describe('empty database → initialized as QueueBridge', () => {
 });
 
 describe('existing QueueBridge database with valid history → migrated', () => {
-  it('a pre-guard database at 0005 (like the local dev database) gets 0006 and its identity marker', async () => {
+  it('a pre-guard database at 0005 (like the local dev database) gets 0006 onwards and its identity marker', async () => {
     const { url, sql } = await legacyDb(5);
+    // Every migration after 0005 is pending (0006 fairness, 0007 recovery, …)
+    const after5 = files.slice(5);
+    expect(after5[0]).toBe('0006_fairness_routing_audit.sql');
+    expect(after5).toContain('0007_ticket_recovery.sql');
+    expect(after5).toContain('0008_device_health.sql');
+    expect(after5).toContain('0009_turn_alerts.sql');
     try {
       const before = await inspectDatabase(sql, files);
-      expect(before).toMatchObject({
-        kind: 'legacy',
-        pending: ['0006_fairness_routing_audit.sql'],
-      });
+      expect(before).toMatchObject({ kind: 'legacy', pending: after5 });
       const check = await cli('migrate.js', url, ['--check']);
       expect(check.code).toBe(0);
-      expect(check.out).toContain('pending: 0006_fairness_routing_audit.sql');
+      expect(check.out).toContain(`pending: ${after5.join(', ')}`);
       expect(await inspectDatabase(sql, files)).toEqual(before); // --check changed nothing
-
       const r = await cli('migrate.js', url);
       expect(r.code).toBe(0);
-      expect(r.out).toContain('APPLY 0006_fairness_routing_audit.sql');
-      expect(r.out).toContain('Applied 1 migration(s).');
+      for (const f of after5) expect(r.out).toContain(`APPLY ${f}`);
+      expect(r.out).toContain(`Applied ${after5.length} migration(s).`);
       const [marker] = await sql<
         { recorded_how: string }[]
       >`SELECT recorded_how FROM _queuebridge_identity`;
@@ -146,7 +148,7 @@ describe('existing QueueBridge database with valid history → migrated', () => 
   it('a marked database with pending migrations is migrated through the library API too', async () => {
     const { sql } = await legacyDb(3);
     try {
-      await migrateDatabase(sql, { dir: DIR }); // adopts + applies 0004–0006
+      await migrateDatabase(sql, { dir: DIR }); // adopts + applies 0004 onwards
       expect(await inspectDatabase(sql, files)).toMatchObject({ kind: 'queuebridge', pending: [] });
     } finally {
       await sql.end({ timeout: 5 });

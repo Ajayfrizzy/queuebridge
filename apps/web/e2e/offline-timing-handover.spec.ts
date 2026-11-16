@@ -154,7 +154,10 @@ test.describe('one-time hand-over of the confirmed status link', () => {
   test('after sync, the capturer sees the CONFIRMED code with a working QR link; it is not persisted; Done removes it', async ({
     browser,
     page,
+    baseURL,
   }) => {
+    // The link is built from the API's WEB_BASE_URL, which the test config sets to the web origin
+    const originRe = new URL(baseURL ?? '').origin.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
     const s = await setup(page);
     const staff = await makeStaff(browser, page.request, s.facility.id, 'staff_reception');
     const p = staff.page;
@@ -176,7 +179,7 @@ test.describe('one-time hand-over of the confirmed status link', () => {
     ).toBeVisible();
     await card.getByText('Show status link').click();
     const link = await card.getByTestId('handover-link').innerText();
-    expect(link).toMatch(/^http:\/\/localhost:4173\/ticket\/G001#t=[A-Za-z0-9_-]{43}$/);
+    expect(link).toMatch(new RegExp(`^${originRe}/ticket/G001#t=[A-Za-z0-9_-]{43}$`));
     const secret = link.split('#t=')[1] ?? '';
 
     // Never persisted on the device
@@ -247,12 +250,16 @@ test.describe('one-time hand-over of the confirmed status link', () => {
     await p.getByRole('button', { name: 'Issue walk-in ticket' }).click();
     await expect(p.getByTestId('offline-capture-ref')).toBeVisible();
 
-    // The first sync reaches the server (and commits) but its response is dropped
+    // The first sync reaches the server (and commits) but its response is dropped. `dropped` is
+    // counted only once the server has answered, so the check below never races the request
+    // still in flight (open intermittent item 1, seen in CI 2026-11-16)
     let dropped = 0;
+    let first = true;
     await p.route('**/api/v1/sync/batches', async (route) => {
-      if (dropped === 0) {
-        dropped++;
+      if (first) {
+        first = false;
         await route.fetch(); // the server processes it
+        dropped++;
         await route.abort('connectionreset'); // ...the device never hears back
         return;
       }

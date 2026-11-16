@@ -24,6 +24,7 @@ import {
 } from '@queuebridge/continuity';
 import { SyncStateIndicator } from '@queuebridge/ui';
 import { useAuth } from '../auth.js';
+import { TurnAlertStatus } from '../components/TurnAlertStatus.js';
 import { useAnnounce } from '../components/Announcer.js';
 import { Loading, StatusBadge } from '../components/Form.js';
 import { api, apiUrl, ApiRequestError } from '../lib/api.js';
@@ -36,6 +37,9 @@ import {
   WALK_IN_ROLES,
 } from '../lib/permissions.js';
 import { buildQr, qrPath, QUIET_ZONE } from '../lib/qr.js';
+import { StaffRecoveryPanel } from '../components/StaffRecoveryPanel.js';
+import { OwnDeviceWarning } from '../components/OwnDeviceWarning.js';
+import { formatRecoveryKey } from '@queuebridge/contracts';
 import { outcomeOfStatus } from '../lib/operationIds.js';
 import { OutboxPanel } from '../components/OutboxPanel.js';
 import {
@@ -127,7 +131,9 @@ export function StaffConsole(): ReactElement {
     message: string;
     retry: QueueCommandRequest | null;
   } | null>(null);
-  const [walkIn, setWalkIn] = useState<{ code: string; link: string } | null>(null);
+  const [walkIn, setWalkIn] = useState<{ code: string; link: string; key: string | null } | null>(
+    null,
+  );
   /** Operation id of a walk-in whose outcome is unknown (lost response). */
   const [pendingWalkIn, setPendingWalkIn] = useState<string | null>(null);
   const [transferTarget, setTransferTarget] = useState('');
@@ -498,11 +504,14 @@ export function StaffConsole(): ReactElement {
     setPendingWalkIn(op);
     try {
       const res = await api.walkIn(queueId, op);
+      // Token and recovery key travel in the URL FRAGMENT only (never sent to a server)
+      const fragment = new URLSearchParams({ t: res.ticket.status_token });
+      if (res.ticket.recovery_key) fragment.set('k', res.ticket.recovery_key);
       const link = new URL(
-        `${res.ticket.status_path}#t=${res.ticket.status_token}`,
+        `${res.ticket.status_path}#${fragment.toString()}`,
         window.location.origin,
       ).toString();
-      setWalkIn({ code: res.ticket.public_code, link });
+      setWalkIn({ code: res.ticket.public_code, link, key: res.ticket.recovery_key });
       setPendingWalkIn(null);
       announce(`Walk-in ticket ${res.ticket.public_code} issued.`);
     } catch (e) {
@@ -592,6 +601,7 @@ export function StaffConsole(): ReactElement {
           </Link>
         </p>
       ) : null}
+      <OwnDeviceWarning deviceId={deviceId} reachable={reachable} />
       {canCount && advanceBlockedReason ? (
         <p role="status" className="alert alert-warn" data-testid="authority-banner">
           {advanceBlockedReason}
@@ -704,6 +714,15 @@ export function StaffConsole(): ReactElement {
                       ) : null}
                     </p>
                   </div>
+                  {atCounter.state === 'called' &&
+                  (!atCounter.local_status || atCounter.local_status === 'committed') ? (
+                    <TurnAlertStatus
+                      queueId={queueId}
+                      ticketId={atCounter.id}
+                      revision={q.revision}
+                      reachable={reachable}
+                    />
+                  ) : null}
                   {atCounter.state === 'called' && !counterInService ? (
                     <p className="hint" data-testid="serve-blocked-hint">
                       This counter is out of service, so {atCounter.public_code} cannot be served
@@ -1068,7 +1087,7 @@ export function StaffConsole(): ReactElement {
                     <SyncStateIndicator status={SyncStatus.LOCAL_ONLY} /> Saved on this device only.
                     This is a <strong>temporary reference</strong>, not a ticket number. Tell the
                     visitor they are registered; their real code is confirmed when the server is
-                    reachable.
+                    reachable. Ticket recovery is not available until then.
                   </p>
                   <div className="btn-row">
                     <button
@@ -1104,6 +1123,14 @@ export function StaffConsole(): ReactElement {
                       d={qrPath(walkInQr)}
                     />
                   </svg>
+                  {walkIn.key ? (
+                    <p>
+                      Recovery key, for the visitor to keep (shown once):{' '}
+                      <strong className="mono" data-testid="walkin-key">
+                        {formatRecoveryKey(walkIn.key)}
+                      </strong>
+                    </p>
+                  ) : null}
                   <details>
                     <summary>Show status link</summary>
                     <code className="mono wrap" data-testid="walkin-link">
@@ -1122,6 +1149,21 @@ export function StaffConsole(): ReactElement {
                 </div>
               ) : null}
             </section>
+          ) : null}
+
+          {canWalkIn ? (
+            <StaffRecoveryPanel
+              queueId={queueId}
+              tickets={viewTickets
+                .filter(
+                  (t) =>
+                    !t.provisional &&
+                    ['waiting', 'called', 'serving', 'paused', 'missed'].includes(t.state),
+                )
+                .map((t) => ({ id: t.id, public_code: t.public_code }))}
+              canApprove={canManage}
+              disabled={!reachable || queue.fromCache}
+            />
           ) : null}
 
           {canManage ? (

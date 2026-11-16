@@ -6,7 +6,7 @@ import {
   PASSWORD,
   uiLogin,
 } from './helpers.js';
-import { makeStaff, op, storedOperations, waitForDevice } from './offline-helpers.js';
+import { goOffline, makeStaff, op, storedOperations, waitForDevice } from './offline-helpers.js';
 
 const CSRF = { 'X-QB-CSRF': '1' };
 
@@ -218,7 +218,7 @@ test.describe('offline authority', () => {
     await expect(p.getByTestId('authority-active')).toBeVisible();
 
     // Partition: the coordinator calls G001 locally
-    await staff.ctx.setOffline(true);
+    await goOffline(staff.ctx, p);
     await p.getByRole('button', { name: 'Call next' }).click();
     await expect(p.getByTestId('outbox-row')).toHaveAttribute('data-status', 'local_only');
 
@@ -284,7 +284,7 @@ test.describe('safe handling of local data', () => {
     const p = staff.page;
     await p.goto(`/staff/queues/${s.queueId}`);
     await waitForDevice(p);
-    await staff.ctx.setOffline(true);
+    await goOffline(staff.ctx, p);
     await p.getByRole('button', { name: 'Issue walk-in ticket' }).click();
     await expect(p.getByTestId('unsynced-count')).toBeVisible();
 
@@ -324,7 +324,7 @@ test.describe('safe handling of local data', () => {
     const p = a.page;
     await p.goto(`/staff/queues/${s.queueId}`);
     await waitForDevice(p);
-    await a.ctx.setOffline(true);
+    await goOffline(a.ctx, p);
     await p.getByRole('button', { name: 'Issue walk-in ticket' }).click();
     await expect(p.getByTestId('unsynced-count')).toBeVisible();
     // Person A's sign-in is gone before the device reconnects (cookie cleared / session ended)
@@ -373,7 +373,7 @@ test.describe('safe handling of local data', () => {
     // Force a real flush under B's session: B captures offline, reconnects, and B's own ticket
     // syncs. Any flush that would include A's action has therefore already happened.
     await waitForDevice(p);
-    await a.ctx.setOffline(true);
+    await goOffline(a.ctx, p);
     await p.getByRole('button', { name: 'Issue walk-in ticket' }).click();
     await expect(p.getByTestId('offline-capture-ref')).toBeVisible();
     await a.ctx.setOffline(false);
@@ -414,7 +414,7 @@ test.describe('safe handling of local data', () => {
     });
     await p.goto(`/staff/queues/${s.queueId}`);
     await expect(p.getByTestId('offline-problem')).toContainText('cannot save offline data');
-    await staff.ctx.setOffline(true);
+    await goOffline(staff.ctx, p);
     await p.getByRole('button', { name: 'Issue walk-in ticket' }).click();
     await expect(p.getByTestId('command-error')).toContainText('not registered for offline use');
     await expect(p.getByTestId('provisional-ticket')).toHaveCount(0);

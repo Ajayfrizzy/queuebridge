@@ -1,4 +1,4 @@
-import { QueueAction, type ServicePolicy } from '@queuebridge/contracts';
+import { QueueAction, ServicePolicySchema, type ServicePolicy } from '@queuebridge/contracts';
 import { canonicalJson } from '@queuebridge/domain';
 import type { Db } from '../db.js';
 import { appendEvent, lockSessions } from './events.js';
@@ -11,8 +11,16 @@ import { appendEvent, lockSessions } from './events.js';
  * never by clients — so a label always identifies exactly one rule set.
  */
 
-/** Policy contents that matter for decisions (the label itself is not part of the comparison). */
-const substance = (p: ServicePolicy): string => canonicalJson({ ...p, version: undefined });
+/**
+ * Policy contents that matter for decisions (the label itself is not part of the comparison).
+ * Both sides are normalized through the schema first, so a policy stored before a field existed
+ * (M5.1 added `rejoin_policy`, `auto_miss`, `staff_recovery`) equals the same rules with that
+ * field at its default: re-saving unchanged rules never creates a new version (ADR-012).
+ */
+const substance = (p: ServicePolicy): string => {
+  const normalized = ServicePolicySchema.safeParse(p);
+  return canonicalJson({ ...(normalized.success ? normalized.data : p), version: undefined });
+};
 
 export function samePolicy(a: ServicePolicy, b: ServicePolicy): boolean {
   return substance(a) === substance(b);

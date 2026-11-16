@@ -68,8 +68,12 @@ test.describe('logout is only shown as complete after the server confirms it', (
     await page.goto('/admin');
     await page.route('**/api/v1/auth/logout', (route) => route.abort('failed'));
     await page.getByRole('button', { name: 'Sign out' }).click();
-    await page.getByRole('button', { name: 'Dismiss' }).click();
-    await expect(page.getByTestId('logout-error')).toHaveCount(0);
+    // Scoped to the sign-out notice: a failed request also raises the "You are offline" toast,
+    // whose own button ("Dismiss notification") would otherwise match 'Dismiss' too (M5.0).
+    const notice = page.getByTestId('logout-error');
+    await expect(notice).toBeVisible();
+    await notice.getByRole('button', { name: 'Dismiss', exact: true }).click();
+    await expect(notice).toHaveCount(0);
     await expect(page.getByTestId('whoami')).toBeVisible();
   });
 

@@ -1,8 +1,11 @@
 import { defineConfig, devices } from '@playwright/test';
+import { E2E_CONTACT_KEY, E2E_PUSH_HOST, E2E_VAPID_PUBLIC_KEY } from './e2e/push-env.js';
 
 /** Dedicated test port: never the dev API (3002) nor other local projects (3001). */
 const API_PORT = 3101;
-const WEB_PORT = 4173;
+// E2E_WEB_PORT: local override when 4173 is taken (for example by a manual phase B preview); CI
+// and normal runs use 4173. Specs derive expected links from `baseURL` (WEB_BASE_URL = WEB_ORIGIN)
+const WEB_PORT = Number(process.env['E2E_WEB_PORT'] ?? 4173);
 const WEB_ORIGIN = `http://localhost:${WEB_PORT}`;
 const DATABASE_URL =
   process.env['TEST_DATABASE_URL'] ??
@@ -48,7 +51,9 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'pnpm --filter @queuebridge/api build && node ../api/dist/server.js',
+      // The worker is built too: device-health tests run its real evaluator once (`--once`)
+      command:
+        'pnpm --filter @queuebridge/api --filter @queuebridge/worker build && node ../api/dist/server.js',
       url: `http://localhost:${API_PORT}/health/ready`,
       timeout: 120_000,
       reuseExistingServer: false,
@@ -63,6 +68,14 @@ export default defineConfig({
         JOIN_RATE_LIMIT_MAX: '10000',
         PUBLIC_READ_RATE_LIMIT_MAX: '10000',
         COMMAND_RATE_LIMIT_MAX: '10000',
+        // M5.1: TEST-ONLY recovery key material (never a real secret); the throttle itself is
+        // covered by the PostgreSQL tests, so the browser suite raises its per-source limit
+        CONTACT_ENCRYPTION_KEY: E2E_CONTACT_KEY,
+        RECOVERY_RATE_LIMIT_MAX: '1000',
+        // M5.4: push is "live" with a TEST-ONLY public key and a fictional push host; the worker
+        // run by the specs uses the sandbox transport (nothing leaves the machine)
+        VAPID_PUBLIC_KEY: E2E_VAPID_PUBLIC_KEY,
+        PUSH_ENDPOINT_HOSTS: E2E_PUSH_HOST,
         LOG_LEVEL: 'warn',
       },
     },

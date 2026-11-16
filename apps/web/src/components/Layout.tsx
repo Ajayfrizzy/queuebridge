@@ -4,14 +4,17 @@ import { useAuth } from '../auth.js';
 import { ApiRequestError } from '../lib/api.js';
 import { useOffline } from '../offline/OfflineProvider.js';
 import { ConnectivityBar } from './ConnectivityBar.js';
+import { DisplaySettingsButton } from './DisplaySettings.js';
+import { HealthAlertBanner } from './HealthAlertBanner.js';
+import { PushHandoff } from './PushHandoff.js';
+import { useRouteFocus } from '../lib/routeFocus.js';
 
 /** Page shell: skip link, banner, navigation, and route-change focus management. */
 export function Layout(): ReactElement {
-  const { user, logout, signedOut, acknowledgeSignedOut } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const mainRef = useRef<HTMLElement>(null);
-  const first = useRef(true);
   const alertRef = useRef<HTMLDivElement>(null);
   const [signingOut, setSigningOut] = useState(false);
   const [logoutError, setLogoutError] = useState<string | null>(null);
@@ -28,9 +31,9 @@ export function Layout(): ReactElement {
     setSigningOut(true);
     setLogoutError(null);
     try {
-      // Local state is cleared only after the server confirmed; guards then send the user home
-      await logout();
-      void navigate('/');
+      // Local state is cleared only after the server confirmed. Home is navigated to first (inside
+      // logout, before the user is cleared) so route guards never act on a stale protected URL.
+      await logout(() => void navigate('/'));
     } catch (e) {
       setLogoutError(
         e instanceof ApiRequestError && e.status > 0
@@ -42,11 +45,6 @@ export function Layout(): ReactElement {
     }
   }
 
-  // After a confirmed sign out lands on home, later visits to protected pages go to sign-in again
-  useEffect(() => {
-    if (signedOut && location.pathname === '/') acknowledgeSignedOut();
-  }, [signedOut, location.pathname, acknowledgeSignedOut]);
-
   // A stale failure notice must not outlive the session it refers to
   useEffect(() => {
     if (!user) setLogoutError(null);
@@ -57,15 +55,8 @@ export function Layout(): ReactElement {
     if (logoutError) alertRef.current?.focus();
   }, [logoutError]);
 
-  // Move focus to the main landmark after client-side navigation so keyboard and
-  // screen-reader users start at the new content instead of the old position.
-  useEffect(() => {
-    if (first.current) {
-      first.current = false;
-      return;
-    }
-    mainRef.current?.focus();
-  }, [location.pathname]);
+  // Route change (REQ-F7.11): title updated, focus moved to the new page's heading
+  useRouteFocus(mainRef, location.pathname);
 
   return (
     <>
@@ -100,6 +91,9 @@ export function Layout(): ReactElement {
               )}
             </ul>
           </nav>
+          <div className="header-tools">
+            <DisplaySettingsButton />
+          </div>
           {user ? (
             <div className="account" role="group" aria-label="Account">
               <span className="who" data-testid="whoami">
@@ -119,6 +113,8 @@ export function Layout(): ReactElement {
         </div>
       </header>
       <ConnectivityBar />
+      <HealthAlertBanner />
+      <PushHandoff />
       {confirmDiscard ? (
         <div className="container">
           <div role="alert" className="alert alert-error" data-testid="discard-warning">

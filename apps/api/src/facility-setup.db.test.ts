@@ -55,6 +55,10 @@ describe('M1 journey: new org configures a facility without any DB access', () =
     expect(svc.status).toBe(201);
     // Published default policy: FIFO within the normal class
     expect(svc.body.service.policy).toEqual({
+      // M5.1 recovery fields default to the M2–M4 behaviour
+      rejoin_policy: 'staff_resume',
+      auto_miss: { enabled: false },
+      staff_recovery: true,
       version: 'v1',
       priority_order: ['normal'],
       grace_window_seconds: 300,

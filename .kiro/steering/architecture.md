@@ -32,7 +32,8 @@ Full ADRs live in `docs/adr/`.
 
 M0–M4 merged into `staging`. Next: **M5** (recovery, accessibility, device health, Smart Turn Alerts;
 stabilization M5.0 first) → **MQ** (Ask Que) → **M6** (SMS turn alerts + USSD) → **M7** (final UI/UX,
-animated landing page, hardening, demo, submission). No renumbering.
+animated landing page, hardening, demo, submission). No renumbering. M5 manual acceptance Set 2
+(checks 15–41) runs after M7, before submission; Set 1 (checks 1–14) is closed (2026-11-16).
 
 ## Runtime components
 
@@ -233,7 +234,7 @@ Before implementing offline queue advancement, code AND tests must answer:
 - Alerts are produced from **server-committed** events only (online or via sync). Offline-applied actions create none until committed.
 - `enqueueTurnAlerts` runs inside the queue transaction under a **SAVEPOINT** with no network I/O; any error rolls back to the savepoint, is logged and counted, and the queue command commits. Alert code must never be able to fail a queue command.
 - The worker sends; the API only enqueues and serves subscription endpoints. The worker never writes to `tickets`, `queue_sessions` or `queue_events`.
-- Web Push uses a separate narrow `PushTransport` in `packages/channels` (sandbox double + `web-push`/VAPID). `ChannelAdapter` stays SMS/USSD-shaped. No new package; no boundary change.
+- Web Push uses a separate narrow `PushTransport` in `packages/channels` (TEST-ONLY sandbox double + `WebPushTransport`: RFC 8291 encryption with `http_ece` (MIT), RFC 8292 VAPID with `node:crypto`; the `web-push` npm package is not used because it is MPL-2.0). `ChannelAdapter` stays SMS/USSD-shaped. No new package; no boundary change.
 - In-app alert derives from server-confirmed ticket state; no outbox row, no delivery claim.
 - One `notifications` + outbox entry **per subscribed device**; idempotency key `web_push:ticket.called:<ticket_id>:<event_sequence>:<subscription_id>` (`notification_outbox.dedup_key` is globally unique, so the subscription must be in the key); stale alerts are suppressed at send time; TTL bounds retries; at-least-once with collapse.
 - Notification identity is the non-secret `subscription_id` (tag, `Topic`, click destination `/ticket/<code>?ref=<ref>` resolved through the saved ticket's `pushRef`), never the public ticket code alone; the service worker and payloads hold no bearer credential; an unmatched reference opens a neutral screen with no status request.

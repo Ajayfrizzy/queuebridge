@@ -10,7 +10,9 @@ export const TEST_ORIGIN = 'http://localhost:5173';
 export const TEST_PASSWORD = 'correct-horse-battery-1';
 
 export function testEnv(overrides: Record<string, string> = {}): Env {
-  return parseEnv({
+  // An override of '' REMOVES the variable (e.g. to test recovery without its key)
+  const removed = Object.keys(overrides).filter((k) => overrides[k] === '');
+  const env: Record<string, string> = {
     NODE_ENV: 'test',
     DATABASE_URL: process.env['TEST_DATABASE_URL'] ?? process.env['DATABASE_URL'] ?? '',
     SESSION_SECRET: 'test-session-secret-at-least-32-characters-long',
@@ -21,8 +23,14 @@ export function testEnv(overrides: Record<string, string> = {}): Env {
     JOIN_RATE_LIMIT_MAX: '100000',
     PUBLIC_READ_RATE_LIMIT_MAX: '100000',
     COMMAND_RATE_LIMIT_MAX: '100000',
+    // M5.1: a fixed TEST-ONLY key (never a real secret) so recovery is enabled in tests; the
+    // recovery throttle keeps its real default so abuse tests exercise it
+    CONTACT_ENCRYPTION_KEY: '7e57'.repeat(16),
+    AUTO_MISS_SWEEP_SECONDS: '0',
     ...overrides,
-  });
+  };
+  for (const k of removed) delete env[k];
+  return parseEnv(env);
 }
 
 export interface TestApp {
@@ -273,6 +281,9 @@ export interface JoinResult {
       public_code: string;
       status_token: string;
       status_path: string;
+      /** M5.1: shown once; null when recovery is not configured */
+      recovery_key: string | null;
+      recovery_path: string;
     };
     title?: string;
   };

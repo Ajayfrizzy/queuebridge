@@ -15,7 +15,7 @@ export default defineConfig({
         theme_color: '#1a56db',
         background_color: '#ffffff',
         display: 'standalone',
-        orientation: 'portrait',
+        // No `orientation`: the app must work in portrait and landscape (WCAG 1.3.4, REQ-F7.17)
         icons: [
           {
             src: '/icons/icon-192.png',
@@ -33,6 +33,8 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         // API calls must never be answered with the cached app shell
         navigateFallbackDenylist: [/^\/api\//, /^\/health/],
+        // M5.4: turn-alert push and notification-click handlers (public/push-handler.js)
+        importScripts: ['push-handler.js'],
         runtimeCaching: [
           {
             urlPattern: /^https?:\/\/.*\/api\/v1\/facilities\/.+\/public/,

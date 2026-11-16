@@ -1,4 +1,4 @@
-import { randomSecret, uuidv7 } from '@queuebridge/contracts';
+import { randomSecret, uuidv7, type TicketStatus } from '@queuebridge/contracts';
 
 /**
  * Visitor tickets remembered on THIS device (REQ-F4.2: survive refresh/restart). Stores only the
@@ -19,6 +19,12 @@ export interface StoredTicket {
   /** /join/:org/:facility path, to link back */
   joinPath: string | null;
   savedAt: string;
+  /**
+   * M5.4: the server's NON-SECRET `subscription_ref` when push alerts are on for this ticket on
+   * this device. A notification carries it as `ref`; it is how a notification finds its ticket
+   * (never the public code alone). It grants nothing: the token above is still required.
+   */
+  pushRef?: string | undefined;
 }
 
 export type NewStoredTicket = Omit<StoredTicket, 'id'> & { id?: string | undefined };
@@ -85,6 +91,30 @@ export function findTicketByToken(token: string): StoredTicket | undefined {
   return storedTickets().find((t) => t.token === token);
 }
 
+/** The saved ticket a push notification belongs to (`?ref=`), if this device still has it. */
+export function resolveByPushRef(ref: string): StoredTicket | undefined {
+  return ref ? storedTickets().find((t) => t.pushRef === ref) : undefined;
+}
+
+/** True when another saved ticket on this device still uses push (they share one browser subscription). */
+export function otherTicketUsesPush(id: string): boolean {
+  return storedTickets().some((t) => t.id !== id && Boolean(t.pushRef));
+}
+
+/** Record (or clear, with null) the push reference of a saved ticket. Returns false if not stored. */
+export function setPushRef(id: string, ref: string | null): boolean {
+  const all = storedTickets();
+  const t = all.find((x) => x.id === id);
+  if (!t) return false;
+  const next: StoredTicket = { ...t };
+  if (ref) next.pushRef = ref;
+  else delete next.pushRef;
+  return write(
+    TICKETS_KEY,
+    all.map((x) => (x.id === id ? next : x)),
+  );
+}
+
 /** All saved tickets with this public code (there may be several, from different queues). */
 export function ticketsWithCode(code: string): StoredTicket[] {
   return storedTickets().filter((t) => t.code === code);
@@ -101,7 +131,55 @@ export function saveTicket(t: NewStoredTicket): StoredTicket | null {
   return write(TICKETS_KEY, [entry, ...others].slice(0, MAX_TICKETS)) ? entry : null;
 }
 
+/**
+ * Last-known status of a saved ticket, for viewing when the server cannot be reached
+ * (REQ-F7.16). It holds exactly what the ticket page already shows (code, state, position,
+ * service and facility names): no token, no recovery key, no contact data. It is always shown
+ * labelled with the time it was last confirmed, never as current.
+ */
+const SNAPSHOT_KEY = 'qb.ticketView.v1';
+export interface TicketSnapshot {
+  status: TicketStatus;
+  /** When the server last confirmed it (ISO, from this device's clock: display only) */
+  at: string;
+}
+function snapshots(): Record<string, TicketSnapshot> {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(SNAPSHOT_KEY) ?? '{}');
+    return v !== null && typeof v === 'object' && !Array.isArray(v)
+      ? (v as Record<string, TicketSnapshot>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+export function saveSnapshot(id: string, status: TicketStatus): void {
+  try {
+    localStorage.setItem(
+      SNAPSHOT_KEY,
+      JSON.stringify({ ...snapshots(), [id]: { status, at: new Date().toISOString() } }),
+    );
+  } catch {
+    // Storage full or disabled: the live view still works, only the offline copy is lost
+  }
+}
+export function loadSnapshot(id: string): TicketSnapshot | null {
+  const s = snapshots()[id];
+  return s && typeof s.at === 'string' && s.status ? s : null;
+}
+export function dropSnapshot(id: string): void {
+  const all = snapshots();
+  if (!(id in all)) return;
+  delete all[id];
+  try {
+    localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(all));
+  } catch {
+    // nothing to do
+  }
+}
+
 export function forgetTicket(id: string): void {
+  dropSnapshot(id);
   write(
     TICKETS_KEY,
     storedTickets().filter((t) => t.id !== id),
@@ -148,10 +226,15 @@ export function finishJoin(queueId: string): void {
   );
 }
 
-/** Read and remove a `#t=<token>` fragment (staff walk-in links) without it reaching history. */
-export function takeTokenFromHash(): string | null {
+/**
+ * Read and remove a `#t=<token>[&k=<recovery key>]` fragment (staff walk-in links) without it
+ * reaching history. A walk-in's recovery key is handed to `onKey` (page memory only).
+ */
+export function takeTokenFromHash(onKey?: (key: string) => void): string | null {
   const params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
   const t = params.get('t');
+  const k = params.get('k');
   if (t) window.history.replaceState(null, '', window.location.pathname + window.location.search);
+  if (t && k) onKey?.(k);
   return t;
 }
