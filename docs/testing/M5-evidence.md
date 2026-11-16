@@ -1112,8 +1112,12 @@ each, 240 passed and 6 skipped (CI also skips the WebKit print variant):
    (`apps/worker/src/turn-alerts.db.test.ts`, "a malformed outbox row never blocks the batch"):
    both fail on the old worker (`UNDEFINED_VALUE`; batch aborted by a refused delivery record) and
    pass on the fix. Worker database suite 63 / 63.
-2. `offline-timing-handover.spec.ts` "lost acknowledgement": the known open intermittent
-   (open item 1), recurring once in CI. Not changed.
+2. `offline-timing-handover.spec.ts` "lost acknowledgement" (open item 1, recurring in CI):
+   **root cause found (test synchronization).** The route handler counted the dropped response
+   before `route.fetch()` returned, so the test checked the server while the sync request was
+   still in flight ("Received length: 0"). With the request delayed by 1.5 s the original test
+   fails with exactly that error and the fixed test passes; the fix counts the drop only after
+   the server answered. 50 / 50 locally (10 repeats); open item 1 is resolved.
 
 Still open (local only, not seen in CI): under an artificial stress run (turn-alerts,
 device-health and offline-timing-handover repeated six times on two workers) some visitor pages

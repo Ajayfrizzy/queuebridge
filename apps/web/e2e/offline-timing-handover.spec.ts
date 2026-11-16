@@ -250,12 +250,16 @@ test.describe('one-time hand-over of the confirmed status link', () => {
     await p.getByRole('button', { name: 'Issue walk-in ticket' }).click();
     await expect(p.getByTestId('offline-capture-ref')).toBeVisible();
 
-    // The first sync reaches the server (and commits) but its response is dropped
+    // The first sync reaches the server (and commits) but its response is dropped. `dropped` is
+    // counted only once the server has answered, so the check below never races the request
+    // still in flight (open intermittent item 1, seen in CI 2026-11-16)
     let dropped = 0;
+    let first = true;
     await p.route('**/api/v1/sync/batches', async (route) => {
-      if (dropped === 0) {
-        dropped++;
+      if (first) {
+        first = false;
         await route.fetch(); // the server processes it
+        dropped++;
         await route.abort('connectionreset'); // ...the device never hears back
         return;
       }
