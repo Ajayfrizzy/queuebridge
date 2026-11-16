@@ -125,9 +125,9 @@ general-purpose chatbot and not part of core queue operations. Spec: REQ-F13, de
 - No inference provider is selected; research only during MQ (no payment card, no spending).
 - Do not implement before milestone MQ.
 
-## Milestone status (reconciled 2026-11-12)
+## Milestone status (reconciled 2026-11-12; status updated 2026-11-16)
 
-M0–M4 are implemented and **merged into `staging`** (PRs #1–#6). Order from here: **M5 → MQ → M6 → M7**
+M0–M5 are implemented and **merged into `staging`** (PRs #1–#6 and #8). Order from here: **MQ → M6 → M7**
 (MQ = Ask Que, between M5 and M6; no renumbering). Do not implement a later milestone's scope early.
 M5 manual acceptance runs in two sets (approved 2026-11-16): Set 1 (checks 1–14) is closed; Set 2
 (checks 15–41) is final acceptance after M7, before submission.
