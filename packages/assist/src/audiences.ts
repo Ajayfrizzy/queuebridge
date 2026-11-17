@@ -25,6 +25,13 @@ const ROLE_AUDIENCE: Readonly<Record<Role, Audience>> = {
   [Role.AUDITOR]: 'auditor',
 };
 
+/**
+ * Version of the role → audience mapping (including the `org_admin` expansion). Part of the
+ * server-issued role fingerprint (D2, design §11.5.4): changing the mapping must bump this so
+ * every cached restricted bundle is invalidated.
+ */
+export const AUDIENCE_MAPPING_VERSION = 1;
+
 /** Staff audiences an organization administrator receives (design §11.2, corrected 2026-11-16). */
 export const ORG_ADMIN_AUDIENCES: readonly Audience[] = [
   'reception',

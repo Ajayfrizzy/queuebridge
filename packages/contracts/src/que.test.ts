@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   CAPABILITY_IDS,
   CapabilityEntrySchema,
+  KB_KNOWN_MAX_ENTRIES,
+  KbBundleSchema,
+  KbKnownParamSchema,
+  PublicKbResponseSchema,
+  RestrictedKbResponseSchema,
   CapabilityManifestSchema,
   KbArticleSchema,
   QueAnswerSchema,
@@ -235,5 +240,61 @@ describe('QueAnswerSchema (design §11.4)', () => {
     ['a negative kbVersion', { kbVersion: -1 }],
   ])('rejects %s', (_label, over) => {
     expect(QueAnswerSchema.safeParse({ ...ok, ...over }).success).toBe(false);
+  });
+});
+
+describe('MQ.2 delivery schemas', () => {
+  const restricted = {
+    userId: '0193a000-0000-7000-8000-0000000000e1',
+    roleDigest: 'a'.repeat(64),
+    audiences: ['counter'],
+    kbVersion: 1,
+    issuedAt: '2026-11-17T08:00:00.000Z',
+    authorizedUntil: '2026-11-17T20:00:00.000Z',
+    validForMs: 43_200_000,
+    index: [{ id: 'staff.sync.states', version: 1 }],
+    articles: [],
+  };
+
+  it('accepts a restricted response and rejects visitor audiences, bad digests and extra fields', () => {
+    expect(RestrictedKbResponseSchema.safeParse(restricted).success).toBe(true);
+    for (const bad of [
+      { ...restricted, audiences: ['visitor'] },
+      { ...restricted, roleDigest: 'A'.repeat(64) },
+      { ...restricted, roleDigest: 'abc' },
+      { ...restricted, validForMs: -1 },
+      { ...restricted, email: 'x' },
+    ]) {
+      expect(RestrictedKbResponseSchema.safeParse(bad).success).toBe(false);
+    }
+  });
+
+  it('the public response must be the visitor audience', () => {
+    const b = { kbVersion: 1, audience: 'visitor', articles: [article] };
+    expect(PublicKbResponseSchema.safeParse(b).success).toBe(true);
+    expect(PublicKbResponseSchema.safeParse({ ...b, audience: 'counter' }).success).toBe(false);
+    expect(KbBundleSchema.safeParse({ ...b, audience: 'counter' }).success).toBe(true);
+  });
+
+  it('parses the incremental `known` list strictly', () => {
+    expect(KbKnownParamSchema.parse('staff.sync.states:1,visitor.recovery.how:12')).toEqual([
+      { id: 'staff.sync.states', version: 1 },
+      { id: 'visitor.recovery.how', version: 12 },
+    ]);
+    for (const bad of [
+      '',
+      'x:1',
+      'staff.sync.states',
+      'staff.sync.states:0',
+      'a.b:1,',
+      'a.b:1;drop',
+      'A.B:1',
+    ]) {
+      expect(KbKnownParamSchema.safeParse(bad).success).toBe(false);
+    }
+    const tooMany = Array.from({ length: KB_KNOWN_MAX_ENTRIES + 1 }, (_, i) => `a.b${i}:1`).join(
+      ',',
+    );
+    expect(KbKnownParamSchema.safeParse(tooMany).success).toBe(false);
   });
 });

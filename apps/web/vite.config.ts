@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { PRECACHE_GLOB_PATTERNS, RUNTIME_CACHING } from './src/pwa/swRules.js';
 
 export default defineConfig({
   plugins: [
@@ -30,21 +31,15 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // MQ.2: includes the built-in public Ask Que bundle (a hashed JSON asset)
+        globPatterns: PRECACHE_GLOB_PATTERNS,
         // API calls must never be answered with the cached app shell
         navigateFallbackDenylist: [/^\/api\//, /^\/health/],
         // M5.4: turn-alert push and notification-click handlers (public/push-handler.js)
         importScripts: ['push-handler.js'],
-        runtimeCaching: [
-          {
-            urlPattern: /^https?:\/\/.*\/api\/v1\/facilities\/.+\/public/,
-            handler: 'StaleWhileRevalidate',
-            options: {
-              cacheName: 'facility-public-data',
-              expiration: { maxAgeSeconds: 3600 },
-            },
-          },
-        ],
+        // Public, non-personal API responses only (src/pwa/swRules.ts; MQ.2 corrected the
+        // public-facility rule, which never matched the real API path)
+        runtimeCaching: RUNTIME_CACHING,
       },
     }),
   ],

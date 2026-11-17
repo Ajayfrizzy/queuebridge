@@ -462,12 +462,12 @@ Security follow-up from M5.1 (separate change, recorded in `M5-evidence.md`, "M5
 
 ### MQ.2 Knowledge-base delivery and offline
 
-- [ ] Build step compiling Markdown articles to versioned per-audience bundles
-- [ ] `GET /api/v1/que/kb/public` (precached) and authenticated `GET /api/v1/que/kb` (role-filtered)
-- [ ] Service-worker precache for public bundle; per-user cache for restricted bundles
-- [ ] Offline staff-help authorization expiry (`authorizedUntil`), role-digest binding and invalidation triggers per design §11.5.2–§11.5.3
-- [ ] Build check: restricted bundles contain no tenant-sensitive content (design §11.5.1)
-- [ ] Incremental update by bundle/article version
+- [x] Build step compiling Markdown articles to versioned per-audience bundles — `packages/assist/src/kb-compile.ts` (pure) + `scripts/build-kb.mjs` (part of the package build); `knowledge/<audience>/<id>.md`, `kb.json`, `kb.lock.json`; four initial delivery articles only (MQ.5 owns the inventory)
+- [x] `GET /api/v1/que/kb/public` (precached) and authenticated `GET /api/v1/que/kb` (role-filtered) — `apps/api/src/routes/que.ts`, `que/kb.ts`; audiences from the server-loaded session grants; server-issued role fingerprint (D2, `auth/role-digest.ts`)
+- [x] Service-worker precache for public bundle; per-user cache for restricted bundles — built-in public bundle precached as a hashed asset, runtime copy of the endpoint; restricted bundle in IndexedDB `queuebridge-que` only; public-facility runtime rule corrected (`apps/web/src/pwa/swRules.ts`)
+- [x] Offline staff-help authorization expiry (`authorizedUntil`), role-digest binding and invalidation triggers per design §11.5.2–§11.5.3 — `apps/web/src/que/{offlineHelp,helpClient,store}.ts`, wired in `auth.tsx`
+- [x] Build check: restricted bundles contain no tenant-sensitive content (design §11.5.1) — emails, phone numbers, UUIDs, ticket codes, placeholders and secret-like strings fail the build; D4 `privatePhrases` check
+- [x] Incremental update by bundle/article version — `known=id:version` on `GET /que/kb` (unchanged articles not resent); version discipline enforced by `kb.lock.json`. Evidence: `docs/testing/MQ-evidence.md` (MQ.2)
 
 ### MQ.3 Que UI (accessible, mobile-first)
 

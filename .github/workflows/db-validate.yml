@@ -15,6 +15,8 @@ jobs:
   migrate-and-validate:
     name: Apply migrations and validate constraints
     runs-on: ubuntu-latest
+    # MQ.2: bounded like the CI jobs (migrations take well under a minute)
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:16

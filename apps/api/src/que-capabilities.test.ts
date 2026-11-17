@@ -208,17 +208,20 @@ describe('Que is read-only in MQ.1', () => {
     },
   );
 
-  it.each([
-    ['GET', '/api/v1/que/kb'],
-    ['GET', '/api/v1/que/kb/public'],
-    ['POST', '/api/v1/que/ask'],
-  ] as const)('%s %s does not exist yet (MQ.2 / MQ.4)', async (method, url) => {
+  it('POST /api/v1/que/ask does not exist (the optional AI layer is MQ.4)', async () => {
     const r = await noPush.inject({
-      method,
-      url,
+      method: 'POST',
+      url: '/api/v1/que/ask',
       headers: { origin: ORIGIN, 'x-qb-csrf': '1', 'content-type': 'application/json' },
-      ...(method === 'POST' ? { payload: '{"question":"x"}' } : {}),
+      payload: '{"question":"x"}',
     });
     expect(r.statusCode).toBe(404);
+  });
+
+  it('MQ.2 KB endpoints: public is open, restricted needs a session (no database involved)', async () => {
+    const pub = await noPush.inject({ method: 'GET', url: '/api/v1/que/kb/public' });
+    expect(pub.statusCode).toBe(200);
+    const restricted = await noPush.inject({ method: 'GET', url: '/api/v1/que/kb' });
+    expect(restricted.statusCode).toBe(401);
   });
 });
