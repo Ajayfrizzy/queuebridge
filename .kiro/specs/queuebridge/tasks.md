@@ -453,12 +453,12 @@ Security follow-up from M5.1 (separate change, recorded in `M5-evidence.md`, "M5
 
 ### MQ.1 Contracts and deterministic core (`packages/assist`)
 
-- [ ] ADR-011 formally accepted (it remains Proposed until this task); `packages/assist` added to package-boundary tables (imports `contracts` only) — _ADR-011 accepted 2026-11-16 (spec reconciliation); the boundary tables (`AGENTS.md` §2, architecture steering, adding `assist` to the `apps/web` row; `apps/api` already imports all packages) are updated when the package is created_
-- [ ] `KbArticle`, `CapabilityManifest`, `RouteId`, `QueAnswer` schemas in `packages/contracts`
-- [ ] Shared permission map moved to `packages/contracts` and used by both API and Que route registry
-- [ ] Route/screen registry with required permissions and default articles per screen
-- [ ] Deterministic search and answer builder (no I/O)
-- [ ] Capability manifest generated from server flags; `GET /api/v1/que/capabilities`
+- [x] ADR-011 formally accepted (it remains Proposed until this task); `packages/assist` added to package-boundary tables (imports `contracts` only) — _ADR-011 accepted 2026-11-16 (spec reconciliation); the boundary tables (`AGENTS.md` §2, architecture steering, adding `assist` to the `apps/web` row; `apps/api` already imports all packages) are updated when the package is created_ — **MQ.1 (2026-11-17):** package created; `AGENTS.md` §2 table and tree, architecture steering boundary rules updated; static boundary test `packages/assist/src/boundary.test.ts`
+- [x] `KbArticle`, `CapabilityManifest`, `RouteId`, `QueAnswer` schemas in `packages/contracts` — `packages/contracts/src/que.ts` (strict Zod; SafeMarkdown with route links only; D1 `availability` with fail-closed `isCapabilityUsable`); tests `que.test.ts`
+- [x] Shared permission map moved to `packages/contracts` and used by both API and Que route registry — `packages/contracts/src/permissions.ts` (unchanged matrix, snapshot test); `rbac.ts` re-exports it; D3 checks 1–5 in `apps/api/src/que-consistency.test.ts`, `apps/web/src/lib/queConsistency.test.ts`, `packages/assist/src/registry.test.ts`
+- [x] Route/screen registry with required permissions and default articles per screen — `packages/assist/src/registry.ts` (design §11.3.1: 16 screens, permissions, audiences, default article ids from §11.10a, console operations resolved from the state machine; `/supervisor/*` not registered)
+- [x] Deterministic search and answer builder (no I/O) — `packages/assist/src/{search,answer,links,capabilities}.ts`: TF-IDF-style ranking with screen boost and id tie-break, role/capability filtering, safe links, screen-default fallback with "ask staff"
+- [x] Capability manifest generated from server flags; `GET /api/v1/que/capabilities` — `apps/api/src/que/capabilities.ts`, `routes/que.ts` (public, rate-limited, no DB, no secrets; Web Push availability from the same `webPushAvailable` check as `/push/capability`); tests `que-capabilities.test.ts`. Evidence: `docs/testing/MQ-evidence.md`
 
 ### MQ.2 Knowledge-base delivery and offline
 

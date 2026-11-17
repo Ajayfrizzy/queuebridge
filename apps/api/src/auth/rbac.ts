@@ -1,5 +1,5 @@
-import type { RoleGrant } from '@queuebridge/contracts';
-import { Role } from '@queuebridge/contracts';
+import type { PermissionName, RoleGrant } from '@queuebridge/contracts';
+import { Permission, Role } from '@queuebridge/contracts';
 import type { Db } from '../db.js';
 import { problems } from '../errors.js';
 
@@ -18,47 +18,10 @@ export interface AuthContext {
 }
 
 /**
- * Named permissions. `org_admin` implicitly satisfies every permission inside its own
- * organization; every other role must hold one of the listed roles at the facility.
+ * Named permissions now live in `@queuebridge/contracts` (MQ.1, decision D3) so Ask Que's route
+ * registry uses the same definition. The map is unchanged and this module still enforces it.
  */
-export const Permission = {
-  /** Read facility configuration (services, counters, join link). */
-  FACILITY_READ: [
-    Role.STAFF_RECEPTION,
-    Role.STAFF_COUNTER,
-    Role.SUPERVISOR,
-    Role.FACILITY_ADMIN,
-    Role.AUDITOR,
-  ],
-  /** Create/modify services, counters and counter capabilities. */
-  FACILITY_CONFIGURE: [Role.FACILITY_ADMIN],
-  /** List staff, invite staff, assign/revoke facility roles. */
-  STAFF_MANAGE: [Role.FACILITY_ADMIN],
-  /** View queue sessions and the staff queue console (read-only for auditors). */
-  QUEUE_VIEW: [
-    Role.STAFF_RECEPTION,
-    Role.STAFF_COUNTER,
-    Role.SUPERVISOR,
-    Role.FACILITY_ADMIN,
-    Role.AUDITOR,
-  ],
-  /** Open, pause, close and reopen queue sessions. */
-  QUEUE_MANAGE: [Role.SUPERVISOR, Role.FACILITY_ADMIN],
-  /**
-   * Connectivity and recovery dashboard, device health and the conflict-review list (F9).
-   * Auditors may inspect; they can never act (acting requires QUEUE_MANAGE).
-   */
-  OPERATIONS_VIEW: [Role.SUPERVISOR, Role.FACILITY_ADMIN, Role.AUDITOR],
-  /**
-   * Read-only audit view, export and integrity verification (REQ-F8.5). Auditors read; nobody
-   * can write through these endpoints.
-   */
-  AUDIT_VIEW: [Role.AUDITOR, Role.SUPERVISOR, Role.FACILITY_ADMIN],
-  /** Staff-assisted walk-in registration. */
-  WALK_IN: [Role.STAFF_RECEPTION, Role.STAFF_COUNTER, Role.SUPERVISOR, Role.FACILITY_ADMIN],
-} as const satisfies Record<string, readonly Role[]>;
-
-export type PermissionName = keyof typeof Permission;
+export { Permission, type PermissionName };
 
 export function isOrgAdmin(auth: AuthContext): boolean {
   return auth.roles.some((r) => r.role === Role.ORG_ADMIN && r.facility_id === null);

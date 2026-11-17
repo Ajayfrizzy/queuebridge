@@ -43,6 +43,19 @@ function validVapidPublicKey(k: string | undefined): k is string {
   }
 }
 
+/**
+ * Whether this deployment can offer Web Push: a valid VAPID public key AND CONTACT_ENCRYPTION_KEY
+ * (subscriptions are stored encrypted). The single check behind `GET /push/capability` and the
+ * Ask Que capability manifest's `turn_alert_web_push` availability (MQ.1, decision D1).
+ */
+export function webPushAvailable(
+  env: Pick<RouteDeps['env'], 'CONTACT_ENCRYPTION_KEY' | 'VAPID_PUBLIC_KEY'>,
+): boolean {
+  return Boolean(
+    createSubscriptionCipher(env.CONTACT_ENCRYPTION_KEY) &&
+      validVapidPublicKey(env.VAPID_PUBLIC_KEY),
+  );
+}
 /** Subscription changes (subscribe or turn off) allowed per ticket per minute, across instances. */
 export const PUSH_CHANGES_PER_TICKET_PER_MINUTE = 20;
 
@@ -81,9 +94,8 @@ function tooManyChanges(): ApiProblem {
 export async function pushRoutes(app: FastifyInstance, deps: RouteDeps): Promise<void> {
   const { db, env, authenticate } = deps;
   const cipher = createSubscriptionCipher(env.CONTACT_ENCRYPTION_KEY);
-  const vapidOk = validVapidPublicKey(env.VAPID_PUBLIC_KEY);
-  const live = Boolean(cipher && vapidOk);
-  if (env.VAPID_PUBLIC_KEY && !vapidOk) {
+  const live = webPushAvailable(env);
+  if (env.VAPID_PUBLIC_KEY && !validVapidPublicKey(env.VAPID_PUBLIC_KEY)) {
     app.log.warn('VAPID_PUBLIC_KEY is not a valid P-256 public key: Web Push is disabled');
   }
   const hosts = [...DEFAULT_PUSH_HOSTS, ...env.PUSH_ENDPOINT_HOSTS];

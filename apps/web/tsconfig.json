@@ -9,6 +9,7 @@
     "noEmit": true
   },
   "references": [
+    { "path": "../../packages/assist" },
     { "path": "../../packages/contracts" },
     { "path": "../../packages/domain" },
     { "path": "../../packages/continuity" },

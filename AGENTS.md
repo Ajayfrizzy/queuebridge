@@ -59,6 +59,7 @@ queuebridge/
 │   ├── domain/       # Ticket state machine, fairness, routing, wait-time — NO DB deps
 │   ├── continuity/   # Offline command schema, reconciliation logic, authority checks
 │   ├── channels/     # SMS/USSD adapter interfaces and provider implementations
+│   ├── assist/       # Ask Que deterministic core: registry, capability gating, search — no I/O
 │   └── ui/           # Reusable accessible React components
 ├── infra/
 │   ├── migrations/   # Numbered SQL migrations (repeatable, idempotent where possible)
@@ -78,17 +79,17 @@ queuebridge/
 
 ### Package boundaries (enforced)
 
-| Package                | May import                                                    | Must NOT import                                     |
-| ---------------------- | ------------------------------------------------------------- | --------------------------------------------------- |
-| `contracts`            | nothing internal                                              | any app or package                                  |
-| `domain`               | `contracts`                                                   | `db`, `api`, any Node I/O                           |
-| `continuity`           | `contracts`, `domain`                                         | `api`, direct DB calls                              |
-| `channels`             | `contracts`                                                   | `domain`, `continuity`, direct DB                   |
-| `ui`                   | `contracts`, `ui` deps                                        | `domain`, `continuity`, `channels`, any server code |
-| `assist` (planned, MQ) | `contracts`                                                   | any app, DB, network or Node I/O                    |
-| `apps/api`             | all packages                                                  | `ui` (server-only)                                  |
-| `apps/web`             | `contracts`, `domain`, `continuity`, `ui`                     | `channels` server internals                         |
-| `apps/worker`          | `contracts`, `domain` (pure), `channels`, DB client (ADR-012) | `ui`, `continuity` IndexedDB                        |
+| Package         | May import                                                    | Must NOT import                                     |
+| --------------- | ------------------------------------------------------------- | --------------------------------------------------- |
+| `contracts`     | nothing internal                                              | any app or package                                  |
+| `domain`        | `contracts`                                                   | `db`, `api`, any Node I/O                           |
+| `continuity`    | `contracts`, `domain`                                         | `api`, direct DB calls                              |
+| `channels`      | `contracts`                                                   | `domain`, `continuity`, direct DB                   |
+| `ui`            | `contracts`, `ui` deps                                        | `domain`, `continuity`, `channels`, any server code |
+| `assist` (MQ.1) | `contracts`                                                   | any app, DB, network or Node I/O                    |
+| `apps/api`      | all packages                                                  | `ui` (server-only)                                  |
+| `apps/web`      | `contracts`, `domain`, `continuity`, `ui`, `assist`           | `channels` server internals                         |
+| `apps/worker`   | `contracts`, `domain` (pure), `channels`, DB client (ADR-012) | `ui`, `continuity` IndexedDB                        |
 
 ---
 

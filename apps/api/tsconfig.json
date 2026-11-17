@@ -7,6 +7,7 @@
     "lib": ["ES2022"]
   },
   "references": [
+    { "path": "../../packages/assist" },
     { "path": "../../packages/contracts" },
     { "path": "../../packages/domain" },
     { "path": "../../packages/channels" }

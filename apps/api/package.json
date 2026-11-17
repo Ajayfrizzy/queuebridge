@@ -20,6 +20,7 @@
     "@fastify/cors": "10.0.1",
     "@fastify/rate-limit": "10.2.1",
     "@node-rs/argon2": "2.2.2",
+    "@queuebridge/assist": "workspace:*",
     "@queuebridge/channels": "workspace:*",
     "@queuebridge/contracts": "workspace:*",
     "@queuebridge/domain": "workspace:*",
