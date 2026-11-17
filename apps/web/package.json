@@ -15,6 +15,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@queuebridge/assist": "workspace:*",
     "@queuebridge/continuity": "workspace:*",
     "@queuebridge/contracts": "workspace:*",
     "@queuebridge/domain": "workspace:*",

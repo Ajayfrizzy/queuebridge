@@ -60,8 +60,9 @@ domain      → imports contracts only; zero I/O, zero DB
 continuity  → imports contracts + domain; no API calls, no direct DB
 channels    → imports contracts only; no domain/continuity internals
 ui          → imports contracts + React deps; no server-side packages
+assist      → imports contracts only; zero I/O, zero DB, no network, no inference (MQ.1)
 apps/api    → imports all packages; does NOT import ui
-apps/web    → imports contracts, domain, continuity, ui; does NOT import channels internals
+apps/web    → imports contracts, domain, continuity, ui, assist; does NOT import channels internals
 apps/worker → imports contracts, domain (pure audit/ordering functions, ADR-012), channels, DB client; does NOT import ui or continuity IndexedDB
 ```
 
@@ -244,8 +245,11 @@ Before implementing offline queue advancement, code AND tests must answer:
 
 ## Ask Que (F13) — planned architecture constraints (from MQ; ADR-011 Accepted 2026-11-16)
 
-- New package `packages/assist` (planned): KB schema, search, route registry, capability gating,
-  answer guard. Imports `contracts` only; zero I/O. `apps/web` and `apps/api` may import it.
+- Package `packages/assist` (created in MQ.1): route registry, audience and permission helpers,
+  capability gating, search and the deterministic answer builder (the KB build and the AI answer
+  guard follow in MQ.2 and MQ.4). Imports `contracts` only; zero I/O. `apps/web` and `apps/api`
+  may import it. The API `Permission` map lives in `packages/contracts` (D3); the API still
+  enforces it.
 - Inference only in `apps/api` behind a provider-neutral `InferenceAdapter`
   (`disabled` default, `sandbox` test double, approved free-tier/sponsored provider). No paid mode.
 - Que has no mutation path and is outside the authoritative sequence; no tool calling.

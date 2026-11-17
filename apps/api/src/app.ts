@@ -27,6 +27,7 @@ import { syncRoutes } from './routes/sync.js';
 import { fairnessRoutes } from './routes/fairness.js';
 import { recoveryRoutes } from './routes/recovery.js';
 import { pushRoutes } from './routes/push.js';
+import { queRoutes } from './routes/que.js';
 import { installTurnAlerts, setTurnAlertLogger } from './queue/turn-alerts.js';
 import { startAutoMissSweeper } from './queue/auto-miss.js';
 import type { RouteDeps } from './routes/deps.js';
@@ -265,6 +266,7 @@ export async function buildApp(
       await api.register(publicRoutes, deps);
       await api.register(recoveryRoutes, deps);
       await api.register(pushRoutes, deps);
+      await api.register(queRoutes, deps);
     },
     { prefix: '/api/v1' },
   );
