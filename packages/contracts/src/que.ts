@@ -366,3 +366,66 @@ export const RestrictedKbResponseSchema = z
   })
   .strict();
 export type RestrictedKbResponse = z.infer<typeof RestrictedKbResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// Optional AI explanation layer (MQ.4; design §11.7; REQ-F13.4). Disabled by default.
+// ---------------------------------------------------------------------------
+
+/** Longest question accepted by `POST /api/v1/que/ask` (design §11.7). */
+export const QUE_ASK_MAX_CHARS = 500;
+
+/** `POST /api/v1/que/ask` (staff session, facility-scoped). */
+export const QueAskRequestSchema = z
+  .object({
+    question: z.string().trim().min(1).max(QUE_ASK_MAX_CHARS),
+    facility_id: z.string().uuid(),
+    route_id: RouteIdSchema.nullable().optional(),
+    queue_id: z.string().uuid().nullable().optional(),
+  })
+  .strict();
+export type QueAskRequest = z.infer<typeof QueAskRequestSchema>;
+
+/**
+ * Version of the facility opt-in disclosure. Enabling AI explanations for a facility records the
+ * administrator's acknowledgement of exactly this text (REQ-F13.4.4).
+ */
+export const QUE_AI_CONSENT_VERSION = 'que-ai-consent-v1' as const;
+export const QUE_AI_CONSENT_TEXT =
+  'When AI explanations are on for this facility, a staff question asked on its screens (with ' +
+  'likely personal data removed) and the generic help articles it relates to may be sent to the ' +
+  'AI provider configured for this deployment, to write a short explanation. No ticket, visitor, ' +
+  'staff or facility data is sent. AI explanations are labelled, cite their sources and can be ' +
+  'wrong; built-in help always stays available. Turning this on has no effect unless an approved ' +
+  'provider is configured.';
+
+/** `PUT /api/v1/facilities/:id/que-ai` (facility admin or org admin). */
+export const QueAiSettingsUpdateSchema = z
+  .object({
+    enabled: z.boolean(),
+    consent_version: z.literal(QUE_AI_CONSENT_VERSION).optional(),
+    consent_acknowledged: z.literal(true).optional(),
+  })
+  .strict()
+  .refine(
+    (b) => !b.enabled || (b.consent_version !== undefined && b.consent_acknowledged === true),
+    {
+      message: 'Turning AI explanations on requires acknowledging the current disclosure',
+      path: ['consent_acknowledged'],
+    },
+  );
+export type QueAiSettingsUpdate = z.infer<typeof QueAiSettingsUpdateSchema>;
+
+/** `GET /api/v1/facilities/:id/que-ai`: no names, emails or ids of people. */
+export const QueAiSettingsSchema = z
+  .object({
+    /** The facility administrator opted in (with consent). */
+    opted_in: z.boolean(),
+    /** This deployment has an enabled, zero-cost AI adapter (never true with the disabled one). */
+    deployment_available: z.boolean(),
+    /** Both: AI explanations can be requested on this facility's screens. */
+    available: z.boolean(),
+    consent_version: z.string().nullable(),
+    consented_at: IsoDateTimeSchema.nullable(),
+  })
+  .strict();
+export type QueAiSettings = z.infer<typeof QueAiSettingsSchema>;

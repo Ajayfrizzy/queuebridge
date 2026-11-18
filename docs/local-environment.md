@@ -189,3 +189,30 @@ Expect `Audit checkpoints enabled` (id + fingerprint, matching the API), `Worker
 (`database`, `latest_migration: 0006_fairness_routing_audit.sql`), `Audit checkpoints written`,
 `Worker run complete`. The worker exits 1 and writes nothing on a placeholder key, an incomplete
 id/key pair, or a database that is not a migrated QueueBridge database.
+
+## Ask Que AI explanations (MQ.4): off by default
+
+**No provider selected — AI disabled by default.** The API ships only two inference adapters:
+`disabled` (the default) and `sandbox`, a TEST-ONLY scripted double that never touches the
+network. The environment schema refuses `sandbox` when `NODE_ENV=production`. There is no paid
+mode and no real provider adapter.
+
+AI explanations can be requested only when **all** of these hold:
+
+| Setting            | Required value              | Default    |
+| ------------------ | --------------------------- | ---------- |
+| `QUE_AI_ADAPTER`   | anything but `disabled`     | `disabled` |
+| `QUE_AI_ENABLED`   | `true`                      | `false`    |
+| `QUE_AI_COST_MODE` | `free_tier` or `sponsored`  | `none`     |
+| `QUE_AI_DAILY_CAP` | > 0 (hard stop per UTC day) | `0`        |
+| facility opt-in    | on, with recorded consent   | off        |
+
+Other settings: `QUE_AI_TIMEOUT_MS` (default 8000) cancels the adapter call and returns built-in
+help; `QUE_AI_RATE_LIMIT_MAX` (default 10) limits questions per user per minute, and five times
+that per IP. The facility opt-in is on the facility's administration page and needs a facility or
+organization administrator; it is audited (`admin_events`: `que_ai.enabled` / `que_ai.disabled`).
+Turning it on records the disclosure version (`que-ai-consent-v1`) and has no effect while the
+deployment has no enabled adapter.
+
+The Playwright API server uses the sandbox adapter (see `apps/web/playwright.config.ts`); nothing
+leaves the machine. Migration `0010_que_ai.sql` adds the opt-in table and the daily counter.

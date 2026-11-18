@@ -5,10 +5,11 @@ import { Loading, StatusBadge } from '../components/Form.js';
 import { api } from '../lib/api.js';
 import { buildQr, qrPath, qrSvgDocument, QUIET_ZONE } from '../lib/qr.js';
 import { useLoad } from '../lib/useLoad.js';
+import { QueAiSettingsSection } from '../que/QueAiSettingsSection.js';
 import type { FacilityContext } from './FacilityLayout.js';
 
 export function FacilityOverview(): ReactElement {
-  const { facilityId } = useOutletContext<FacilityContext>();
+  const { facilityId, canConfigure } = useOutletContext<FacilityContext>();
   const announce = useAnnounce();
   const link = useLoad(() => api.joinLink(facilityId), facilityId);
   const readiness = useLoad(() => api.readiness(facilityId), `ready-${facilityId}`);
@@ -127,6 +128,7 @@ export function FacilityOverview(): ReactElement {
             ))}
           </ul>
         </section>
+        <QueAiSettingsSection facilityId={facilityId} canConfigure={canConfigure} />
       </div>
 
       <aside className="split-side printable" aria-labelledby="join-heading">

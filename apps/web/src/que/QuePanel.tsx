@@ -1,8 +1,16 @@
 import { useEffect, useId, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import type { KbArticle, RouteId } from '@queuebridge/contracts';
+import {
+  QueAnswerSchema,
+  type KbArticle,
+  type QueAiSettings,
+  type QueAnswer,
+  type QueFallbackReason,
+  type RouteId,
+} from '@queuebridge/contracts';
 import { SCREEN_NAMES, answer, buildPath, type NavigationContext } from '@queuebridge/assist';
 import { useAuth } from '../auth.js';
+import { api } from '../lib/api.js';
 import { useOffline } from '../offline/OfflineProvider.js';
 import { matchQueRoute } from './routeContext.js';
 import { SafeArticle } from './SafeArticle.js';
@@ -14,12 +22,31 @@ import { useQueKnowledge } from './useQueKnowledge.js';
  *
  * - Desktop: a non-modal dialog beside the page. Mobile (≤ 40rem): a full-height modal sheet.
  *   Escape or Close returns focus to the "Ask Que" button.
- * - Deterministic only (no AI layer in this build): search, "On this screen", article view
- *   and links. Every link comes from `buildPath`, i.e. the shared permission map applied to the
- *   session's server-derived roles at this facility; the API still authorizes every screen.
- * - Read-only: the only controls are search, open/close article, retry and navigation links.
- *   Nothing here sends a command.
+ * - Deterministic first: search, "On this screen", article view and links. Every link comes
+ *   from `buildPath`, i.e. the shared permission map applied to the session's server-derived
+ *   roles at this facility; the API still authorizes every screen.
+ * - Optional AI explanation (MQ.4): offered only to signed-in staff, online, on a facility whose
+ *   setting reports it available (facility opt-in AND a zero-cost adapter on this deployment).
+ *   AI answers are labelled, cite their sources and advise checking with staff; any failure
+ *   shows built-in help with a plain reason. Visitors never see an AI control.
+ * - Read-only: the only controls are search, open/close article, retry, "Explain with AI" and
+ *   navigation links. Nothing here sends a queue command.
  */
+
+const FALLBACK_TEXT: Readonly<Record<QueFallbackReason, string>> = {
+  ai_disabled: 'AI explanations are switched off here.',
+  offline: 'There is no connection.',
+  timeout: 'The AI explanation took too long.',
+  quota: "Today's AI limit has been reached.",
+  provider_error: 'The AI service did not answer.',
+  validation_failed: 'The AI explanation could not be checked against built-in help.',
+};
+
+type AiState =
+  | { kind: 'idle' }
+  | { kind: 'loading' }
+  | { kind: 'ai'; answer: QueAnswer }
+  | { kind: 'fallback'; reason: string };
 
 const SEARCH_ANNOUNCE_DELAY_MS = 500;
 
@@ -46,6 +73,8 @@ export function QuePanel({
   const [query, setQuery] = useState('');
   const [openArticle, setOpenArticle] = useState<KbArticle | null>(null);
   const [live, setLive] = useState('');
+  const [aiSettings, setAiSettings] = useState<QueAiSettings | null>(null);
+  const [ai, setAi] = useState<AiState>({ kind: 'idle' });
 
   // Open as a non-modal panel or a modal sheet; closing always goes through onClose once
   useEffect(() => {
@@ -72,6 +101,57 @@ export function QuePanel({
     [user, route.facilityId, route.queueId, route.orgSlug, route.facilitySlug, hinted],
   );
   const pathFor = (id: RouteId): string | null => buildPath(id, nav);
+
+  // Whether AI explanations can be requested here: staff, online, on a facility's screens
+  const aiFacility = user ? nav.facilityId : null;
+  useEffect(() => {
+    setAiSettings(null);
+    if (!aiFacility || !online) return undefined;
+    let cancelled = false;
+    api
+      .queAiSettings(aiFacility)
+      .then((s) => {
+        if (!cancelled) setAiSettings(s);
+      })
+      .catch(() => {
+        if (!cancelled) setAiSettings(null);
+      });
+    return (): void => {
+      cancelled = true;
+    };
+  }, [aiFacility, online]);
+  const aiAvailable = Boolean(aiFacility && online && aiSettings?.available);
+
+  async function explainWithAi(): Promise<void> {
+    if (!aiFacility) return;
+    setAi({ kind: 'loading' });
+    try {
+      const raw = await api.queAsk({
+        question: query.trim(),
+        facility_id: aiFacility,
+        route_id: route.routeId,
+        queue_id: route.queueId,
+      });
+      const parsed = QueAnswerSchema.safeParse(raw);
+      if (parsed.success && parsed.data.mode === 'ai') {
+        setAi({ kind: 'ai', answer: parsed.data });
+        setLive('AI explanation ready. It is labelled and can be wrong.');
+      } else {
+        const reason =
+          parsed.success && parsed.data.fallbackReason
+            ? FALLBACK_TEXT[parsed.data.fallbackReason]
+            : FALLBACK_TEXT.provider_error;
+        setAi({ kind: 'fallback', reason });
+        setLive('AI explanation unavailable. Showing built-in help.');
+      }
+    } catch {
+      setAi({
+        kind: 'fallback',
+        reason: online ? FALLBACK_TEXT.provider_error : FALLBACK_TEXT.offline,
+      });
+      setLive('AI explanation unavailable. Showing built-in help.');
+    }
+  }
 
   const result = useMemo(
     () =>
@@ -222,6 +302,7 @@ export function QuePanel({
             onChange={(e) => {
               setQuery(e.target.value);
               setOpenArticle(null);
+              setAi({ kind: 'idle' });
             }}
           />
         </form>
@@ -297,6 +378,73 @@ export function QuePanel({
                   <li key={n}>{n}</li>
                 ))}
               </ul>
+            ) : null}
+            {user && aiFacility ? (
+              <div className="que-ai" data-testid="que-ai">
+                {aiAvailable && asked && cited.length > 0 && ai.kind !== 'ai' ? (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={ai.kind === 'loading'}
+                      onClick={() => void explainWithAi()}
+                    >
+                      {ai.kind === 'loading' ? 'Explaining…' : 'Explain with AI'}
+                    </button>
+                    <p className="que-note">
+                      Optional. AI explanations are labelled and can be wrong.
+                    </p>
+                  </>
+                ) : null}
+                {!online && aiSettings === null ? (
+                  <p className="que-note" data-testid="que-ai-status">
+                    AI explanations need a connection. Built-in help works offline.
+                  </p>
+                ) : null}
+                {online && aiSettings && !aiSettings.available ? (
+                  <p className="que-note" data-testid="que-ai-status">
+                    AI explanations are not set up here. This is built-in help.
+                  </p>
+                ) : null}
+                {ai.kind === 'fallback' ? (
+                  <p className="que-note" role="status" data-testid="que-ai-fallback">
+                    AI explanation unavailable — showing built-in help. {ai.reason}
+                  </p>
+                ) : null}
+                {ai.kind === 'ai' ? (
+                  <section
+                    className="que-ai-answer"
+                    aria-label="AI explanation"
+                    data-testid="que-ai-answer"
+                  >
+                    <h3>
+                      AI explanation <span className="que-badge que-badge-ai">AI-generated</span>
+                    </h3>
+                    <p>{ai.answer.text}</p>
+                    <p className="que-note">Sources:</p>
+                    <ul className="que-list">
+                      {ai.answer.citations.map((id) => {
+                        const a = byId.get(id);
+                        return a ? (
+                          <li key={id}>
+                            <button
+                              type="button"
+                              className="que-article-link"
+                              data-article-id={id}
+                              onClick={() => setOpenArticle(a)}
+                            >
+                              {a.title}
+                            </button>
+                          </li>
+                        ) : null;
+                      })}
+                    </ul>
+                    <p className="que-note">
+                      <strong>Check with staff before acting on queue decisions.</strong>
+                    </p>
+                  </section>
+                ) : null}
+              </div>
             ) : null}
             {result.links.length > 0 ? (
               <>

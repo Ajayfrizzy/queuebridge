@@ -478,12 +478,12 @@ Security follow-up from M5.1 (separate change, recorded in `M5-evidence.md`, "M5
 
 ### MQ.4 Optional AI explanation layer (disabled by default)
 
-- [ ] `InferenceAdapter` interface; `DisabledInferenceAdapter` (default); `SandboxInferenceAdapter` (tests)
-- [ ] `POST /api/v1/que/ask` with strict validation, rate limits, PII redaction, daily cap, timeout
-- [ ] Output guard (citations, links, capability truthfulness, markup) with deterministic fallback
-- [ ] Facility opt-in setting (admin-only, audited) and AI disclosure in UI
-- [ ] AI endpoint requires a staff session; anonymous visitors get deterministic help only
-- [ ] Provider research recorded against design §11.8 (research only; no account requiring payment details; no selection or integration without a separate explicit decision)
+- [x] `InferenceAdapter` interface; `DisabledInferenceAdapter` (default); `SandboxInferenceAdapter` (tests) — `apps/api/src/que/inference.ts`; sandbox refused in production; no real provider adapter exists
+- [x] `POST /api/v1/que/ask` with strict validation, rate limits, PII redaction, daily cap, timeout — `routes/que.ts`, `que/ask.ts`; facility-scoped (`FACILITY_READ`, cross-tenant 404); per-user and per-IP limits; shared UTC daily cap (`que_ai_daily_usage`, migration `0010`); timeout and client-disconnect cancellation
+- [x] Output guard (citations, links, capability truthfulness, markup) with deterministic fallback — `packages/assist/src/ai-guard.ts` (also sensitive data, claimed actions, injection artefacts, ungrounded numbers and content); links only from the server
+- [x] Facility opt-in setting (admin-only, audited) and AI disclosure in UI — `GET|PUT /facilities/:id/que-ai` (`FACILITY_CONFIGURE`, consent `que-ai-consent-v1`, DB consent CHECK, `admin_events`); admin page section; Ask Que "AI-generated" label, sources, "Check with staff…", fallback reasons
+- [x] AI endpoint requires a staff session; anonymous visitors get deterministic help only — 401 for anonymous and forged sessions; no AI control or text in the visitor panel
+- [x] Provider research recorded against design §11.8 (research only; no account requiring payment details; no selection or integration without a separate explicit decision) — `docs/testing/MQ-evidence.md` (MQ.4): **No provider selected — AI disabled by default.**
 
 ### MQ.5 Knowledge-base content (seed)
 
