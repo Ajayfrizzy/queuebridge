@@ -12,6 +12,10 @@ import type { SessionUser } from '@queuebridge/contracts';
 import { api, ApiRequestError, setSessionObserver, setUnauthenticatedHandler } from './lib/api.js';
 import { offlineDb } from './offline/idb.js';
 import { forgetIdentity, loadIdentity, saveIdentity } from './offline/identity.js';
+import { queHelp } from './que/index.js';
+
+/** Ask Que restricted help is never allowed to break sign-in or sign-out (MQ.2). */
+const purgeQueHelp = (): Promise<void> => queHelp.purgeAll().catch(() => undefined);
 
 interface AuthState {
   user: SessionUser | null;
@@ -82,6 +86,8 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
         }
         // 401 simply means "signed out"; anything else also leaves the user signed out
         if (!(e instanceof ApiRequestError)) setUser(null);
+        // Nobody is signed in here: no restricted help may remain on the device (REQ-F13.3.9)
+        if (e instanceof ApiRequestError && e.status === 401) void purgeQueHelp();
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -90,6 +96,14 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
       cancelled = true;
     };
   }, []);
+
+  // Ask Que restricted help (MQ.2, design §11.5.3): every confirmed session (sign-in, /auth/me
+  // with possibly changed roles) removes other users' help and, online, revalidates this user's
+  // bundle before it can be shown. Offline, the cached bundle follows its expiry rules.
+  useEffect(() => {
+    if (!user) return;
+    void queHelp.signedIn(user.id, !offlineIdentity).catch(() => undefined);
+  }, [user, offlineIdentity]);
 
   // While showing a cached identity, keep trying to verify the real session
   useEffect(() => {
@@ -109,6 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
             setUser(null);
             void forgetIdentity();
             void offlineDb.clearSensitive({ discardOutboxOf: null }).catch(() => undefined);
+            void purgeQueHelp();
           }
         });
     }, 3000);
@@ -127,6 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
       offlineDb.setActiveUser(null);
       void forgetIdentity();
       void offlineDb.clearSensitive({ discardOutboxOf: null }).catch(() => undefined);
+      void purgeQueHelp();
     });
     return (): void => setUnauthenticatedHandler(null);
   }, []);
@@ -145,6 +161,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
       offlineDb.setActiveUser(null);
       if (user) await offlineDb.clearSensitive({ discardOutboxOf: user.id }).catch(() => undefined);
       await forgetIdentity();
+      await purgeQueHelp();
       afterConfirmed?.();
       setSessionEnded(false);
       setUser(null);

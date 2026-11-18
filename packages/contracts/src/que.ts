@@ -300,3 +300,69 @@ export const QueAnswerSchema = z
   })
   .strict();
 export type QueAnswer = z.infer<typeof QueAnswerSchema>;
+
+// ---------------------------------------------------------------------------
+// Knowledge-base delivery (MQ.2; design §11.5, decision D2)
+// ---------------------------------------------------------------------------
+
+/** One compiled, versioned bundle for a single audience (built from `packages/assist/knowledge`). */
+export const KbBundleSchema = z
+  .object({
+    kbVersion: z.number().int().min(1),
+    audience: AudienceSchema,
+    articles: z.array(KbArticleSchema),
+  })
+  .strict();
+export type KbBundleFile = z.infer<typeof KbBundleSchema>;
+
+/** `GET /api/v1/que/kb/public`: the public (visitor) bundle only. */
+export const PublicKbResponseSchema = KbBundleSchema.extend({ audience: z.literal('visitor') });
+export type PublicKbResponse = z.infer<typeof PublicKbResponseSchema>;
+
+export const KbArticleRefSchema = z
+  .object({ id: KbArticleIdSchema, version: z.number().int().min(1) })
+  .strict();
+export type KbArticleRef = z.infer<typeof KbArticleRefSchema>;
+
+/**
+ * `known` query parameter of `GET /api/v1/que/kb` (incremental update): the article versions the
+ * client already holds, as `id:version` pairs separated by commas. Bounded and strict.
+ */
+export const KB_KNOWN_MAX_ENTRIES = 300;
+export const KbKnownParamSchema = z
+  .string()
+  .max(KB_KNOWN_MAX_ENTRIES * 90)
+  .regex(
+    /^(?:[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+:[1-9][0-9]{0,5})(?:,[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+:[1-9][0-9]{0,5})*$/,
+  )
+  .transform((s) =>
+    s.split(',').map((pair) => {
+      const i = pair.lastIndexOf(':');
+      return { id: pair.slice(0, i), version: Number(pair.slice(i + 1)) };
+    }),
+  )
+  .refine((refs) => refs.length <= KB_KNOWN_MAX_ENTRIES, 'too many entries');
+
+/** Server-issued role fingerprint (D2): lowercase hex SHA-256, opaque to the browser. */
+export const RoleDigestSchema = z.string().regex(/^[0-9a-f]{64}$/);
+
+/**
+ * `GET /api/v1/que/kb` (authenticated): restricted articles for the session's audiences, with the
+ * server-issued authorization metadata of design §11.5.2. `index` lists every authorized
+ * restricted article; `articles` carries only those the client does not already hold at that
+ * version (all of them when `known` is absent).
+ */
+export const RestrictedKbResponseSchema = z
+  .object({
+    userId: z.string().uuid(),
+    roleDigest: RoleDigestSchema,
+    audiences: z.array(AudienceSchema.exclude(['visitor'])),
+    kbVersion: z.number().int().min(1),
+    issuedAt: IsoDateTimeSchema,
+    authorizedUntil: IsoDateTimeSchema,
+    validForMs: z.number().int().min(0),
+    index: z.array(KbArticleRefSchema),
+    articles: z.array(KbArticleSchema),
+  })
+  .strict();
+export type RestrictedKbResponse = z.infer<typeof RestrictedKbResponseSchema>;

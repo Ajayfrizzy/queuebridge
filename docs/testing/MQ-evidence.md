@@ -151,3 +151,330 @@ suites pass unchanged).
   helpers such as `recoveryPolicyOf`).
 - **Advisory only:** Que's permission helpers cannot know whether a facility belongs to the
   session's organization; only the API can. They are never used for authorization.
+
+## MQ.2 Knowledge-base delivery and offline (2026-11-17)
+
+**Branch:** `feature/mq2-kb-delivery-offline`, from `staging` at `1cb83f0` (PR #10 merged).
+**Scope:** MQ.2 only. No Ask Que UI (MQ.3), no AI layer (MQ.4), no article inventory (MQ.5).
+No migration, no new external dependency, no provider, no spending. `/auth/me` is unchanged.
+
+### What was built
+
+| Task                                           | Where                                                                                                        |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Markdown → versioned per-audience bundles      | `packages/assist/src/kb-compile.ts` (pure), `scripts/build-kb.mjs` (runs in the package build), `knowledge/` |
+| `GET /que/kb/public`, `GET /que/kb`            | `apps/api/src/routes/que.ts`, `apps/api/src/que/kb.ts`                                                       |
+| Server-issued role fingerprint (D2)            | `apps/api/src/auth/role-digest.ts` (the only digest calculation)                                             |
+| Precache and per-user cache                    | `apps/web/src/pwa/swRules.ts`, `vite.config.ts`; `apps/web/src/que/{store,publicKb}.ts`                      |
+| Offline expiry, binding and invalidation       | `apps/web/src/que/{offlineHelp,helpClient}.ts`, wired in `apps/web/src/auth.tsx`                             |
+| Tenant-sensitive content build check, D4 check | `kb-compile.ts` content checks and `privatePhrases`                                                          |
+| Incremental update                             | `known=id:version` on `GET /que/kb`; `knowledge/kb.lock.json` version discipline                             |
+
+**Initial delivery content (not the MQ.5 inventory).** Four articles prove delivery:
+`visitor.recovery.how`, `visitor.recovery.staff` (public), `staff.recovery.assist` (reception,
+counter, supervisor, facility admin; carries the D4 `privatePhrases`) and `staff.sync.states`
+(all staff). `knowledge/README.md` marks them as initial content; MQ.5 reviews them with the
+rest of the inventory.
+
+**Compilation.** Front-matter is a strict subset (`key: value`, inline lists, integers). Every
+article must pass `KbArticleSchema` (Safe Markdown, registered RouteIds, known capabilities),
+sit in a folder that is one of its audiences, and be named after its id. The build fails on
+emails, phone numbers, UUIDs, ticket codes, template placeholders and secret-like strings, and
+when a public article contains a staff article's `privatePhrases` (D4). `privatePhrases` is
+build-time only and never shipped. Every content change needs a higher article version and a
+higher `kbVersion`; the normal build checks the committed `kb.lock.json` and fails if it is
+stale; `pnpm --filter @queuebridge/assist kb:lock` rewrites it after the same checks.
+
+**API.** `GET /que/kb/public` (public, rate-limited) returns the visitor bundle. `GET /que/kb`
+(session required, rate-limited, strict query) computes audiences from the session's
+server-loaded grants (`audiencesFor(auth.roles)`, the union over facilities per design §11.2),
+returns only restricted articles (public ones ship in the public bundle), and adds `userId`,
+`roleDigest`, `issuedAt`, `authorizedUntil = min(session end, now + QUE_OFFLINE_HELP_TTL_SECONDS)`
+(default 12 h, max 12 h) and `validForMs`. Bundles are loaded and schema-checked at start-up; if
+they cannot be loaded, the two KB endpoints answer 503 and the rest of the API is unaffected.
+
+**Role fingerprint (D2).** SHA-256 over the domain separator `qb.que.role-digest.v1`, organization
+ID, user ID, `AUDIENCE_MAPPING_VERSION` and the canonically sorted `(facility_id, role)` grants.
+Only `apps/api/src/auth/role-digest.ts` computes it; a static test confirms no Ask Que browser
+module hashes anything.
+
+**Browser.**
+
+- Public: the API copy (service-worker stale-while-revalidate) first, then the built-in copy (a
+  hashed JSON asset in the install precache). Both are schema-checked.
+- Restricted: IndexedDB database `queuebridge-que`, one record per user, replaced in one
+  transaction. It is fetched after each confirmed session (sign-in, every successful
+  `/auth/me`), incrementally with `known`. Restricted help is hidden while that revalidation is
+  outstanding.
+- Expiry (design §11.5.2): shown only while `0 <= elapsed < validForMs − 5 min`. A rollback
+  beyond 2 minutes against the persisted high-water mark, a wall-clock/monotonic jump within the
+  page, or time before receipt marks the record unverifiable until a fresh fetch. Missing or
+  corrupt metadata counts as expired.
+- Invalidation (design §11.5.3):
+  - confirmed sign-out, any 401 (including `/auth/me` at start-up) and a response for another
+    user delete all records;
+  - a different user signing in deletes every other user's record;
+  - a new fingerprint deletes the record before the new one is stored;
+  - failed sign-out, an unreachable server and 5xx change nothing.
+  - A purge bumps a generation counter, so a refresh in flight cannot write afterwards.
+- Honest limit kept: the offline bound is best effort against wrong or reset clocks, not
+  against a person in full control of the device; confidentiality rests on the content rule.
+
+**Service-worker correction (readiness report F10).** The M2 rule
+`/api/v1/facilities/.+/public` never matched a route. The corrected rule matches exactly
+`/api/v1/public/facilities/<org>/<facility>` and never `/board` (live state) or `/stream` (SSE).
+New rules cover `/api/v1/que/kb/public` and `/api/v1/que/capabilities`. No authenticated
+response is cached by the service worker.
+
+### Security and offline verification
+
+| Area                                | Evidence                                                                                                                                                                                      |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Anonymous vs authenticated          | DB: public endpoint open and identical for staff; `/que/kb` 401 for anonymous, forged, signed-out and deactivated sessions                                                                    |
+| Role and audience restrictions      | DB: exact articles per role (auditor never gets `staff.recovery.assist`); org admin gets every staff audience; no public article in restricted responses                                      |
+| Cross-organization / cross-facility | DB: fingerprints differ per user and organization; another organization's response holds none of org A's ids; no tenant names, emails, slugs or ids in any response                           |
+| Cache separation                    | Browser: one record per user; a second person signing in on the same browser removes the first user's record; no restricted or auth response in Cache Storage                                 |
+| Expiry and clock manipulation       | Unit: validity window and margin, device clock ahead/behind by years, rollback (sticky), small corrections, time before receipt, monotonic jump, corrupt metadata                             |
+| Logout, revocation, deactivation    | Browser: sign-out deletes the record; role grant and revoke replace it under a new fingerprint (and back to the original one); deactivation (401) deletes it                                  |
+| Reconnection after offline          | Browser: offline reload keeps the record untouched; reconnection re-verifies the session and refreshes it (new receipt time, same fingerprint)                                                |
+| No sensitive data in cached bundles | Browser and DB: no email, organization/facility name, slug or id in the record or response; build check for data-like content                                                                 |
+| Safe compilation and versions       | Unit: front-matter, schema, folder/id rules, data patterns, D4 phrases, stripped build-only keys, version and kbVersion discipline, stale and missing lock                                    |
+| Read-only, no queue mutations       | DB: queue events, tickets, client operations, admin events, roles and users of the organization unchanged after repeated Que calls; non-GET methods are 404; browser: Ask Que issues GET only |
+| Corrected service-worker rule       | Unit: real path cached, old path, board, stream, query, restricted KB, session, ticket status and recovery never; browser: facility details cached and served offline, board not cached       |
+| Public precache                     | Browser: the built-in visitor bundle is in the precache, public-only, without the D4 phrases; the public endpoint is answered offline by the service worker                                   |
+
+### Mutation checks (each made a test fail, then reverted)
+
+| Mutation                                                                | Failing tests   |
+| ----------------------------------------------------------------------- | --------------- |
+| No clock-rollback check                                                 | 2 (web unit)    |
+| No 5-minute safety margin                                               | 2 (web unit)    |
+| `unverifiable` not sticky                                               | 2 (web unit)    |
+| Monotonic jump ignored                                                  | 2 (web unit)    |
+| Cached articles reused across fingerprints                              | 1 (web unit)    |
+| High-water mark before receipt accepted                                 | 1 (web unit)    |
+| 401 during refresh does not purge                                       | 1 (web unit)    |
+| Restricted help shown while revalidation is pending                     | 1 (web unit)    |
+| Other users' records kept at sign-in                                    | 1 (web unit)    |
+| Old public-facility rule restored                                       | 2 (web unit)    |
+| Public-KB rule widened to `/que/kb` (would cache the restricted bundle) | 3 (web unit)    |
+| Audiences ignore the session (everyone treated as org admin)            | 6 (API DB)      |
+| `authorizedUntil` not capped by the session                             | 1 (API DB)      |
+| `known` ignored (no incremental update)                                 | 1 (API DB)      |
+| Public articles included in restricted selection                        | 1 (assist unit) |
+| Fingerprint ignores the facility of each grant                          | 1 (API unit)    |
+| Fingerprint ignores the user                                            | 1 (API unit)    |
+| D4 phrase check removed                                                 | 1 (assist unit) |
+| Data-pattern checks removed                                             | 7 (assist unit) |
+| Content change without version bump accepted                            | 1 (assist unit) |
+| `privatePhrases` shipped in the output                                  | 4 (assist unit) |
+| Article change without `kbVersion` bump accepted                        | 2 (assist unit) |
+| No purge on confirmed sign-out (`auth.tsx`)                             | 1 (Playwright)  |
+| No purge on `/auth/me` 401 at start-up (`auth.tsx`)                     | 1 (Playwright)  |
+
+One guard survived: the generation check right after the first fetch in `QueHelpClient.refresh`
+is redundant with the checks before every write, which the purge-during-refresh test covers. It
+is kept as defence in depth.
+
+### Gate results (local, 2026-11-17)
+
+| Gate                             | Result                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm format:check`, `pnpm lint` | pass                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `pnpm typecheck`, `pnpm build`   | pass (the assist build compiles the KB in check mode)                                                                                                                                                                                                                                                                                                                                                                       |
+| `pnpm test`                      | contracts 179, channels 33, ui 6, assist 118, domain 109, continuity 64, api 95, worker 12, web 159                                                                                                                                                                                                                                                                                                                         |
+| `pnpm test:db`                   | api 635 (34 files), worker 63                                                                                                                                                                                                                                                                                                                                                                                               |
+| Playwright (4 projects)          | 250 passed, 5 skipped (pre-existing conditional skips); the new spec also passed 3× repeated                                                                                                                                                                                                                                                                                                                                |
+| `pnpm db:check`                  | 9 applied, none pending (no migration)                                                                                                                                                                                                                                                                                                                                                                                      |
+| `pnpm audit --audit-level high`  | **2 high, pre-existing:** `picomatch` ReDoS (GHSA-fc5q-39xc-vjpf), dev tooling only (`@typescript-eslint` via fast-glob/micromatch; vite/vitest via fdir/tinyglobby); no patched version listed; same result without the MQ.2 changes. Since 2026-11-17 handled by the approved temporary exception (see the security assessment): production audit clean; full audit passes only through the scoped gate; **not resolved** |
+
+Visitor bundle: 183.87 kB → 185.72 kB gzip (+1.85 kB). The built-in public bundle is a separate
+0.77 kB gzip asset.
+
+New tests: contracts 3; assist 38 (`kb-compile.test.ts`); api 14 (`que-kb.test.ts`) and 27
+(`que-kb.db.test.ts`); web 55 (`que/*.test.ts`, `pwa/swRules.test.ts`); Playwright 8
+(`que-offline.spec.ts`). One MQ.1 assertion was updated because its premise changed: the KB
+endpoints now exist (public 200, restricted 401 without a session); `/que/ask` still 404.
+
+### Notes and deviations (no architectural change)
+
+- **Network-first for facility details and the capability manifest.** Stale-while-revalidate
+  would show stale facility details (for example "no queue open") or a stale "available" on
+  the first online load. Network-first keeps online answers fresh and uses the cache only when
+  the network fails. The public KB uses stale-while-revalidate as design §11.5 specifies.
+- **No build-time capability snapshot.** Design §11.5 mentions a precached manifest snapshot.
+  Availability is deployment-specific (D1), so a build-time copy could claim a capability that
+  is not set up. The manifest is cached only from the server (network-first); with no copy,
+  every capability is treated as unavailable (fail closed).
+- **Audiences are the union over facilities** (design §11.2); facility scope applies to links
+  (MQ.1). `GET /que/kb` rejects unknown parameters (400), so no client-supplied facility or role
+  can influence content.
+- **Restricted responses exclude public articles**, which ship in the public bundle.
+- **Eager fetch:** the restricted bundle is fetched after each confirmed session, so offline
+  help exists before connectivity is lost. Design §11.5 leaves the timing open.
+- **`userId` is stored** with the cached bundle, as `CachedRestrictedBundle` in design §11.5.2
+  specifies; it is the user's own identifier and is needed for per-user binding.
+- **Monotonic check and device sleep:** browsers that pause `performance.now()` during sleep make
+  restricted help unverifiable after a long sleep; it returns at the next online fetch.
+- **Build script lint:** `scripts/build-kb.mjs` declares the Node globals it uses
+  (`/* global process, console */`); the ESLint config has no Node block for package scripts.
+
+### Obligations still open
+
+- MQ.3: the Ask Que UI reads `queHelp.restrictedHelp()`, `loadPublicKb()` and
+  `loadCapabilities()`; offline wording for configuration-dependent capabilities (D1).
+- MQ.5: the M1–M5 article inventory replaces or extends the four initial articles, with the
+  article-existence check (registry defaults and links).
+- MQ.4 (optional): AI stays disabled; no adapter, provider or endpoint exists.
+
+## Dependency security assessment: GHSA-fc5q-39xc-vjpf (2026-11-17)
+
+**Status (updated 2026-11-17): NOT RESOLVED — accepted under a temporary, scoped exception.**
+The vulnerability is still present in development tooling and no fix exists. The product owner
+approved the exception below on 2026-11-17; it is enforced by `infra/scripts/audit-gate.js` and
+`infra/security/audit-policy.json` and **expires on 2026-12-15** (see "Approved temporary
+exception" at the end of this section). The original assessment and proposal follow unchanged.
+
+### Advisory
+
+| Field             | Value                                                                                                                                                                                                                                                  |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| IDs               | GHSA-fc5q-39xc-vjpf, CVE-2026-112366 (CWE-1333, inefficient regular expression complexity)                                                                                                                                                             |
+| Package and range | `picomatch` `<= 4.0.7`; **no patched version** (`first_patched_version: null`)                                                                                                                                                                         |
+| Severity          | High: CVSS 3.1 7.5 (`AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H`), CVSS 4.0 8.7; EPSS 0.34 %                                                                                                                                                                  |
+| Mechanism         | ReDoS when an attacker **supplies the glob pattern**: single-branch repeated extglobs such as `+(*)` or `+(*a)` are not analysed by `analyzeRepeatedExtglob` (`lib/parse.js`), so the compiled regex backtracks exponentially on short crafted strings |
+| Timeline          | Published 2026-10-19; GitHub-reviewed 2026-11-17 15:56 UTC. That review is why `pnpm audit` started reporting it today; the last green `staging` CI run (PR #10, 05:26 UTC) predates it                                                                |
+| Upstream fix      | None released. npm `latest` is 4.0.7 (no newer version). The referenced PR micromatch/picomatch#194 is open and unmerged                                                                                                                               |
+
+Sources: GitHub advisory API (`/advisories/GHSA-fc5q-39xc-vjpf`), npm registry
+(`npm view picomatch versions`), GitHub API (`/repos/micromatch/picomatch/pulls/194`).
+
+### What `pnpm audit` reports
+
+The two "high" findings are **one advisory affecting two installed versions** of the same
+package. pnpm counts one finding per vulnerable version.
+
+| Installed version | Paths | Importer → top-level dev dependency → … → parent                                                                                                                                                                                          |
+| ----------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `picomatch@2.3.2` | 7     | root → `@typescript-eslint/eslint-plugin@8.18.0` (4), `@typescript-eslint/parser@8.18.0` (1), `eslint-plugin-import@2.31.0` (2) → … → `fast-glob@3.3.3` → `micromatch@4.0.8` → `picomatch`                                                |
+| `picomatch@4.0.7` | 215   | every workspace → `vitest@4.1.12` / `@vitest/coverage-v8@4.1.12`; `apps/web` also → `vite@6.4.5`, `@vitejs/plugin-react`, `vite-plugin-pwa`; immediate parents `fdir@6.5.0`, `tinyglobby@0.2.17`, `vite`, `vitest`, `@rollup/pluginutils` |
+
+The same audit also reports, unchanged from earlier milestones and below the gate: 1 low
+(`@eslint/plugin-kit`) and 3 moderate (`glob` ×1, `minimatch` ×2 versions). They are not part of
+this assessment.
+
+### Exposure
+
+| Question                                         | Finding                                                                                                                                                                                                                                                                                                                                                    |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Development-only?                                | **Yes.** All 24 declarations of the top-level packages are `devDependencies`. `pnpm audit --prod --audit-level high`: no known vulnerabilities. `pnpm -r ls picomatch --prod`: not in any production tree                                                                                                                                                  |
+| In production bundles?                           | **No.** No file in `apps/web/dist` (assets, `sw.js`, Workbox runtime), `apps/api/dist`, `apps/worker/dist` or any `packages/*/dist` contains picomatch/micromatch code                                                                                                                                                                                     |
+| Loaded by deployed services?                     | **No.** Module-resolution trace of the built API (`buildApp`, `/que/kb/public`, `/que/capabilities`, `/health`): 575 modules, none a glob library. Built worker (`--once`): 147 modules, none a glob library. No source file imports a glob library                                                                                                        |
+| Runtime containers?                              | None exist in the repository (no Dockerfile or image definition). Services start with `node dist/server.js` / `node dist/worker.js`                                                                                                                                                                                                                        |
+| Can untrusted input reach the vulnerable parser? | **Not from users.** The flaw needs an attacker-chosen _pattern_. Patterns come only from committed configuration (ESLint, Vite/Vitest `include`, Workbox `globPatterns`, tsconfig); none uses extglob syntax. Matched _strings_ are repository file paths. The Vite dev and preview servers are local tools; their `server.fs` patterns are fixed defaults |
+| Who could trigger it?                            | Someone who can change committed configuration or a dependency. Either needs a reviewed change, and a malicious dependency could already run code at install time. Impact is at most a hung lint, test or build on a developer machine or CI runner                                                                                                        |
+| Same on `staging`?                               | **Yes.** `pnpm-lock.yaml` is identical to `staging`; with the MQ.2 changes stashed the audit reports the same 2 high (2.3.2 ×7 paths, 4.0.7 ×215 paths). MQ.2 added no external dependency                                                                                                                                                                 |
+
+### Remediation options
+
+| Option                                                                          | Assessment                                                                                                                                                               |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Upgrade to a patched `picomatch`                                                | Not possible: no patched release exists                                                                                                                                  |
+| Upgrade the parents (`typescript-eslint`, `eslint-plugin-import`, Vite, Vitest) | Does not help: current releases still depend on `picomatch` ≤ 4.0.7 (directly, or via `tinyglobby`/`fdir`/`micromatch`). It would also be an unrelated toolchain upgrade |
+| `pnpm.overrides` to an unreleased commit (for example PR #194)                  | Rejected: unreviewed third-party patch; the PR is open and addresses a related parsing issue, not a released fix                                                         |
+| Replace the toolchain                                                           | Rejected: major incompatibility, out of scope                                                                                                                            |
+| Narrow, time-bounded exception (below)                                          | Justified **only** because the exposure is development-only and the production audit stays clean                                                                         |
+
+**Recommendation:** approve the scoped exception below, or keep the Security audit job red until
+upstream publishes a fix. Do not use `pnpm.auditConfig.ignoreGhsas`: it would ignore the advisory
+for every version and every path, including a future production path.
+
+### Proposed scoped exception (as proposed; superseded by the approved exception below)
+
+| Field                 | Proposal                                                                                                                                                                                                                                                                                                                           |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Advisory              | GHSA-fc5q-39xc-vjpf / CVE-2026-112366 only                                                                                                                                                                                                                                                                                         |
+| Affected versions     | `picomatch` 2.3.2 and 4.0.7 only                                                                                                                                                                                                                                                                                                   |
+| Allowed paths         | Only paths whose top-level package is one of the dev dependencies `@typescript-eslint/eslint-plugin`, `@typescript-eslint/parser`, `eslint-plugin-import`, `vitest`, `@vitest/coverage-v8`, `vite`, `@vitejs/plugin-react`, `vite-plugin-pwa` (the 222 paths above)                                                                |
+| Production exposure   | None (verified above); must stay none                                                                                                                                                                                                                                                                                              |
+| Residual risk         | A crafted extglob pattern introduced into committed configuration or a dependency could hang a developer or CI job. No user-facing or deployed service is affected                                                                                                                                                                 |
+| Compensating controls | `pnpm audit --prod --audit-level high` stays blocking with no exception; `--frozen-lockfile`; review of every change to configuration and the lockfile; proposed `timeout-minutes` on CI jobs (today GitHub's 6-hour default applies)                                                                                              |
+| Review / expiry       | The exception fails CI by itself, and must be reviewed, on the **earliest** of: a patched `picomatch` version being published; the advisory changing (severity, range or a new ID); `picomatch` appearing in any production tree; a new installed version or path outside the allow-list; or **2026-12-15** (before M7 submission) |
+| Other advisories      | Every other high or critical advisory, and any other ID affecting `picomatch`, keeps failing CI                                                                                                                                                                                                                                    |
+
+**Proposed mechanism** (to implement only after approval; the current CI step stays as is until
+then):
+
+1. Keep a production gate with no exception: `pnpm audit --prod --audit-level high`.
+2. Replace the full-tree step with a small script (for example `infra/scripts/audit-gate.js`)
+   that reads `pnpm audit --json` and fails unless **every** high or critical advisory matches
+   all of the following:
+
+   - its GHSA is `GHSA-fc5q-39xc-vjpf` and its module is `picomatch`;
+   - each finding's version is 2.3.2 or 4.0.7;
+   - each path's top-level package is in the allow-list;
+   - the advisory has no patched version;
+   - the current date is before the expiry.
+
+   The script prints every exempted path. Its own tests would check that an unrelated high
+   advisory, a production path, a new version, a patched-version flag and the expiry all fail.
+
+3. Record the approval (who, date, expiry) next to the exception in this file.
+
+### Approved temporary exception (active; NOT a resolution)
+
+**Approval.** Product owner, 2026-11-17: a narrowly scoped, temporary risk exception for
+GHSA-fc5q-39xc-vjpf (CVE-2026-112366), limited to the demonstrated development-tool exposure. It
+does not authorize disabling the security audit or ignoring any other vulnerability.
+
+| Field                          | Value                                                                                                                                                                                                                                                                                                                        |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Advisory                       | GHSA-fc5q-39xc-vjpf / CVE-2026-112366, `picomatch` `<=4.0.7`, high (CVSS 3.1 7.5), patched versions `<0.0.0` (none)                                                                                                                                                                                                          |
+| Approved versions              | `picomatch` 2.3.2 and 4.0.7 only                                                                                                                                                                                                                                                                                             |
+| Approved paths                 | Exactly the 222 paths recorded in `infra/security/audit-policy.json` (7 for 2.3.2, 215 for 4.0.7), each rooted in one of 8 development packages: `@typescript-eslint/eslint-plugin`, `@typescript-eslint/parser`, `eslint-plugin-import`, `vitest`, `@vitest/coverage-v8`, `vite`, `@vitejs/plugin-react`, `vite-plugin-pwa` |
+| Development-only evidence      | All root packages are `devDependencies` of their importer (checked by the gate on every run); `pnpm audit --prod` clean; `pnpm -r ls picomatch --prod`: absent (checked on every run); no picomatch code in any build output; built API (575 modules) and worker (147) load no glob library; no container images             |
+| Residual risk                  | Availability only: a crafted extglob pattern in committed configuration or a malicious dependency could hang a developer or CI job. No deployed service, user data or user input is affected                                                                                                                                 |
+| Compensating controls          | Exception-free production audit (separate blocking step); path-exact policy; `--frozen-lockfile`; review of configuration and lockfile changes; `timeout-minutes` on every CI job (15, Postgres/browser job 40)                                                                                                              |
+| Expiry                         | `2026-12-15T00:00:00Z`: from that instant the gate fails until the exception is renewed through review or removed. Renewal is capped at 45 days from `approvedOn` (`maxValidityDays`)                                                                                                                                        |
+| Upstream remediation condition | The gate fails, asking for remediation instead of renewal, when the advisory lists a patched version, when npm publishes a `picomatch` release above 4.0.7, or when that metadata is unavailable or ambiguous                                                                                                                |
+| Status                         | **Open vulnerability, accepted temporarily.** Remove the exception and upgrade when a fixed release exists                                                                                                                                                                                                                   |
+
+**Enforcement.**
+
+- `infra/security/audit-policy.json` is the checked-in, reviewable policy: advisory, module,
+  severity, ranges, approval, expiry, development roots and exact paths.
+- `infra/scripts/audit-gate.js` runs the complete `pnpm audit --json`, then
+  `pnpm -r ls picomatch --prod --json` and `pnpm view picomatch dist-tags --json`. Every pnpm
+  command is checked for start failure, signal and exit status, and every output for JSON
+  validity and structure. `pnpm audit` exits 1 both when it finds advisories and when it fails,
+  so an `{"error": …}` body is rejected explicitly.
+- The gate rejects:
+  - any high or critical advisory without an exception (including another ID on `picomatch`, or
+    no GHSA id);
+  - changed severity, module or vulnerable range;
+  - a patched version or a newer release;
+  - an unapproved version or path, or a path not ending at the approved version;
+  - a root outside the approved development packages, or one that is not a devDependency-only
+    package of its importer;
+  - `picomatch` in any production tree;
+  - expired, future-dated or over-long approval;
+  - an invalid policy;
+  - malformed, incomplete or muted audit output, including metadata counts that do not match
+    the findings.
+- Low and moderate findings keep the same non-blocking threshold as before. The gate never
+  edits pnpm configuration; there is no `ignoreGhsas` or `auditConfig` (a test checks
+  `package.json` and `.npmrc`).
+- CI (`security-audit` job): step 1 `pnpm audit --prod --audit-level high` (no exceptions); step 2
+  `node infra/scripts/audit-gate.js` (full tree through the policy). Neither step uses
+  `continue-on-error` or `|| true` (checked by a test).
+
+**Validation (2026-11-17).**
+
+| Check                                                             | Result                                                                                                                                                                                                                                                                                                                       |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Policy unit tests (`apps/api/src/audit-gate.test.ts`, no network) | 42 passed: exact acceptance; other advisory; new version; new path; production exposure; malformed or incomplete data; expiry; unrecognized metadata; command failures; upstream fix or ambiguous metadata; policy and CI wiring                                                                                             |
+| Mutation checks on the gate                                       | 21 of 21 killed (expiry, path, version, production tree, devDependency classification, unknown advisory, patched version, newer release, registry failure, severity, range, error body, metadata counts, muting, exit status, signal, maximum validity, root allow-list, path terminus, ambiguous latest, critical severity) |
+| `node infra/scripts/audit-gate.js` on the real tree               | PASS: accepted GHSA-fc5q-39xc-vjpf, picomatch 2.3.2 (7 paths) and 4.0.7 (215 paths); production trees clean; latest upstream 4.0.7                                                                                                                                                                                           |
+| Same with an unreachable registry                                 | BLOCKED (`pnpm reported an error (ECONNREFUSED)`), exit 1                                                                                                                                                                                                                                                                    |
+| `pnpm audit --prod --audit-level high`                            | No known vulnerabilities found                                                                                                                                                                                                                                                                                               |
+| Regression (`pnpm test`, format, lint, typecheck, build)          | pass (api 137 including the gate tests; all other packages unchanged)                                                                                                                                                                                                                                                        |

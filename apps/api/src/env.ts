@@ -91,6 +91,11 @@ const EnvSchema = z
           .map((h) => h.trim().toLowerCase())
           .filter((h) => /^[a-z0-9.-]+$/.test(h)),
       ),
+    /**
+     * MQ.2 (design §11.5.2): longest offline validity of a restricted Ask Que bundle, in seconds.
+     * The server always caps it at the session's remaining lifetime; default = session (12 h).
+     */
+    QUE_OFFLINE_HELP_TTL_SECONDS: z.coerce.number().int().min(300).max(43_200).default(43_200),
     /** Set true only when running behind a trusted reverse proxy (honours X-Forwarded-For). */
     TRUST_PROXY: z
       .enum(['true', 'false'])

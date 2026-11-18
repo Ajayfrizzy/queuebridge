@@ -389,6 +389,11 @@ export const api = {
 
   // ---- M5.4: Smart Turn Alerts (Web Push is optional and best effort) ----
   pushCapability: (): Promise<PushCapability> => request('GET', '/push/capability'),
+  // MQ.1/MQ.2 Ask Que (read-only). Responses are schema-checked by the caller (src/que/).
+  queCapabilities: (): Promise<unknown> => request('GET', '/que/capabilities'),
+  quePublicKb: (): Promise<unknown> => request('GET', '/que/kb/public'),
+  queKb: (known?: string): Promise<unknown> =>
+    request('GET', `/que/kb${known ? `?known=${encodeURIComponent(known)}` : ''}`),
   subscribePush: (
     code: string,
     token: string,

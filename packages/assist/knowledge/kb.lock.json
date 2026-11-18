@@ -1,0 +1,21 @@
+{
+  "kbVersion": 1,
+  "articles": {
+    "staff.sync.states": {
+      "version": 1,
+      "hash": "0beaad4b91fba519877139693c3cb722d77c893342f845436a099c31741add1e"
+    },
+    "staff.recovery.assist": {
+      "version": 1,
+      "hash": "d67243db77e8a32ec4c0f957580f8f9a5d7bf6bfdd1da18617eeacf6917473ef"
+    },
+    "visitor.recovery.how": {
+      "version": 1,
+      "hash": "ad1f80d9d2dba139723a1e8064b361c8303ffc7c558acbbd5b6bf563fb0ef242"
+    },
+    "visitor.recovery.staff": {
+      "version": 1,
+      "hash": "4d95b6bb41740167fd2d2cd1a8cd4de27812311a8e45fcbab200990ece37be51"
+    }
+  }
+}
