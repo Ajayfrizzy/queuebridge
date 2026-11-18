@@ -647,3 +647,267 @@ new recovery test fails without the fix and passes with it (3× repeated).
   capability-dependent help until the next online load (fail closed by design).
 - Manual screen-reader passes (VoiceOver, TalkBack/NVDA) are not run here; they belong to the
   deferred Set 2 final acceptance.
+
+## MQ.4 Optional AI explanation layer (2026-11-18)
+
+**Provider decision status: No provider selected — AI disabled by default.**
+
+**Branch:** `feature/mq4-optional-ai-explanations`, from `staging` at `29ace1f` (PR #12 merged;
+`staging` CI green on that commit).
+
+**Implemented infrastructure, not activated capability.** MQ.4 builds the optional AI layer end
+to end: adapters, endpoint, guard, opt-in and disclosure. It does not activate AI anywhere:
+
+- the only runnable adapter is the TEST-ONLY sandbox, which is refused in production;
+- every deployment default leaves AI off;
+- the capability manifest reports `ask_que_ai` as `live` / `unavailable` / `switched_off`.
+
+No account was created, no payment detail entered, no provider integrated, no inference credit
+used.
+
+### What was built
+
+| Task                       | Where                                                                                                                                                                     |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| A. Adapters                | `apps/api/src/que/inference.ts`: `InferenceAdapter`, `DisabledInferenceAdapter` (default), `SandboxInferenceAdapter` (TEST-ONLY), `aiDeploymentAvailable` zero-cost guard |
+| B. Ask endpoint            | `apps/api/src/routes/que.ts` (`POST /api/v1/que/ask`), `apps/api/src/que/ask.ts` (orchestration, daily cap, per-user limiter)                                             |
+| C. Output guard, redaction | `packages/assist/src/ai-guard.ts` (pure): `redactQuestion`, `guardAiExplanation`                                                                                          |
+| D. Facility opt-in         | `GET                                                                                                                                                                      | PUT /api/v1/facilities/:id/que-ai`; migration `0010_que_ai.sql`; `apps/web/src/que/QueAiSettingsSection.tsx` on the facility page |
+| E. UI disclosure           | `apps/web/src/que/QuePanel.tsx`: "Explain with AI", "AI-generated" label, sources, "Check with staff…", fallback reasons, status notes                                    |
+| F. Provider research       | Below                                                                                                                                                                     |
+| Contracts                  | `packages/contracts/src/que.ts`: `QueAskRequestSchema`, `QueAiSettings*`, `QUE_AI_CONSENT_VERSION` / `QUE_AI_CONSENT_TEXT`                                                |
+| Configuration              | `apps/api/src/env.ts`, `.env.example`, `docs/local-environment.md` ("Ask Que AI explanations"); `apps/web/playwright.config.ts` (sandbox for browser tests)               |
+
+**Request flow of `POST /que/ask`.**
+
+1. **Session and scope.** A staff session is required: anonymous and forged sessions get 401, and
+   a missing CSRF header gets 403. The body is strict Zod (≤ 500 characters, registered RouteIds
+   only). The facility must be one where the user holds a role (`FACILITY_READ`); otherwise 404,
+   including any facility of another organization.
+2. **Rate limits.** Per user: `QUE_AI_RATE_LIMIT_MAX` per minute, then 429 with a plain message.
+   Per IP: five times that, because colleagues often share an address.
+3. **Deterministic answer.** Always computed first, from public plus restricted articles for the
+   session's audiences. It is the fallback.
+4. **Zero-cost guard and opt-in.** If the guard or the facility opt-in fails, the answer is
+   built-in help with `ai_disabled`.
+5. **Grounding.** The adapter gets at most 3 of the deterministic citations. When none exist the
+   result is `validation_failed`, without calling the adapter.
+6. **Daily cap.** One atomic slot per UTC day, shared by every instance. When the cap is reached
+   the result is `quota`, without calling the adapter.
+7. **Adapter call.** It receives only the redacted question, the authorized articles and a
+   capability summary. Timeout or a client disconnect aborts it (`timeout`); a classified quota
+   gives `quota`; any other failure gives `provider_error`.
+8. **Output guard.** Any rejection gives `validation_failed`. On success the answer is
+   `mode: 'ai'`, links are computed by the server from the cited articles' related routes, and
+   the response is strict-schema checked.
+9. **Logs.** Adapter id, mode, fallback reason, latency and redaction count only; never question
+   or answer text. Sandbox runs are logged with `[SANDBOX]`.
+
+**Output guard.** The model's output is accepted only when it is plain text of 1–1200
+characters, cites at least one article, and every citation is one of the supplied (authorized)
+articles. It is rejected for any of:
+
+- HTML, scripts, Markdown links or images, URLs, `www.`, `javascript:`/`data:`/`mailto:`,
+  `route:` or backticks;
+- data-like content: emails, phone numbers, UUIDs, ticket codes, secret-like strings;
+- claims that something was done ("I have cancelled…", "has been moved") or will happen ("you
+  will be called"), and injection artefacts ("ignore previous instructions", "system prompt");
+- any mention of a capability that is not usable (for example SMS, USSD, or push when not set up);
+- any number not present in the cited articles;
+- text where fewer than 60 % of the content words come from the cited articles.
+
+The model never supplies links.
+
+**Facility opt-in.** It is off by default (no row), and only `FACILITY_CONFIGURE` (facility admin
+or org admin) can change it; other roles get 403 and other organizations get 404. Turning it on
+requires `consent_version = que-ai-consent-v1` and `consent_acknowledged: true`. The database
+CHECK refuses "on" without a recorded consent. Each real change writes an `admin_events` row
+(`que_ai.enabled` / `que_ai.disabled`, details: consent version and deployment availability; no
+names). Opting in has no effect while the deployment has no enabled zero-cost adapter, and the
+admin page says so.
+
+**UI.**
+
+- **Built-in help** is unchanged and always shown.
+- **"Explain with AI"** appears only for signed-in staff, online, on a facility whose setting
+  reports `available`, after a question with built-in matches.
+- **An AI answer** is in its own region with the text label "AI-generated", the plain-text
+  explanation (rendered as text, never HTML), a "Sources" list that opens the cited built-in
+  articles, and "Check with staff before acting on queue decisions." The live region announces
+  "AI explanation ready."
+- **A failure** shows "AI explanation unavailable — showing built-in help." plus a plain reason.
+- **Notes:** offline, "AI explanations need a connection. Built-in help works offline."; where
+  not set up, "AI explanations are not set up here. This is built-in help."
+- **Visitors** see no AI control or text.
+
+### Provider research (design §11.8; research only, 2026-11-18)
+
+No account was created and no payment detail entered. Eligibility (all required): no personal
+spending; no payment card or billing details; no automatic paid overage. Project preference: no
+training use of inputs.
+
+| Provider                         | Finding (verified 2026-11-18 unless noted)                                                                                                                                                                                               | Eligible?   |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| Cloudflare Workers AI            | 10,000 Neurons/day free; free plan operations fail with an error past the limit (hard stop); zero retention and no training on customer content. Card at signup, Nigeria availability and usage terms **not verified**                   | **Unclear** |
+| Groq (GroqCloud)                 | Free tier exists; upgrading needs a card or bank account; inputs/outputs not retained by default (up to 30-day logs for reliability/abuse). Free-tier limits, Nigeria availability, production terms and training terms **not verified** | **Unclear** |
+| Google Gemini API (AI Studio)    | Free tier needs no billing; Nigeria listed; but free-tier content is used to improve products and may be read by human reviewers                                                                                                         | No          |
+| OpenRouter (free models)         | 50 requests/day without credits (1,000/day only after buying credits); its own docs say free models are usually not suitable for production                                                                                              | No          |
+| Hugging Face Inference Providers | No free credits for free users (credits must be bought)                                                                                                                                                                                  | No          |
+| Cohere (trial key)               | Trial keys are for testing and proofs of concept; production keys are paid                                                                                                                                                               | No          |
+| OpenAI                           | No free API tier found (only moderation is free)                                                                                                                                                                                         | No          |
+| Anthropic                        | No free tier found (page not verified)                                                                                                                                                                                                   | No          |
+| Mistral, GitHub Models           | Pages could not be loaded; nothing verified                                                                                                                                                                                              | Unclear     |
+
+Sources (read 2026-11-18):
+
+- Cloudflare:
+  - developers.cloudflare.com/workers-ai/platform/pricing/ (page dated 2026-11-12)
+  - developers.cloudflare.com/workers-ai/platform/data-usage/ (page dated 2026-10-16)
+- Groq: console.groq.com/docs/rate-limits, /docs/billing-faqs and /docs/your-data
+- Google AI Studio: aistudio.google.com/docs/pricing, /docs/terms, /docs/billing and
+  /docs/available-regions
+- OpenRouter: openrouter.ai/docs/faq and openrouter.ai/docs/api-reference/limits
+- Hugging Face: huggingface.co/docs/inference-providers/pricing
+- Cohere: docs.cohere.com/docs/rate-limits and /docs/how-does-cohere-pricing-work
+- OpenAI: developers.openai.com/api/docs/pricing
+
+**Conclusion.** No provider satisfies every requirement with verified evidence. Cloudflare Workers
+AI is the strongest candidate: it hard-stops at the free allowance and does not train on or
+retain inputs. Its card-at-signup, Nigeria availability and usage terms are unverified. Free
+allowances can change without notice. MQ.4 therefore remains **operationally disabled**:
+
+**No provider selected — AI disabled by default.**
+
+Selecting or integrating any provider needs a separate, explicit project decision (REQ-F13.4.8).
+
+### Verification
+
+| Area                                      | Evidence                                                                                                                                                                                                                                                                                                |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Default-disabled                          | DB: default deployment answers `ai_disabled` even after opt-in; manifest `live` / `unavailable` / `switched_off`; settings `deployment_available: false`; each zero-cost switch alone keeps AI off; sandbox refused in production                                                                       |
+| Authentication and facility authorization | DB: 401 anonymous and forged; 403 without CSRF; 400 for extra fields, empty, over 500 characters, unknown route, malformed or missing facility; 404 for an unassigned facility and another organization's                                                                                               |
+| Tenant isolation                          | DB: another organization cannot read or change the opt-in (404); the adapter receives no facility or organization id                                                                                                                                                                                    |
+| Administrator-only settings and audit     | DB: reception, counter, supervisor, auditor get 403; facility admin and org admin succeed; consent required (4 invalid bodies, no audit row); one audit row per real change; no names; DB CHECK. Browser: off by default, button disabled until consent ticked, on and off; supervisor sees no controls |
+| PII redaction                             | Unit: emails, phones, ticket codes, UUIDs, grouped keys, long tokens, URLs; DB: the adapter received only the redacted question (3 redactions) and authorized generic articles                                                                                                                          |
+| Rate limits and daily cap                 | DB: per user third request 429 while a colleague on the same IP succeeds; per-IP limit still applies; cap 2 → `ai, ai, quota` and the counter stops at 2; 8 concurrent requests on a cap of 3 → exactly 3 AI answers                                                                                    |
+| Timeout and adapter failure               | DB: `timeout` (500 ms, answered well under 5 s), `provider_error`, `quota`; Browser: fallback messages for timeout and error                                                                                                                                                                            |
+| Prompt injection and malicious output     | Unit: 42 guard and redaction tests. DB: injected instructions and claimed actions, uncited, foreign citation, SMS claim, HTML link and invented number all fall back to `validation_failed`, and none of their text reaches the response                                                                |
+| Unauthorized citations and links          | Unit: foreign and mixed citations rejected; DB: an auditor's AI answer never cites the staff-assisted procedure; links come only from the server and respect roles (counter: no connectivity)                                                                                                           |
+| Misleading capability claims              | Unit: SMS, USSD and push (not set up) rejected; a usable capability may be mentioned; manifest never `live` + `available`                                                                                                                                                                               |
+| Deterministic fallback                    | Every failure path returns the built-in answer with citations and a `fallbackReason`; nothing to ground → `validation_failed` without an adapter call (counter unchanged)                                                                                                                               |
+| No queue mutations                        | DB: queue events, tickets, client operations, roles and staff of the organization unchanged after asks; the only write is the aggregate daily counter                                                                                                                                                   |
+| Offline and UI disclosure                 | Browser: AI answer labelled "AI-generated" with sources and the staff advice, no links in AI text, axe clean; live announcement; fallback reasons; offline note and no control; "not set up here" when the deployment has no provider; visitors see no AI                                               |
+| MQ.1–MQ.3 regression                      | All earlier unit, DB and browser tests pass. Two MQ.1 premises were updated because MQ.4 changed them: `ask_que_ai` is now `live` / `unavailable` / `switched_off` (was `planned`), and `POST /que/ask` now exists and answers 401 to anonymous callers (was 404)                                       |
+
+**Mutation checks** (each change made a test fail, then was reverted). 31 mutations were applied
+and 30 were killed:
+
+- **Guard:** citations, markup, sensitive data, action/injection, capability words, numbers and
+  grounding checks, each removed.
+- **Redaction:** the email and phone redactions, each removed.
+- **Zero-cost guard:** without `QUE_AI_ENABLED`, and without the cost-mode check.
+- **Opt-in:** the check removed, and the PUT permission weakened to `FACILITY_READ`.
+- **Audit:** recording on change removed.
+- **Consent:** the schema rule removed.
+- **Facility scope:** removed.
+- **Daily cap:** the reservation removed, and the cap condition in SQL removed.
+- **Pipeline:** the guard result ignored, the unredacted question sent, and the timeout not
+  aborting.
+- **Production:** the sandbox no longer refused.
+- **Manifest:** reporting AI as available.
+- **UI:** the AI control offered without the facility setting.
+- **Per-user limiter, initially survived.** The per-IP limit was equal to it, so the test could
+  not tell them apart. This was also a design weakness: staff behind one NAT share an IP. The
+  per-IP limit is now 5× the per-user limit, and the test checks a colleague on the same IP; the
+  mutation is now killed.
+- **Unrestricted article pool, survived (redundant guard).** Giving the server's article pool
+  every staff audience does not change answers, because `answer()` already filters by the
+  session's audiences. The restriction stays as defence in depth.
+
+### Gate results (local, 2026-11-18)
+
+| Gate                                                             | Result                                                                                                                                                                            |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build` | pass                                                                                                                                                                              |
+| `pnpm test`                                                      | contracts 179, assist 162, api 143, web 168, domain 109, continuity 64, channels 33, worker 12, ui 6                                                                              |
+| `pnpm test:db`                                                   | api 676 (35 files), worker 63                                                                                                                                                     |
+| Playwright (4 projects)                                          | 283 passed, 7 skipped (5 pre-existing conditional skips; 2 intended phone-only skips)                                                                                             |
+| `pnpm db:check`                                                  | 10 applied, none pending                                                                                                                                                          |
+| Security gates                                                   | `pnpm audit --prod --audit-level high` clean; `node infra/scripts/audit-gate.js` PASS (only the approved, still unresolved GHSA-fc5q-39xc-vjpf exception); policy tests 42 passed |
+
+New tests: assist 42 (`ai-guard.test.ts`); API DB 41 (`que-ask.db.test.ts`, including the tenant FK added at the checkpoint); API unit 6 (`que-inference.test.ts`, added at the checkpoint); Playwright 7
+(`que-ai.spec.ts`).
+
+**Bundle:** main chunk 187.17 → 188.14 kB gzip (+0.97 kB: the admin opt-in section and API
+calls). The lazy Ask Que panel chunk is 7.69 → 8.46 kB gzip.
+
+### Database migration
+
+`0010_que_ai.sql` is additive: two new tables, no change to existing ones. It applies on a fresh
+database and re-runs as a no-op. It is registered in the schema identity guard
+(`infra/scripts/db-identity.js` sentinels).
+
+- `facility_que_ai_settings`: one row per facility; organization-scoped; consent CHECK.
+- `que_ai_daily_usage`: one aggregate counter per UTC day; non-negative CHECK. No user,
+  facility, ticket or question data.
+
+**Checkpoint review (2026-11-18).**
+
+| Check            | Finding                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tenant isolation | Every query filters by `facility_id` AND `organization_id` from the session. **Fixed at review:** the table had separate FKs to `facilities` and `organizations`, so the database would have accepted a mismatched pair. Added `facility_que_ai_settings_facility_org_fk` `(facility_id, organization_id) → facilities (id, organization_id)`, the rule used by 0003–0009, with a DB test that a mismatched row is refused |
+| Foreign keys     | `facility_id`, `organization_id`, `consented_by`, `updated_by`: all `ON DELETE RESTRICT` (no cascade can erase the opt-in record)                                                                                                                                                                                                                                                                                          |
+| Constraints      | `facility_que_ai_consent_chk` (no "on" without consent version, actor and time); `que_ai_daily_usage_nonneg_chk`; primary keys `facility_id` and `usage_date`                                                                                                                                                                                                                                                              |
+| Indexes          | `facility_que_ai_settings_org_idx` on `organization_id`; lookups use the primary keys                                                                                                                                                                                                                                                                                                                                      |
+| Safe deployment  | Additive (two new tables, nothing altered or dropped); `IF NOT EXISTS` guards on tables, index and constraints; applied to a fresh database and re-run as a no-op; re-applied to the local dev and test databases after the FK change (no mismatched rows existed)                                                                                                                                                         |
+
+### Notes, deviations and remaining risks
+
+- **`ask_que_ai` status.** Now `live` (built) with `unavailable` / `switched_off` by default, as
+  design §11.10a anticipated. Only the sandbox adapter makes it `sandbox` / `available`; nothing
+  can make it `live` / `available` without a new adapter.
+- **Per-IP limit = 5× per-user** (staff share addresses); both limits are in-process, as with the
+  other per-IP limits (M5 limitation). The daily cap is database-backed and shared.
+- **"Explain with AI" is a POST** for an explanation, not an operation; the read-only allow-list
+  in the browser tests includes it only where AI is available.
+- **Guard heuristics are conservative.** False positives only fall back to built-in help. They do
+  not prove a real model's output is correct, which is why every AI answer is labelled and cites
+  built-in articles.
+- **Content.** Still the four MQ.2 delivery articles; MQ.5 owns the inventory.
+- **Security.** The temporary picomatch exception remains unresolved and expires on 2026-12-15.
+- **Deferred.** Manual screen-reader and real-device checks remain in the final acceptance
+  (Set 2).
+
+### Checkpoint security verification (2026-11-18)
+
+| Invariant                                                          | Evidence                                                                                                                                                                                                                                |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Production defaults to `DisabledInferenceAdapter`                  | Unit (`que-inference.test.ts`): a production configuration with no AI settings parses to `disabled`, the factory returns the disabled adapter and the zero-cost guard is off                                                            |
+| The sandbox cannot run in production                               | Two independent layers: the environment schema refuses `QUE_AI_ADAPTER=sandbox` with `NODE_ENV=production` at start-up, and the factory returns the disabled adapter for production even if that check were bypassed (both unit-tested) |
+| No real provider, credential or external request                   | Only the disabled and sandbox adapters exist; the adapter schema accepts no other value (unit); a source check finds no network API in the adapter code; no provider credential variable exists                                         |
+| Opt-in alone cannot activate inference                             | DB: the default deployment answers `ai_disabled` after an opt-in; each zero-cost switch alone keeps AI off                                                                                                                              |
+| Anonymous users cannot invoke AI                                   | DB: 401 anonymous and forged sessions; visitors see no AI control (browser)                                                                                                                                                             |
+| Cross-facility access is denied                                    | DB: 404 for an unassigned facility and another organization's facility; the opt-in of another organization cannot be read or changed (404); composite tenant FK                                                                         |
+| Admin settings need authorization and are audited                  | DB: only `FACILITY_CONFIGURE` roles succeed; consent required; one audit event per real change                                                                                                                                          |
+| AI requests cannot mutate queue state                              | DB: queue events, tickets, client operations, roles and staff unchanged; the only write is the aggregate daily counter                                                                                                                  |
+| Output guard blocks links, citations, markup and capability claims | Unit 42 guard tests; DB end-to-end rejections fall back to `validation_failed`                                                                                                                                                          |
+| Every failure falls back deterministically                         | DB: `ai_disabled`, `timeout`, `provider_error`, `quota`, `validation_failed`, each with the built-in answer and citations                                                                                                               |
+| Caps and limits are enforced                                       | DB: per-user 429, per-IP limit, shared daily cap under concurrency                                                                                                                                                                      |
+
+### Obligations carried forward (recorded at the MQ.4 checkpoint)
+
+- **No provider selected — AI disabled by default.** Integrating any real inference provider
+  requires a separate, explicit product-owner approval (REQ-F13.4.8), verified free-tier or
+  sponsored terms and no personal spending. MQ.4 adds no provider adapter or credential.
+- **MQ.5** must complete the knowledge-base inventory (currently the four MQ.2 articles).
+- **MQ.6** must implement the ongoing knowledge-base consistency checks (Group 13.5: article
+  capabilities in the manifest, no non-live capability presented as available, metadata
+  validation) as CI checks.
+- **Rate limits.** The per-user and per-IP limits are in-process per API instance (the M5
+  limitation); only the daily cap is shared through the database. Guard heuristics are
+  conservative and do not prove a real model's output correct.
+- **M7** owns the visitor-bundle optimization (main chunk 188.14 kB gzip after MQ.4).
+- **M5 Set 2** acceptance (manual screen-reader and real-device checks) stays deferred to the
+  final acceptance after M7.
+- **picomatch (GHSA-fc5q-39xc-vjpf)** remains an approved, unresolved, dev-only exception that
+  expires on 2026-12-15T00:00:00Z.

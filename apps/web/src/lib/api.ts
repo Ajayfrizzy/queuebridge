@@ -51,6 +51,9 @@ import type {
   PushSubscribeRequest,
   PushSubscribeResponse,
   StaffTicketAlerts,
+  QueAiSettings,
+  QueAiSettingsUpdate,
+  QueAskRequest,
 } from '@queuebridge/contracts';
 
 const BASE: string =
@@ -394,6 +397,12 @@ export const api = {
   quePublicKb: (): Promise<unknown> => request('GET', '/que/kb/public'),
   queKb: (known?: string): Promise<unknown> =>
     request('GET', `/que/kb${known ? `?known=${encodeURIComponent(known)}` : ''}`),
+  // MQ.4 optional AI explanations (staff session; disabled unless a zero-cost adapter is set up)
+  queAsk: (body: QueAskRequest): Promise<unknown> => request('POST', '/que/ask', body),
+  queAiSettings: (facilityId: string): Promise<QueAiSettings> =>
+    request('GET', `/facilities/${encodeURIComponent(facilityId)}/que-ai`),
+  setQueAiSettings: (facilityId: string, body: QueAiSettingsUpdate): Promise<QueAiSettings> =>
+    request('PUT', `/facilities/${encodeURIComponent(facilityId)}/que-ai`, body),
   subscribePush: (
     code: string,
     token: string,

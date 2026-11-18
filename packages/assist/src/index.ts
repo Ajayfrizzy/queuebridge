@@ -17,3 +17,4 @@ export * from './capabilities.js';
 export * from './search.js';
 export * from './answer.js';
 export * from './kb-compile.js';
+export * from './ai-guard.js';

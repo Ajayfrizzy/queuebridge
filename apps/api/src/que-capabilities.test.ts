@@ -130,15 +130,20 @@ describe('GET /api/v1/que/capabilities (public, server-authoritative)', () => {
     }
   });
 
-  it('SMS, USSD and AI explanations are planned and unavailable; AI is never usable', async () => {
+  it('SMS and USSD are planned and unavailable; AI explanations are built but switched off; AI is never usable', async () => {
     for (const app of [noPush, withPush]) {
       const m = (await manifestOf(app)).body;
-      for (const id of ['sms_turn_alerts', 'ussd', 'ask_que_ai'] as const) {
+      for (const id of ['sms_turn_alerts', 'ussd'] as const) {
         expect(m.capabilities[id].status).toBe('planned');
         expect(m.capabilities[id].availability).toBe('unavailable');
         expect(m.capabilities[id].unavailableReason).toBe('not_implemented');
         expect(isCapabilityUsable(m, id)).toBe(false);
       }
+      // MQ.4 built the layer; no provider is selected, so it is switched off (D1)
+      expect(m.capabilities.ask_que_ai.status).toBe('live');
+      expect(m.capabilities.ask_que_ai.availability).toBe('unavailable');
+      expect(m.capabilities.ask_que_ai.unavailableReason).toBe('switched_off');
+      expect(isCapabilityUsable(m, 'ask_que_ai')).toBe(false);
     }
   });
 
@@ -208,14 +213,14 @@ describe('Que is read-only in MQ.1', () => {
     },
   );
 
-  it('POST /api/v1/que/ask does not exist (the optional AI layer is MQ.4)', async () => {
+  it('POST /api/v1/que/ask (MQ.4) requires a staff session: anonymous callers get 401', async () => {
     const r = await noPush.inject({
       method: 'POST',
       url: '/api/v1/que/ask',
       headers: { origin: ORIGIN, 'x-qb-csrf': '1', 'content-type': 'application/json' },
       payload: '{"question":"x"}',
     });
-    expect(r.statusCode).toBe(404);
+    expect(r.statusCode).toBe(401);
   });
 
   it('MQ.2 KB endpoints: public is open, restricted needs a session (no database involved)', async () => {

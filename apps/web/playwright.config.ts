@@ -76,6 +76,14 @@ export default defineConfig({
         // run by the specs uses the sandbox transport (nothing leaves the machine)
         VAPID_PUBLIC_KEY: E2E_VAPID_PUBLIC_KEY,
         PUSH_ENDPOINT_HOSTS: E2E_PUSH_HOST,
+        // MQ.4: the TEST-ONLY sandbox inference adapter (scripted, never networked; refused in
+        // production). AI still needs a facility opt-in, so other specs are unaffected.
+        QUE_AI_ADAPTER: 'sandbox',
+        QUE_AI_ENABLED: 'true',
+        QUE_AI_COST_MODE: 'free_tier',
+        QUE_AI_DAILY_CAP: '100000',
+        QUE_AI_TIMEOUT_MS: '1500',
+        QUE_AI_RATE_LIMIT_MAX: '1000',
         LOG_LEVEL: 'warn',
       },
     },

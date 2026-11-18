@@ -96,6 +96,25 @@ const EnvSchema = z
      * The server always caps it at the session's remaining lifetime; default = session (12 h).
      */
     QUE_OFFLINE_HELP_TTL_SECONDS: z.coerce.number().int().min(300).max(43_200).default(43_200),
+    /**
+     * MQ.4 optional AI explanations (design §11.7; REQ-F13.4). OFF unless every switch agrees:
+     * an adapter other than `disabled`, QUE_AI_ENABLED=true, a zero-cost QUE_AI_COST_MODE and a
+     * positive daily cap. There is no paid mode. `sandbox` is a TEST-ONLY scripted double that
+     * never touches the network and is refused in production. No real provider adapter exists
+     * (no provider selected — AI disabled by default).
+     */
+    QUE_AI_ADAPTER: z.enum(['disabled', 'sandbox']).default('disabled'),
+    QUE_AI_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
+    QUE_AI_COST_MODE: z.enum(['none', 'free_tier', 'sponsored']).default('none'),
+    /** Hard daily cap on adapter calls for the whole deployment (UTC day; 0 = AI off). */
+    QUE_AI_DAILY_CAP: z.coerce.number().int().min(0).max(100_000).default(0),
+    /** Adapter timeout; the request is cancelled and built-in help returned after it. */
+    QUE_AI_TIMEOUT_MS: z.coerce.number().int().min(500).max(15_000).default(8_000),
+    /** Ask requests per signed-in user per minute (the per-IP limit is five times this). */
+    QUE_AI_RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(1_000).default(10),
     /** Set true only when running behind a trusted reverse proxy (honours X-Forwarded-For). */
     TRUST_PROXY: z
       .enum(['true', 'false'])
@@ -105,7 +124,16 @@ const EnvSchema = z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info'),
   })
-  .superRefine(checkAuditSigningPair);
+  .superRefine(checkAuditSigningPair)
+  .superRefine((env, ctx) => {
+    if (env.NODE_ENV === 'production' && env.QUE_AI_ADAPTER === 'sandbox') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['QUE_AI_ADAPTER'],
+        message: 'the sandbox inference adapter is test-only and cannot run in production',
+      });
+    }
+  });
 
 export type Env = z.infer<typeof EnvSchema>;
 

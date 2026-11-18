@@ -9,6 +9,7 @@ import {
 import type { Env } from '../env.js';
 import { VISITOR_JOIN_OPERATIONAL } from '../readiness.js';
 import { webPushAvailable } from '../routes/push.js';
+import { aiDeploymentAvailable } from './inference.js';
 
 /**
  * Ask Que capability manifest (MQ.1; design §11.2 and §11.10a; decision D1).
@@ -23,14 +24,28 @@ import { webPushAvailable } from '../routes/push.js';
 export interface CapabilityFlags {
   visitorJoinOperational: boolean;
   webPushAvailable: boolean;
+  /**
+   * MQ.4: the AI layer may be called here. With no approved provider this is only ever true for
+   * the TEST-ONLY sandbox adapter, which the manifest reports as `sandbox`, never `live`.
+   */
+  aiAvailable: 'off' | 'sandbox';
 }
 
 export function capabilityFlags(
-  env: Pick<Env, 'CONTACT_ENCRYPTION_KEY' | 'VAPID_PUBLIC_KEY'>,
+  env: Pick<
+    Env,
+    | 'CONTACT_ENCRYPTION_KEY'
+    | 'VAPID_PUBLIC_KEY'
+    | 'QUE_AI_ADAPTER'
+    | 'QUE_AI_ENABLED'
+    | 'QUE_AI_COST_MODE'
+    | 'QUE_AI_DAILY_CAP'
+  >,
 ): CapabilityFlags {
   return {
     visitorJoinOperational: VISITOR_JOIN_OPERATIONAL,
     webPushAvailable: webPushAvailable(env),
+    aiAvailable: aiDeploymentAvailable(env) && env.QUE_AI_ADAPTER === 'sandbox' ? 'sandbox' : 'off',
   };
 }
 
@@ -89,7 +104,23 @@ export function buildCapabilityManifest(flags: CapabilityFlags, now: Date): Capa
     accessibility_prefs: { ...AVAILABLE, since: 'M5' },
     sms_turn_alerts: planned('SMS turn alerts are planned (M6).'),
     ussd: planned('USSD access is planned (M6).'),
-    ask_que_ai: planned('AI explanations are not available; built-in help is.'),
+    // MQ.4: the layer is built; it is switched off unless a zero-cost adapter is enabled. No
+    // provider is selected, so it is never `live` + `available` (D1).
+    ask_que_ai:
+      flags.aiAvailable === 'sandbox'
+        ? {
+            status: 'sandbox',
+            availability: 'available',
+            since: 'MQ',
+            note: 'TEST-ONLY sandbox AI explanations.',
+          }
+        : {
+            status: 'live',
+            availability: 'unavailable',
+            unavailableReason: 'switched_off',
+            since: 'MQ',
+            note: 'AI explanations are switched off here; built-in help is available.',
+          },
   };
   // Exhaustiveness is also enforced by the schema (record over the capability enum)
   for (const id of CAPABILITY_IDS) {

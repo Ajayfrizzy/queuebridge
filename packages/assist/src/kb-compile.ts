@@ -85,7 +85,8 @@ export function parseArticleSource(text: string): { meta: Record<string, unknown
 // Content checks (design §11.5.1): no tenant-sensitive or data-like content
 // ---------------------------------------------------------------------------
 
-const DATA_PATTERNS: readonly [string, RegExp][] = [
+/** Data-like content never allowed in help (also used by the AI output guard). */
+export const DATA_PATTERNS: readonly [string, RegExp][] = [
   ['an email address', /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/],
   ['a phone number', /\+?\d[\d\s().-]{7,}\d/],
   ['a UUID', /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i],
