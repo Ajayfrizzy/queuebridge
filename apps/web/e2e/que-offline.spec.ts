@@ -215,7 +215,8 @@ test.describe('MQ.2 offline delivery through the service worker', () => {
     await p.goto('/staff');
     await waitForRecord(p, staff.userId);
     await controlledBySw(p);
-    const online = await waitForRecord(p, staff.userId);
+    // An online session revalidation may still be finishing after the SW takes control.
+    // Do not snapshot the receipt until the browser is actually offline.
 
     // The restricted bundle is never in the service-worker caches (IndexedDB only)
     const all = await p.evaluate(async () => {
@@ -232,18 +233,21 @@ test.describe('MQ.2 offline delivery through the service worker', () => {
     expect(all.filter((u) => u.startsWith('/api/v1/auth'))).toEqual([]);
 
     await staff.ctx.setOffline(true);
+    // The invariant is that an offline reload does not reissue or rewrite restricted help.
+    // Take the baseline after disconnect to exclude an in-flight ONLINE revalidation.
+    const atDisconnection = await waitForRecord(p, staff.userId);
     await p.reload();
     await expect(p.getByTestId('connection-state')).toContainText('Offline');
     const offline = await waitForRecord(p, staff.userId);
-    expect(offline.receivedAtLocalMs).toBe(online.receivedAtLocalMs);
-    expect(ids(offline)).toEqual(ids(online));
+    expect(offline.receivedAtLocalMs).toBe(atDisconnection.receivedAtLocalMs);
+    expect(ids(offline)).toEqual(ids(atDisconnection));
 
     // Reconnection: the session is re-verified and the bundle revalidated (fresh receipt time)
     await staff.ctx.setOffline(false);
     await expect
       .poll(async () => (await queRecords(p))[0]?.receivedAtLocalMs ?? 0, { timeout: 20_000 })
-      .toBeGreaterThan(online.receivedAtLocalMs);
-    expect((await queRecords(p))[0]!.roleDigest).toBe(online.roleDigest);
+      .toBeGreaterThan(atDisconnection.receivedAtLocalMs);
+    expect((await queRecords(p))[0]!.roleDigest).toBe(atDisconnection.roleDigest);
     await staff.ctx.close();
   });
 
