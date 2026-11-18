@@ -471,10 +471,10 @@ Security follow-up from M5.1 (separate change, recorded in `M5-evidence.md`, "M5
 
 ### MQ.3 Que UI (accessible, mobile-first)
 
-- [ ] "Ask Que" trigger in the page shell for every role including visitors
-- [ ] Panel/sheet with search, "On this screen", article view, permitted links only
-- [ ] Offline / built-in help / AI badges with text labels; live-region announcements; focus management
-- [ ] No operation buttons inside Que
+- [x] "Ask Que" trigger in the page shell for every role including visitors — `apps/web/src/que/AskQue.tsx` in `Layout` header tools; panel lazy-loaded (separate precached chunk)
+- [x] Panel/sheet with search, "On this screen", article view, permitted links only — `QuePanel.tsx` (non-modal desktop panel, full-height modal sheet ≤ 40rem), `SafeArticle.tsx`, `routeContext.ts`; links only via the MQ.1 `buildPath`
+- [x] Offline / built-in help / AI badges with text labels; live-region announcements; focus management — text badges ("Built-in help", "Offline", "Help version N"); no AI badge because no AI layer exists (MQ.4); polite debounced result announcements; focus to search on open, to the article heading, back to the button on close
+- [x] No operation buttons inside Que — controls limited to Close, search, article titles, Back to results and Try again (checked by Playwright); Ask Que issues GET requests only. Evidence: `docs/testing/MQ-evidence.md` (MQ.3)
 
 ### MQ.4 Optional AI explanation layer (disabled by default)
 

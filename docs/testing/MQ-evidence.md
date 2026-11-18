@@ -478,3 +478,172 @@ does not authorize disabling the security audit or ignoring any other vulnerabil
 | Same with an unreachable registry                                 | BLOCKED (`pnpm reported an error (ECONNREFUSED)`), exit 1                                                                                                                                                                                                                                                                    |
 | `pnpm audit --prod --audit-level high`                            | No known vulnerabilities found                                                                                                                                                                                                                                                                                               |
 | Regression (`pnpm test`, format, lint, typecheck, build)          | pass (api 137 including the gate tests; all other packages unchanged)                                                                                                                                                                                                                                                        |
+
+## MQ.3 Accessible Ask Que interface (2026-11-18)
+
+**Branch:** `feature/mq3-accessible-que-interface`, from `staging` at `c59cadc` (PR #11 merged;
+`staging` CI and Database Validation green on that commit).
+**Scope:** MQ.3 only. No AI layer (MQ.4), no new articles (MQ.5), no API, contract, role-model,
+offline-security or queue-state change. No migration, no dependency, no provider, no spending.
+
+### What was built
+
+| Part                | Where                                                                                                                     |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Entry point         | `apps/web/src/que/AskQue.tsx`: "Ask Que" button in the shared header (`Layout`), on every screen for every role           |
+| Panel and sheet     | `apps/web/src/que/QuePanel.tsx`: native `<dialog>`; non-modal panel on desktop, full-height modal sheet at ≤ 40rem        |
+| Screen context      | `apps/web/src/que/routeContext.ts` (registry patterns via `matchPath`); `screenHint.ts` (facility of the queue console)   |
+| Data                | `apps/web/src/que/useQueKnowledge.ts`: reads the MQ.2 public bundle, capability manifest and restricted cache             |
+| Article rendering   | `apps/web/src/que/SafeArticle.tsx`: Safe Markdown → React elements; links only where permitted                            |
+| Change notification | `QueHelpClient.subscribe` (additive): an open panel updates when revalidation finishes or a purge happens                 |
+| Offline readiness   | One-off idle warm-up (2 s after load, online only) of `GET /que/capabilities` and `GET /que/kb/public` into the SW caches |
+| Styles              | `apps/web/src/styles.css` (`.que-*`), high-contrast variant, no animation                                                 |
+
+**Behaviour.**
+
+- **Opening.** The panel opens from the header button, which has `aria-haspopup="dialog"` and
+  `aria-expanded`. Focus moves to the labelled search field.
+- **Desktop.** The panel is non-modal and anchored bottom-right, clear of the header. The page
+  stays usable, and the button toggles the panel closed.
+- **Mobile.** A modal sheet keeps Tab inside it.
+- **Closing.** Escape or Close closes it and focus returns to the button.
+- **Results.**
+  - With no question, "On this screen" shows the screen's default articles the user may read.
+  - A question shows "Results" (the MQ.1 deterministic ranking).
+  - Opening an article focuses its heading; "Back to results" returns to the search.
+  - "Go to" lists permitted screens. When a screen needs another role, the required role is
+    named and no link is shown.
+- **Status shown as text.**
+  - "Built-in help", or "Built-in help (saved with this app)" when the server copy is
+    unavailable.
+  - "Offline", with a note that setup-dependent features are described as last checked (D1).
+  - "Help version N".
+  - For staff: "Includes staff help for your roles." / "Checking your staff help…" / "Staff help
+    … could not be confirmed".
+- **States.** Loading; failure with "Try again"; empty results ("No help article matched …
+  ask a member of staff"); and a plain message if the panel code itself cannot load.
+- **Announcements.** One polite live region in the panel announces result counts once typing
+  pauses (500 ms).
+- **Read-only.** The only controls are Close, search, article titles, Back to results and Try
+  again. Enter in the search sends nothing, and every Ask Que request is a GET.
+
+**Architecture and security.**
+
+- **Authorization.** All screen and link decisions use the MQ.1 functions (`answer`, `buildPath`)
+  with the session's server-derived role grants. There is no new permission logic.
+- **Restricted help.** Shown only when `queHelp.restrictedHelp` reports `valid`, so MQ.2's
+  fingerprint, expiry and invalidation rules apply unchanged.
+- **Facility hint.** The queue console reports its facility only for its own path. It affects
+  which links are offered, never what the API allows.
+- **Placeholder route.** `/supervisor/*` resolves to no screen and is never linked.
+- **No AI.** There is no AI badge, because no AI layer exists (MQ.4).
+
+### Verification
+
+| Area                                  | Evidence                                                                                                                                                                                                                                                                |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Desktop and mobile presentation       | Playwright `@responsive` on all 4 projects: panel at 1280/1440 px, sheet at 320/375 px; axe WCAG 2.x A/AA clean with the panel open; no horizontal overflow                                                                                                             |
+| Entry-point discoverability           | Button visible on `/`, `/recover`, the join page and `/login`; site-header layout test passes with the new button (no overlap or clipping, 44 px targets, focus order)                                                                                                  |
+| Route-context synchronization         | Unit: every registry path maps to its RouteId, parameters extracted, longest-prefix fallback, `/supervisor` → none. Browser: navigating from the panel updates "On this screen"                                                                                         |
+| Deterministic retrieval and rendering | Browser: defaults on `/recover`, search results, article view with focused heading and permitted body link. Unit: headings, lists, emphasis; HTML and scripts stay inert text                                                                                           |
+| Authorized vs unauthorized navigation | Counter: console linked, connectivity not linked and the required roles named; supervisor: connectivity linked and navigates; auditor: no staff-assisted procedure; visitor: public only, never the verification questions (D4)                                         |
+| Offline and reconnect                 | Staff: offline reload keeps public and cached staff help with an "Offline" badge, and the badge clears after reconnecting. Visitor who never opened Que: help offline thanks to the warm-up. No manifest ever fetched: capability-dependent help withheld (fail closed) |
+| Sign-out, 401, role change            | Sign-out → public help only; deactivation (401) → public help only; role grant → staff procedure appears after the next confirmed session; an open panel updates from "Checking…" to staff help without reopening                                                       |
+| Keyboard and screen reader            | Enter opens, focus to search, Escape closes and focus returns; sheet keeps Tab and Shift+Tab inside; live-region text for results and no results                                                                                                                        |
+| Loading, empty, failure               | Failure with both copies blocked → "could not be loaded" and "Try again" recovers; built-in copy used when the server copy fails; empty results message                                                                                                                 |
+| Capability messaging (D1)             | A switched-off capability: its article is withheld, "Staff-assisted ticket recovery: not set up here."; manifest unavailable (503): capability-dependent help withheld, "not available here"                                                                            |
+| Read-only                             | Allow-list of panel controls; no submit, select or textarea; Ask Que network requests are GET only                                                                                                                                                                      |
+
+**Mutation checks** (each change made a test fail, then was reverted):
+
+- links rendered without the permission check (2 unit);
+- `/` allowed as a prefix match (1 unit);
+- no Escape on the desktop panel (1 Playwright);
+- no warm-up (1 Playwright);
+- focus not moved to search on open (1 Playwright);
+- sheet mode never used on phones (2 Playwright, mobile-320);
+- no subscription to help-cache changes. This first **survived**, which showed a coverage gap;
+  the new "open panel follows revalidation" test now kills it.
+
+One redundant guard survived: removing the manual focus return on close. Native `<dialog>`
+already restores focus to the previously focused element, and the explicit call is kept for the
+error-boundary path.
+
+### Gate results (local, 2026-11-18)
+
+| Gate                                                             | Result                                                                                                                                                                                                                                |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build` | pass                                                                                                                                                                                                                                  |
+| `pnpm test`                                                      | contracts 179, assist 118, api 137, web 168, domain 109, continuity 64, channels 33, worker 12, ui 6                                                                                                                                  |
+| `pnpm test:db`                                                   | api 635, worker 63                                                                                                                                                                                                                    |
+| Playwright (4 projects)                                          | 273 passed, 7 skipped at first; **276 passed, 7 skipped after the checkpoint review** (5 pre-existing conditional skips; 2 intended: the phone-only sheet test on the two desktop projects); `que-ui.spec.ts` also passed 3× repeated |
+| Security gates                                                   | `pnpm audit --prod --audit-level high` clean; `node infra/scripts/audit-gate.js` PASS (only the approved GHSA-fc5q-39xc-vjpf exception; unchanged, still unresolved); policy tests 42 passed                                          |
+
+New tests: web unit 9 (`routeContext.test.ts`, `SafeArticle.test.tsx`, help-client
+notification); Playwright 19 test definitions in `que-ui.spec.ts` at first (25 runs across the 4 projects: 23 passed, 2 intended skips), 22 after the checkpoint review (see below).
+
+**Bundle:** main chunk 185.72 → 187.17 kB gzip (+1.45 kB, including the checkpoint fix). The panel is a separate lazy chunk
+(7.69 kB gzip), precached by the service worker so it opens offline.
+
+### Deviations and notes (for review; no architectural change)
+
+- **Existing header test updated.** `ui-layout.spec.ts` lists the exact header controls; its
+  expected count and keyboard order now include "Ask Que", as they did for "Display and alerts"
+  in M5.2. Every layout assertion (no overlap, no clipping, 44 px targets, rows, no horizontal
+  scroll) applies to the new button and passes. Nothing was weakened.
+- **Offline warm-up.** Design §11.5 expects the manifest snapshot to be available offline; MQ.2
+  dropped the build-time snapshot because availability is deployment-specific (D1). The panel
+  therefore fetches the two public Que GETs once per load while online. Without it, a visitor who
+  never opened Que would get no capability-dependent help offline (fail closed).
+- **Desktop panel position.** Anchored bottom-right below the header (an early top-right version
+  covered the header controls; found and fixed through the non-modal test).
+- **Notices.** Capability and role notices come from the MQ.1 answer text and are shown as a
+  list; the `QueAnswer` schema is unchanged.
+- **AI badge.** Not shown: the deterministic build has no AI answers to label. MQ.4 adds the
+  "AI-generated" label only if an approved provider is ever enabled.
+- **Queue-scoped links.** Links from the queue console use the facility the console loaded. The
+  audit screen URL has no facility, so links to facility screens are not offered there (fail
+  closed).
+- **Help-client change notification** is a small additive API on the MQ.2 client; its rules are
+  unchanged.
+
+### Checkpoint review (2026-11-18): focus verification and a defect fix
+
+| Requirement                                       | Evidence                                                                                                                             |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Focus enters the search field on open             | `@responsive` presentation test (all 4 projects); keyboard-only test                                                                 |
+| Focus returns to the button after Close or Escape | Escape: presentation test (all projects) and keyboard-only test; Close: mobile sheet test; desktop toggle: non-modal test            |
+| Focus after a failed panel load, and recovery     | **New test** "a failed panel load returns focus to the button, and the next open recovers"                                           |
+| Mobile focus containment still allows dismissal   | Sheet test: Tab/Shift+Tab stay inside; Close and Escape dismiss and return focus                                                     |
+| Desktop panel does not block page controls        | **New test**: with the panel open, Sign out is visible, not covered (element at its centre is the button), focusable and works       |
+| Trigger discoverable at supported widths          | Presentation test on `/`, `/recover`, the join page and `/login` at 320, 375, 1280 and 1440 px; header layout test                   |
+| Keyboard-only operation                           | **New test**: Enter opens, type, Tab to a result, Enter opens the article (heading focused), Tab to "Back to results", Enter, Escape |
+
+**Defect found and fixed.** After one failed load of the lazy panel chunk (for example offline
+before the chunk is cached), the panel could never open again in that page. `React.lazy` keeps
+the rejected import, so every later open showed the error again. The fix creates a fresh lazy
+component after a failure (`AskQue.tsx`: `makePanel`), so the next open retries the import. The
+new recovery test fails without the fix and passes with it (3× repeated).
+
+### Deferred obligations (recorded at the MQ.3 checkpoint)
+
+- **MQ.5:** the full M1–M5 help-article inventory (design §11.10, §11.10a) and the
+  article-existence checks (every registry default, related route and body link resolves).
+  Until then most screens show "No help is listed for this screen yet".
+- **MQ.4:** optional; the AI layer stays disabled; no provider is selected or integrated; no
+  AI endpoint, badge or answer exists.
+- **M7:** the existing visitor-bundle optimization (route splitting; 187.17 kB gzip today
+  against the 100 kB target) remains M7 work. MQ.3 kept the panel in its own lazy chunk.
+- **Final acceptance (Set 2, after M7):** manual screen-reader passes (VoiceOver on iOS,
+  TalkBack or NVDA) and real-device checks of Ask Que, with the other deferred M5 manual checks.
+- **Security:** the temporary picomatch exception (GHSA-fc5q-39xc-vjpf) remains **unresolved**
+  and expires on 2026-12-15; the audit gate fails from then on, or earlier if a fix is published.
+
+### Remaining limitations
+
+- Content is still the four MQ.2 delivery articles; MQ.5 supplies the inventory, after which
+  most screens get "On this screen" help.
+- A visitor whose first-ever visit is offline has no manifest and therefore no
+  capability-dependent help until the next online load (fail closed by design).
+- Manual screen-reader passes (VoiceOver, TalkBack/NVDA) are not run here; they belong to the
+  deferred Set 2 final acceptance.
