@@ -396,7 +396,8 @@ test.describe('@responsive site header', () => {
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       const vw = page.viewportSize()?.width ?? 0;
       const items = await headerItems(page);
-      expect(items.length).toBe(signedIn ? 6 : 4); // M5.2 adds "Display and alerts"
+      // M5.2 adds "Display and alerts"; MQ.3 adds "Ask Que" (same checks apply to both)
+      expect(items.length).toBe(signedIn ? 7 : 5);
 
       for (const it of items) {
         expect(it.x, `${it.name} not clipped left`).toBeGreaterThanOrEqual(0);
@@ -443,8 +444,15 @@ test.describe('@responsive site header', () => {
       await page.keyboard.press('Tab');
       await expect(page.getByRole('link', { name: 'Skip to main content' })).toBeFocused();
       const expected = signedIn
-        ? ['QueueBridge', 'Staff console', 'Administration', 'Display and alerts', 'Sign out']
-        : ['QueueBridge', 'Sign in', 'Create organization', 'Display and alerts'];
+        ? [
+            'QueueBridge',
+            'Staff console',
+            'Administration',
+            'Ask Que',
+            'Display and alerts',
+            'Sign out',
+          ]
+        : ['QueueBridge', 'Sign in', 'Create organization', 'Ask Que', 'Display and alerts'];
       for (const name of expected) {
         await page.keyboard.press('Tab');
         const focused = await page.evaluate(() =>

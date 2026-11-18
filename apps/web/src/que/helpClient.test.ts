@@ -196,6 +196,29 @@ describe('QueHelpClient (design §11.5.3 invalidation)', () => {
   });
 });
 
+describe('change notification (MQ.3 views)', () => {
+  it('notifies on pending, update, failure and purge; unsubscribe stops it; a broken view is ignored', async () => {
+    const { client, next } = setup();
+    let n = 0;
+    const off = client.subscribe(() => {
+      n++;
+    });
+    client.subscribe(() => {
+      throw new Error('broken view');
+    });
+    await client.signedIn(USER, true);
+    expect(n).toBe(2); // pending, then updated
+    next.value = httpError(503);
+    await client.refresh(USER);
+    expect(n).toBe(3);
+    await client.purgeAll();
+    expect(n).toBe(4);
+    off();
+    await client.purgeAll();
+    expect(n).toBe(4);
+  });
+});
+
 describe('D2: the browser never computes the role fingerprint', () => {
   it('no Ask Que browser module hashes anything or derives authorization', () => {
     // Vitest runs with apps/web as the working directory

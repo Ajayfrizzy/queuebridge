@@ -53,6 +53,7 @@ import { StatusHandoverPanel } from '../components/StatusHandoverPanel.js';
 import { useOffline } from '../offline/OfflineProvider.js';
 import { useCachedLoad } from '../offline/useCachedLoad.js';
 import { readClock } from '../offline/clock.js';
+import { useQueFacilityHint } from '../que/screenHint.js';
 
 /** A ticket as the console shows it: server state plus this device's unsent changes. */
 type Ticket = StaffQueue['tickets'][number] & {
@@ -156,6 +157,8 @@ export function StaffConsole(): ReactElement {
   const [offlineCapture, setOfflineCapture] = useState<{ ref: string } | null>(null);
   const { ensureDevice, refreshSnapshot, loadCached, authorityFor } = offline;
   const facilityId = q?.facility_id;
+  // Ask Que (MQ.3): this screen's facility, so help can link to the facility's other screens
+  useQueFacilityHint(facilityId);
   const revision = q?.revision;
   const reachable = offline.reachable;
 

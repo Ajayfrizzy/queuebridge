@@ -36,6 +36,26 @@ export class QueHelpClient {
   private pendingFor: string | null = null;
   /** Bumped on every purge so a refresh still in flight cannot re-populate the cache. */
   private generation = 0;
+  /** MQ.3: views (the Ask Que panel) re-read restricted help when it may have changed. */
+  private readonly listeners = new Set<() => void>();
+
+  /** Notify when stored help or the pending state changes. Returns an unsubscribe function. */
+  public subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return (): void => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  private notify(): void {
+    for (const l of [...this.listeners]) {
+      try {
+        l();
+      } catch {
+        // a broken view never breaks the cache logic
+      }
+    }
+  }
 
   public constructor(
     private readonly store: RestrictedHelpStore,
@@ -52,6 +72,7 @@ export class QueHelpClient {
     await this.store.deleteAllExcept(userId);
     if (!online) return 'offline';
     this.pendingFor = userId;
+    this.notify();
     return this.refresh(userId);
   }
 
@@ -60,6 +81,7 @@ export class QueHelpClient {
     this.generation++;
     this.pendingFor = null;
     await this.store.deleteAll();
+    this.notify();
   }
 
   private async fetchParsed(known: string | undefined): Promise<RestrictedKbResponse> {
@@ -80,6 +102,7 @@ export class QueHelpClient {
       // Unreachable, server error or malformed response: nothing was revalidated. The cached
       // copy (if any) keeps following the offline expiry rules.
       if (this.pendingFor === userId) this.pendingFor = null;
+      this.notify();
       return 'unavailable';
     }
     if (gen !== this.generation) return 'superseded';
@@ -98,6 +121,7 @@ export class QueHelpClient {
           return 'signed_out';
         }
         if (this.pendingFor === userId) this.pendingFor = null;
+        this.notify();
         return 'unavailable';
       }
       record = mergeResponse(null, response, this.clock.now());
@@ -107,6 +131,7 @@ export class QueHelpClient {
     if (gen !== this.generation) return 'superseded';
     await this.store.put(record);
     if (this.pendingFor === userId) this.pendingFor = null;
+    this.notify();
     return 'updated';
   }
 

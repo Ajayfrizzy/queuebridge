@@ -8,6 +8,7 @@ import { DisplaySettingsButton } from './DisplaySettings.js';
 import { HealthAlertBanner } from './HealthAlertBanner.js';
 import { PushHandoff } from './PushHandoff.js';
 import { useRouteFocus } from '../lib/routeFocus.js';
+import { AskQueButton } from '../que/AskQue.js';
 
 /** Page shell: skip link, banner, navigation, and route-change focus management. */
 export function Layout(): ReactElement {
@@ -92,6 +93,7 @@ export function Layout(): ReactElement {
             </ul>
           </nav>
           <div className="header-tools">
+            <AskQueButton />
             <DisplaySettingsButton />
           </div>
           {user ? (
