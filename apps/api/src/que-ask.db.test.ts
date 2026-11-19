@@ -533,3 +533,61 @@ describe('redaction, daily cap and rate limits', () => {
     }
   });
 });
+
+describe('Group 13.9: logs never contain question or answer text (MQ exit check)', () => {
+  it('a real /que/ask round trip logs only metadata, with [SANDBOX] marked', async () => {
+    const { Writable } = await import('node:stream');
+    const { buildApp } = await import('./app.js');
+    const { createDb } = await import('./db.js');
+    const { testEnv } = await import('./testing/harness.js');
+    const lines: string[] = [];
+    const logStream = new Writable({
+      write(chunk: Buffer, _enc, cb): void {
+        lines.push(chunk.toString());
+        cb();
+      },
+    });
+    const env = testEnv({ ...SANDBOX, LOG_LEVEL: 'debug' });
+    const db = createDb(env);
+    const app = await buildApp(env, { db, logStream });
+    await app.ready();
+    const logged: TestApp = {
+      app,
+      db,
+      env,
+      close: async (): Promise<void> => {
+        await app.close();
+        await db.end({ timeout: 5 });
+      },
+    };
+    try {
+      const o = await signupOrg(app, 'Log Que Org');
+      const f = await createFacility(o, 'Log Que Clinic');
+      expect(await optIn(logged, o.admin, f.id)).toBe(200);
+      const s = await createStaff(app, o, f.id, 'staff_counter');
+      const asked: string[] = [];
+      for (const q of [
+        'zebrafinch what do the sync states mean',
+        'quokkamarker sandbox:inject sync states',
+        'wombatmarker recover my ticket',
+      ]) {
+        const r = await ask(logged, s.client, q, f.id);
+        expect(r.status).toBe(200);
+        asked.push(r.body.text);
+      }
+      const all = lines.join('\n');
+      expect(all).toMatch(/que ask/);
+      expect(all).toContain('[SANDBOX] que ask');
+      for (const marker of ['zebrafinch', 'quokkamarker', 'wombatmarker', 'sync states mean']) {
+        expect(all).not.toContain(marker);
+      }
+      for (const text of asked) {
+        for (const line of text.split('\n').filter((l) => l.length > 20)) {
+          expect(all).not.toContain(line);
+        }
+      }
+    } finally {
+      await logged.close();
+    }
+  });
+});

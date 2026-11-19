@@ -1,5 +1,5 @@
 {
-  "kbVersion": 2,
+  "kbVersion": 3,
   "articles": {
     "staff.alerts.status": {
       "version": 1,
@@ -46,8 +46,8 @@
       "hash": "86ad52d5afd22d12981fb40524f0d1428581960bc96463e45954269cb37754eb"
     },
     "admin.services": {
-      "version": 1,
-      "hash": "7286eeaa57e3a6e7885bfb86dd4aa9684b1af121f7b106c03b9d60525281e29e"
+      "version": 2,
+      "hash": "48cb0525e371008a37e663851ed573847e1dece6a04bdcd7272e951d692a57b0"
     },
     "admin.staff.invite": {
       "version": 1,
@@ -110,8 +110,8 @@
       "hash": "f341b5e65647c410202d8af05e7b36fa0df7e6b33eb23f313a8b9fa3db5dadce"
     },
     "org.signup": {
-      "version": 1,
-      "hash": "b09ea899525f1cb29dbd19224cc24879fe631a5d27a8d484ea31e51853641306"
+      "version": 2,
+      "hash": "02654d8ba9c41c09ef4227da315a0b459151b72c42effb3e4dd0968ef2dd78ed"
     },
     "staff.invite.accept": {
       "version": 1,
