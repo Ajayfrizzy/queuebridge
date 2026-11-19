@@ -8,7 +8,13 @@ import {
   type QueFallbackReason,
   type RouteId,
 } from '@queuebridge/contracts';
-import { SCREEN_NAMES, answer, buildPath, type NavigationContext } from '@queuebridge/assist';
+import {
+  NO_MATCH,
+  SCREEN_NAMES,
+  answer,
+  buildPath,
+  type NavigationContext,
+} from '@queuebridge/assist';
 import { useAuth } from '../auth.js';
 import { api } from '../lib/api.js';
 import { useOffline } from '../offline/OfflineProvider.js';
@@ -168,6 +174,8 @@ export function QuePanel({
     .filter((a): a is KbArticle => a !== undefined);
   const [lead, ...notices] = result.text.split('\n');
   const asked = query.trim().length > 0;
+  // Screen defaults shown after a failed search are not matches: announce them as no match
+  const matched = asked && cited.length > 0 && !result.text.startsWith(NO_MATCH);
 
   // An open article is closed when it is no longer readable (sign-out, role change, expiry)
   useEffect(() => {
@@ -179,13 +187,13 @@ export function QuePanel({
     if (k.publicState !== 'ready' || !asked) return undefined;
     const t = setTimeout(() => {
       setLive(
-        cited.length === 0
+        !matched
           ? 'No help article matched. Try other words, or ask a member of staff.'
           : `${cited.length} help ${cited.length === 1 ? 'article' : 'articles'} found.`,
       );
     }, SEARCH_ANNOUNCE_DELAY_MS);
     return (): void => clearTimeout(t);
-  }, [query, cited.length, asked, k.publicState]);
+  }, [query, cited.length, matched, asked, k.publicState]);
 
   useEffect(() => {
     if (openArticle) articleHeadingRef.current?.focus();

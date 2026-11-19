@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   PublicKbResponseSchema,
   RestrictedKbResponseSchema,
+  type Audience,
   type RestrictedKbResponse,
 } from '@queuebridge/contracts';
 import {
@@ -14,12 +15,33 @@ import {
   type TestOrg,
 } from './testing/harness.js';
 import { roleDigest } from './auth/role-digest.js';
+import { loadKnowledgeBase } from './que/kb.js';
 
 /**
  * MQ.2 — knowledge-base delivery (design §11.5, decision D2) against real PostgreSQL sessions
- * and role grants. The articles are the committed initial delivery content of
- * `packages/assist/knowledge` (2 public, 2 restricted).
+ * and role grants. The articles are the committed content of `packages/assist/knowledge`
+ * (MQ.5 inventory). Expected sets are derived from each article's own audience metadata, so
+ * "exactly its articles" stays exact as content grows; the security-relevant articles are also
+ * named explicitly.
  */
+const COMPILED = loadKnowledgeBase();
+const SOURCE = [
+  ...new Map(
+    Object.values(COMPILED.bundles)
+      .flatMap((b) => b.articles)
+      .map((a) => [a.id, a] as const),
+  ).values(),
+];
+/** Restricted article ids for audiences, from article metadata (never public ones). */
+const expectedFor = (audiences: readonly Audience[]): string[] =>
+  SOURCE.filter(
+    (a) => !a.audiences.includes('visitor') && a.audiences.some((x) => audiences.includes(x)),
+  )
+    .map((a) => a.id)
+    .sort();
+const PUBLIC_IDS = SOURCE.filter((a) => a.audiences.includes('visitor'))
+  .map((a) => a.id)
+  .sort();
 
 let t: TestApp;
 let shortTtl: TestApp;
@@ -54,15 +76,17 @@ describe('GET /api/v1/que/kb/public (anonymous)', () => {
     expect(r.status).toBe(200);
     const b = PublicKbResponseSchema.parse(r.body);
     expect(b.audience).toBe('visitor');
-    expect(b.articles.map((a) => a.id).sort()).toEqual([
-      'visitor.recovery.how',
-      'visitor.recovery.staff',
-    ]);
+    expect(b.articles.map((a) => a.id).sort()).toEqual(PUBLIC_IDS);
+    expect(PUBLIC_IDS).toEqual(
+      expect.arrayContaining(['visitor.recovery.how', 'visitor.recovery.staff']),
+    );
     for (const a of b.articles) expect(a.audiences).toContain('visitor');
     const raw = JSON.stringify(r.body).toLowerCase();
     // D4: the staff verification procedure is not public
     expect(raw).not.toContain('correct service');
-    expect(raw).not.toContain('staff.recovery.assist');
+    for (const id of ['staff.recovery.assist', 'staff.recovery.approve', 'staff.audit.trail']) {
+      expect(raw).not.toContain(id);
+    }
   });
 
   it('is identical for a signed-in staff user (no session-dependent content)', async () => {
@@ -81,24 +105,50 @@ describe('GET /api/v1/que/kb (authenticated, role-filtered)', () => {
   });
 
   it.each([
-    ['staff_reception', ['reception'], ['staff.recovery.assist', 'staff.sync.states']],
-    ['staff_counter', ['counter'], ['staff.recovery.assist', 'staff.sync.states']],
-    ['supervisor', ['supervisor'], ['staff.recovery.assist', 'staff.sync.states']],
-    ['facility_admin', ['facility_admin'], ['staff.recovery.assist', 'staff.sync.states']],
+    [
+      'staff_reception',
+      ['reception'],
+      ['staff.recovery.assist', 'staff.sync.states'],
+      ['staff.audit.trail', 'staff.recovery.activity'],
+    ],
+    [
+      'staff_counter',
+      ['counter'],
+      ['staff.recovery.assist', 'staff.sync.states'],
+      ['staff.audit.trail', 'staff.recovery.approve'],
+    ],
+    [
+      'supervisor',
+      ['supervisor'],
+      ['staff.recovery.assist', 'staff.recovery.approve', 'staff.audit.trail'],
+      ['admin.staff.invite'],
+    ],
+    ['facility_admin', ['facility_admin'], ['staff.recovery.assist', 'admin.staff.invite'], []],
     // Auditors never receive the staff-assisted recovery procedure
-    ['auditor', ['auditor'], ['staff.sync.states']],
-  ])('%s receives exactly its restricted articles', async (role, audiences, expected) => {
-    const s = await createStaff(t.app, org, facility.id, role);
-    const r = await kb(s.client);
-    expect(r.status).toBe(200);
-    const b = RestrictedKbResponseSchema.parse(r.body);
-    expect(b.userId).toBe(s.userId);
-    expect(b.audiences).toEqual(audiences);
-    expect(ids(b)).toEqual(expected);
-    expect(b.index.map((x) => x.id)).toEqual(expected);
-    // Restricted responses never repeat public articles
-    for (const a of b.articles) expect(a.audiences).not.toContain('visitor');
-  });
+    [
+      'auditor',
+      ['auditor'],
+      ['staff.sync.states', 'staff.audit.trail'],
+      ['staff.recovery.assist', 'staff.recovery.approve', 'staff.walkin'],
+    ],
+  ] as [string, Audience[], string[], string[]][])(
+    '%s receives exactly its restricted articles',
+    async (role, audiences, present, absent) => {
+      const expected = expectedFor(audiences);
+      expect(expected).toEqual(expect.arrayContaining(present));
+      for (const id of absent) expect(expected).not.toContain(id);
+      const s = await createStaff(t.app, org, facility.id, role);
+      const r = await kb(s.client);
+      expect(r.status).toBe(200);
+      const b = RestrictedKbResponseSchema.parse(r.body);
+      expect(b.userId).toBe(s.userId);
+      expect(b.audiences).toEqual(audiences);
+      expect(ids(b)).toEqual(expected);
+      expect(b.index.map((x) => x.id)).toEqual(expected);
+      // Restricted responses never repeat public articles
+      for (const a of b.articles) expect(a.audiences).not.toContain('visitor');
+    },
+  );
 
   it('org_admin receives every staff audience', async () => {
     const r = await kb(org.admin);
@@ -111,7 +161,12 @@ describe('GET /api/v1/que/kb (authenticated, role-filtered)', () => {
       'org_admin',
       'auditor',
     ]);
-    expect(ids(r.body)).toEqual(['staff.recovery.assist', 'staff.sync.states']);
+    expect(ids(r.body)).toEqual(
+      expectedFor(['reception', 'counter', 'supervisor', 'facility_admin', 'org_admin', 'auditor']),
+    );
+    expect(ids(r.body)).toEqual(
+      expect.arrayContaining(['staff.recovery.assist', 'staff.audit.trail']),
+    );
   });
 
   it('contains no tenant data: no names, emails, slugs or facility ids', async () => {
@@ -166,7 +221,8 @@ describe('D2: server-issued role fingerprint', () => {
   it('changes when a role is granted or revoked; revoking every role empties the bundle', async () => {
     const s = await createStaff(t.app, org, facility.id, 'auditor');
     const before = (await kb(s.client)).body;
-    expect(ids(before)).toEqual(['staff.sync.states']);
+    expect(ids(before)).toEqual(expectedFor(['auditor']));
+    expect(ids(before)).not.toContain('staff.recovery.assist');
     const grant = await org.admin.post(
       `/api/v1/facilities/${facility.id}/staff/${s.userId}/roles`,
       {
@@ -176,7 +232,8 @@ describe('D2: server-issued role fingerprint', () => {
     expect([200, 201]).toContain(grant.status);
     const granted = (await kb(s.client)).body;
     expect(granted.roleDigest).not.toBe(before.roleDigest);
-    expect(ids(granted)).toEqual(['staff.recovery.assist', 'staff.sync.states']);
+    expect(ids(granted)).toEqual(expectedFor(['reception', 'auditor']));
+    expect(ids(granted)).toContain('staff.recovery.assist');
     for (const role of ['staff_reception', 'auditor']) {
       const r = await org.admin.del(
         `/api/v1/facilities/${facility.id}/staff/${s.userId}/roles/${role}`,
@@ -240,8 +297,11 @@ describe('incremental update by article version', () => {
     expect(delta.articles).toEqual([]);
     expect(delta.index).toEqual(full.index);
     expect(delta.roleDigest).toBe(full.roleDigest);
-    // An outdated version is resent
-    const stale = (await kb(s.client, '?known=staff.sync.states:999,staff.recovery.assist:1')).body;
+    // An outdated version is resent; everything else the client holds is not
+    const staleKnown = full.index
+      .map((x) => `${x.id}:${x.id === 'staff.sync.states' ? 999 : x.version}`)
+      .join(',');
+    const stale = (await kb(s.client, `?known=${encodeURIComponent(staleKnown)}`)).body;
     expect(ids(stale)).toEqual(['staff.sync.states']);
   });
 

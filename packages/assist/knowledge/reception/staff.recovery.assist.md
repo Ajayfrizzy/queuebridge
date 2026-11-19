@@ -6,25 +6,31 @@ topics: [recovery, staff_operations]
 requiresCapabilities: [staff_assisted_recovery]
 relatedRoutes: [staff.console]
 availableSince: M5
-version: 1
-lastReviewed: 2026-11-17
-keywords: [recovery, verification, no key, approval, restricted assistance]
-privatePhrases: [correct service, join time within 10 minutes]
+version: 2
+lastReviewed: 2026-11-18
+keywords: [recovery, verification, no key, approval, restricted assistance, lost phone, get ticket back]
+privatePhrases: [correct service, join time within 10 minutes, which service they joined]
 ---
 
 # Before you show anything
 
-Ask the visitor first. Do not show any detail of the ticket before they answer.
+Ask the visitor which service they joined and roughly when. Do not tell them, and do not show any detail of the ticket first.
 
-## Verification
+## In the console
 
-- They name the correct service.
-- They give a join time within 10 minutes of the recorded one.
-
-Knowing the ticket code, or being at the desk, does not prove who someone is.
+1. Under **Help a visitor get their ticket back**, choose the ticket and a reason.
+2. Tick that you asked before showing anything.
+3. Tick the second box only if they named the correct service and a join time within 10 minutes, and it matches.
+4. Press **Start recovery**.
 
 ## Outcomes
 
 - **Not confirmed:** give restricted assistance only. No recovery is issued.
 - **Confirmed:** a supervisor or facility administrator other than you must approve the request.
 - The visitor scans the single-use code on their own phone within 10 minutes. Never read out, copy or photograph a key or code.
+
+Knowing the ticket code, or being at the desk, does not prove who someone is. If the service does not allow staff-assisted recovery, offer a new ticket.
+
+## Who can do this
+
+Reception, Counter operator, Supervisor, Facility administrator, Organization administrator.

@@ -487,10 +487,10 @@ Security follow-up from M5.1 (separate change, recorded in `M5-evidence.md`, "M5
 
 ### MQ.5 Knowledge-base content (seed)
 
-- [ ] Articles for live M1–M5 behaviour per design §11.10 (visitor, reception, counter, supervisor, admin, auditor, connectivity); M5 articles and capability entries per design §11.10a
-- [ ] Coverage check: every essential workflow step has a deterministic article and route (no AI-only answers)
-- [ ] Non-live capabilities (e.g. SMS/USSD before M6) documented only as `sandbox`/`planned`
-- [ ] Content review checklist: accurate, no promised times, no fabricated capabilities, plain language
+- [x] Articles for live M1–M5 behaviour per design §11.10 (visitor, reception, counter, supervisor, admin, auditor, connectivity); M5 articles and capability entries per design §11.10a — **MQ.5 (2026-11-18):** 44 articles in `packages/assist/knowledge` (18 public, 26 restricted; knowledge-base version 2), written from the implemented screens, API and state machine; all 20 §11.10a ids authored; the 4 MQ.2 articles kept their ids (3 corrected, 1 re-reviewed); registry screen defaults extended; capability entries unchanged (the MQ.1 manifest already matches §11.10a). Inventory: `knowledge/README.md`
+- [x] Coverage check: every essential workflow step has a deterministic article and route (no AI-only answers) — `packages/assist/src/kb-content.test.ts`: the article-existence check deferred from MQ.1 (every registry default exists and is visible on its screen; every body link is a related route), a 43-row coverage matrix (workflow → role → screen → plain question → article in the top 3, also from the public bundle alone), and screen defaults for every role on every screen; Playwright offline checks in `apps/web/e2e/que-ui.spec.ts` (MQ.5)
+- [x] Non-live capabilities (e.g. SMS/USSD before M6) documented only as `sandbox`/`planned` — SMS and USSD articles are gated on the planned capabilities and never shown (the planned notice and the reliable fallback are shown instead); SMS, USSD and push words are allowed only in articles gated on those capabilities; push help is withheld without VAPID; `apps/api/src/que-kb-content.test.ts` checks this against the manifest the server builds
+- [x] Content review checklist: accurate, no promised times, no fabricated capabilities, plain language — checklist and review record in `knowledge/README.md`; automated parts in `kb-content.test.ts` (truthfulness lint) and `que-kb-content.test.ts` (role claims = state machine and permission map). Evidence: `docs/testing/MQ-evidence.md` (MQ.5)
 
 ### MQ.6 Incremental KB maintenance rule (applies to M6, M7 and later)
 
@@ -565,6 +565,7 @@ Security follow-up from M5.1 (separate change, recorded in `M5-evidence.md`, "M5
 - [ ] Redesign of every role's screens on the shared tokens/components: visitor (join, ticket, recovery, alerts), reception, counter console, supervisor (fairness, audit, connectivity), administration, public board, Ask Que panel
 - [ ] No horizontal overflow at 320, 375, 768, 1280 and 1440 px; existing responsive/overflow/axe Playwright checks pass unchanged in intent
 - [ ] Statuses remain text + icon (never colour alone); high-contrast and large-text modes verified on the redesigned screens
+- [ ] MQ.5 UI findings U1–U5 corrected in the redesigned screens (deferred from MQ.5; none is an authorization or integrity defect; details and the expected behaviour in `docs/testing/MQ-evidence.md`, MQ.5 "Defects found"): U1 grace-window hint counts from the missed time; U2 "Call out of order" shown only to supervisors and organization admins; U3 transfer note states the actual placement; U4 audit trail labels the automatic no-show actor and reason; U5 "Put on hold" for waiting tickets, or a recorded decision not to offer it. Affected Ask Que articles updated in the same PR (MQ.6 rule)
 
 ### M7.2 Animated public landing page and onboarding (F15)
 

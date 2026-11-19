@@ -6,23 +6,22 @@ topics: [connectivity]
 requiresCapabilities: []
 relatedRoutes: [staff.console, staff.connectivity]
 availableSince: M3
-version: 1
-lastReviewed: 2026-11-17
-keywords: [sync, offline, pending, committed, needs review, rejected, duplicate]
+version: 2
+lastReviewed: 2026-11-18
+keywords: [sync, offline, pending, committed, synced, local, needs review, rejected, duplicate, unsent]
 ---
 
 # Sync states
 
-- **Local only:** saved on this device and not sent yet.
+- **Local:** saved on this device and not sent yet.
 - **Pending sync:** waiting to be sent to the server.
-- **Committed:** the server confirmed it. Only this state is final.
-- **Duplicate:** the server already had this action, so nothing happened twice.
+- **Synced:** the server confirmed it (committed). Only this is final. An action the server already had also shows as Synced, and nothing happened twice.
 - **Needs review:** the server could not apply it; a supervisor decides.
 - **Rejected:** the server refused it, so it did not happen.
 
 ## Before you go offline
 
-- Register this device while online, on the same web address you will use offline.
-- Offline progress stays provisional until it is committed.
+- Register this device while online, on the same web address you will use offline. Opening a queue console online registers it.
+- Offline progress stays provisional until it is synced.
 
-Supervisors and auditors can see device and sync health in [connectivity and recovery](route:staff.connectivity).
+Supervisors, facility administrators and auditors can see device and sync health in [connectivity and recovery](route:staff.connectivity).

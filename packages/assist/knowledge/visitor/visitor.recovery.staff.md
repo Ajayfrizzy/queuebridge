@@ -6,8 +6,8 @@ topics: [recovery]
 requiresCapabilities: [staff_assisted_recovery]
 relatedRoutes: [visitor.recover]
 availableSince: M5
-version: 1
-lastReviewed: 2026-11-17
+version: 2
+lastReviewed: 2026-11-18
 keywords: [no key, lost key, ask staff, help, recovery]
 ---
 

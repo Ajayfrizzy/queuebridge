@@ -671,8 +671,27 @@ describe('supervisor routing override: call out of order (REQ-F5.5)', () => {
     ).toBe('counter_busy');
     expect(g1).toBeDefined();
   });
+  it('facility administrators cannot route out of order either (403): the console form they see is refused by the API, nothing is recorded', async () => {
+    // MQ.5 finding: the UI shows "Call out of order" to facility admins; the state machine
+    // allows only supervisors (and organization admins). The server must still refuse.
+    const q = await setupQueue(t.app, { counters: 1 });
+    const [, g2] = await join(q, 2);
+    const fa = await createStaff(t.app, q.org, q.fid, 'facility_admin');
+    const before = await t.db<{ n: string }[]>`
+      SELECT count(*)::text AS n FROM queue_events WHERE queue_session_id = ${q.queueId}`;
+    expect((await outOfOrder(fa.client, g2?.id ?? '', q.counterIds[0] ?? '')).status).toBe(403);
+    const after = await t.db<{ n: string }[]>`
+      SELECT count(*)::text AS n FROM queue_events WHERE queue_session_id = ${q.queueId}`;
+    expect(after[0]?.n).toBe(before[0]?.n);
+    const [ticket] = await t.db<
+      { state: string }[]
+    >`SELECT state FROM tickets WHERE id = ${g2?.id ?? ''}`;
+    expect(ticket?.state).toBe('waiting');
+    expect(
+      await t.db`SELECT 1 FROM admin_events WHERE actor_id = ${fa.userId} AND event_type = 'ticket.call_specific.denied'`,
+    ).toHaveLength(1);
+  });
 });
-
 describe('counter-to-counter transfer', () => {
   const move = (
     client: TestClient,
