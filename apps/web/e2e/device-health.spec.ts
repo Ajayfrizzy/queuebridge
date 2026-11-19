@@ -84,9 +84,9 @@ test.describe('@responsive M5.3 device-health dashboard', () => {
           );
           expect(response.status()).toBe(200);
           const body = (await response.json()) as {
-            devices: { id: string; health: string }[];
+            health: { devices: { id: string; health: string }[] };
           };
-          return body.devices.find((d) => d.id === deviceId)?.health;
+          return body.health.devices.find((d) => d.id === deviceId)?.health;
         },
         { message: 'The disconnected counter device becomes stale in the authoritative API' },
       )
