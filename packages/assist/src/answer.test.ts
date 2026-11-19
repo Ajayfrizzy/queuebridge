@@ -8,6 +8,7 @@ import {
 } from '@queuebridge/contracts';
 import {
   ASK_STAFF,
+  NO_MATCH,
   answer,
   audiencesFor,
   buildIndex,
@@ -101,6 +102,16 @@ describe('deterministic answers and fallback', () => {
     expect(r.text).toContain(ASK_STAFF);
   });
 
+  it('NO_MATCH leads exactly the answers whose question matched nothing (the panel announces from it)', () => {
+    const miss = answer('zzqx unrelated', ctx({ routeId: 'visitor.recover' }), BUNDLE);
+    expect(miss.citations.length).toBeGreaterThan(0); // screen defaults are still shown
+    expect(miss.text.startsWith(NO_MATCH)).toBe(true);
+    const hit = answer('lost recovery key', ctx({ routeId: 'visitor.recover' }), BUNDLE);
+    expect(hit.citations.length).toBeGreaterThan(0);
+    expect(hit.text.startsWith(NO_MATCH)).toBe(false);
+    const empty = answer('  ', ctx({ routeId: 'visitor.recover' }), BUNDLE);
+    expect(empty.text.startsWith(NO_MATCH)).toBe(false);
+  });
   it('an empty question shows help for this screen', () => {
     const r = answer('  ', ctx({ routeId: 'visitor.recover' }), BUNDLE);
     expect(r.citations).toEqual(['visitor.recovery.how', 'visitor.recovery.staff']);

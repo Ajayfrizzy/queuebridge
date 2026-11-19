@@ -6,6 +6,7 @@ import {
   expectNoA11yViolations,
   hasHorizontalOverflow,
 } from './helpers.js';
+import { PUBLIC_TITLES, RESTRICTED_TITLES } from './kb-expected.js';
 import { makeStaff } from './offline-helpers.js';
 
 const CSRF = { 'X-QB-CSRF': '1' };
@@ -259,11 +260,10 @@ test.describe('MQ.3 deterministic help for visitors', () => {
     ]) {
       await search(page).fill(q);
       await expect(panel(page).getByTestId('que-lead')).toBeVisible();
+      // Only public articles: never a staff-only title
       for (const t of await titles(page)) {
-        expect([
-          'Recovering your ticket on another phone',
-          'Getting help from staff without your recovery key',
-        ]).toContain(t);
+        expect(PUBLIC_TITLES).toContain(t);
+        expect(RESTRICTED_TITLES).not.toContain(t);
       }
     }
     expect((await panel(page).innerText()).toLowerCase()).not.toContain('correct service');
@@ -604,5 +604,91 @@ test.describe('MQ.3 offline', () => {
     await search(p).fill('recover key');
     await expect(panel(p).getByTestId('que-notices')).toContainText('not available here');
     await ctx.close();
+  });
+});
+
+test.describe('MQ.5 knowledge-base inventory', () => {
+  test('@pwa visitor questions are answered offline from the precached public help', async ({
+    browser,
+  }) => {
+    const ctx = await browser.newContext({ serviceWorkers: 'allow' });
+    const p = await ctx.newPage();
+    await p.goto('/');
+    await p.evaluate(() => navigator.serviceWorker.ready.then(() => true));
+    await p.reload();
+    await expect
+      .poll(() => p.evaluate(() => navigator.serviceWorker.controller !== null))
+      .toBe(true);
+    await expect
+      .poll(() =>
+        p.evaluate(
+          async () => (await caches.has('que-capabilities')) && (await caches.has('que-public-kb')),
+        ),
+      )
+      .toBe(true);
+    await ctx.setOffline(true);
+    await p.reload();
+    await openQue(p);
+    await expect(panel(p).getByTestId('que-offline')).toHaveText('Offline');
+    for (const [question, title] of [
+      ['how do I get a ticket', 'Joining a queue and following your ticket'],
+      ['how long will I wait', 'How wait estimates work'],
+      ['I missed my turn', 'If you miss your turn'],
+      ['save my recovery key', 'Your recovery key'],
+      ['larger text and high contrast', 'Display and alert settings'],
+      ['turn on sound alert', 'Turn alerts on your ticket page'],
+    ] as const) {
+      await search(p).fill(question);
+      await expect.poll(() => titles(p), { message: question }).toContain(title);
+      for (const t of await titles(p)) expect(RESTRICTED_TITLES).not.toContain(t);
+    }
+    // Not live before M6: never offered, the planned notice and the reliable fallback instead
+    await search(p).fill('text message sms alert');
+    await expect(panel(p).getByTestId('que-notices')).toContainText(
+      'SMS turn alerts: not available yet.',
+    );
+    expect(await titles(p)).not.toContain('Text message alerts');
+    await ctx.close();
+  });
+
+  test('@pwa counter staff find their procedures offline; audit help stays with audit roles', async ({
+    browser,
+    page,
+  }) => {
+    await apiSignup(page.request);
+    const fac = await apiFacility(page.request);
+    const staff = await makeStaff(browser, page.request, fac.id, 'staff_counter', {
+      serviceWorkers: 'allow',
+    });
+    const p = staff.page;
+    await p.goto('/staff');
+    await p.evaluate(() => navigator.serviceWorker.ready.then(() => true));
+    await p.reload();
+    await expect
+      .poll(() => p.evaluate(() => navigator.serviceWorker.controller !== null))
+      .toBe(true);
+    await openQue(p);
+    await expect(panel(p).getByTestId('que-access')).toHaveText(
+      'Includes staff help for your roles.',
+    );
+    await panel(p).getByRole('button', { name: 'Close Ask Que help' }).click();
+    await staff.ctx.setOffline(true);
+    await p.reload();
+    await openQue(p);
+    await expect(panel(p).getByTestId('que-offline')).toHaveText('Offline');
+    for (const [question, title] of [
+      ['call next visitor', 'Calling, serving and completing visitors'],
+      ['visitor without a phone', 'Issuing a walk-in ticket'],
+      ['internet is down, can I still call', 'Working offline: the coordinator device'],
+      ['visitor has no recovery key', 'Helping a visitor who has no recovery key'],
+    ] as const) {
+      await search(p).fill(question);
+      await expect.poll(() => titles(p), { message: question }).toContain(title);
+    }
+    await search(p).fill('verify integrity audit trail');
+    await expect(panel(p).getByTestId('que-lead')).toBeVisible();
+    expect(await titles(p)).not.toContain('The audit trail and integrity check');
+    expect(await titles(p)).not.toContain('Recovery activity in the audit trail');
+    await staff.ctx.close();
   });
 });

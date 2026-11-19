@@ -911,3 +911,238 @@ database and re-runs as a no-op. It is registered in the schema identity guard
   final acceptance after M7.
 - **picomatch (GHSA-fc5q-39xc-vjpf)** remains an approved, unresolved, dev-only exception that
   expires on 2026-12-15T00:00:00Z.
+
+## MQ.5 Knowledge-base content (2026-11-18)
+
+**Branch:** `feature/mq5-knowledge-base-content` from `staging` at `2acf25a` (CI green).
+**Scope:** MQ.5 only (tasks.md). No MQ.6 maintenance rule, no M6, no AI activation or provider
+selection, no queue-state or role changes.
+
+### What was built
+
+- **Inventory:** 44 articles in `packages/assist/knowledge` (knowledge-base version 2): 18 public
+  (visitor bundle, precached for offline use) and 26 restricted. All 20 article ids proposed in
+  design §11.10a exist. The four MQ.2 articles kept their ids and paths: `visitor.recovery.how`,
+  `staff.recovery.assist` and `staff.sync.states` were corrected to match the screens (version 2);
+  `visitor.recovery.staff` was re-reviewed without content change (version 2, new review date).
+  Full inventory with audiences, capabilities, routes and versions: `knowledge/README.md`.
+- **Audience coverage (bundle sizes):** visitor 18, reception 16, counter 20, supervisor 27,
+  facility admin 31, auditor 20; an organization administrator receives every staff audience.
+  Public bundle 18.98 kB (5.69 kB gzip).
+- **Screen defaults:** every registered screen now has default articles (registry
+  `defaultArticles`), ordered so the first five shown are the most relevant for the roles that
+  open the screen.
+- **Capability-gated articles:** `visitor.alerts.sms` (`sms_turn_alerts`) and `visitor.ussd`
+  (`ussd`) are hidden while those capabilities are `planned`; a question about them gets
+  "not available yet" and the reliable fallback. `visitor.alerts.push` and `staff.alerts.status`
+  require `turn_alert_web_push` and are withheld when VAPID is absent. The capability manifest
+  itself is unchanged: the MQ.1 entries already matched §11.10a.
+- **Content review:** checklist and review record in `knowledge/README.md`.
+
+### How the content was verified against the implementation
+
+The articles were written from the code, not the specifications. Three read-only reviews of the
+current implementation (administration and onboarding; visitor flows; staff, connectivity and
+audit) produced the facts used, with file references, and the role, default and limit facts
+that change article wording were rechecked directly:
+
+| Fact used in an article                                                                          | Source                                                                                       |
+| ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| Every role transition named in a "Who can do this" line                                          | `packages/domain/src/state-machine.ts` (checked by test)                                     |
+| Screen and procedure permissions                                                                 | `packages/contracts/src/permissions.ts` (checked by test)                                    |
+| Vibration on by default where supported; sound off                                               | `apps/web/src/lib/a11yPrefs.ts` `DEFAULT_PREFS`                                              |
+| Grace window counted from the missed time                                                        | `apps/api/src/queue/commands.ts` (`missed_at` + `grace_window_seconds`)                      |
+| Staff-assisted recovery on by default                                                            | `packages/contracts/src/admin.ts` (`staff_recovery` default `true`)                          |
+| At most 3 devices; a 4th signs out the earliest                                                  | `apps/api/src/recovery/credentials.ts` (`MAX_ACTIVE_STATUS_TOKENS`, ordered by `created_at`) |
+| Session ends after 12 hours                                                                      | `apps/api/src/auth/session.ts` (`SESSION_TTL_MS`)                                            |
+| Counter open/close: counter, supervisor, facility admin (API); console shows it to counter roles | `apps/api/src/queue/counters.ts`, `StaffConsole.tsx`                                         |
+| Invitations are links you share yourself, 7 days, single use                                     | `FacilityStaff.tsx`, `apps/api/src/routes/staff.ts`                                          |
+| No password reset, no facility rename or removal in the UI                                       | absent from `apps/web` and `apps/api` routes                                                 |
+
+**Differences between the specification and the implementation (the articles follow the code):**
+
+- `staff.missed.rejoin`: design §11.10a says counter, supervisor, facility admin; the state
+  machine lets reception, counter and supervisor return a missed ticket, not the facility
+  admin. The article names those roles.
+- `staff.alerts.status`: the per-ticket "Visitor alert" panel is shown only to counter
+  operators and supervisors (inside the calling controls); facility admins and auditors see
+  only the connectivity counts. The article says so.
+- `staff.coordinator.limits`: a facility admin's device can be designated, but calling and
+  serving still need the counter or supervisor role. The articles say who can call.
+- `visitor.alerts`: vibration is on by default where supported (the design row does not say);
+  the article states it.
+- `visitor.recovery.key`: "Sign out other devices" also issues a new recovery key, and the page
+  does not keep the key after a reload; both are stated.
+- `admin.policy.recovery`: the service form also edits priority classes, override reasons and
+  transfer placement; those are in `admin.services`. Policy editing is open to facility and
+  organization administrators.
+- M1 workflows (sign-up, sign-in, invitations, readiness and the join link) had no §11.10a
+  row; they are covered by `org.signup`, `org.signin`, `staff.invite.accept`,
+  `admin.staff.invite`, `admin.facility.create` and `admin.readiness.join_link`.
+
+### Coverage matrix
+
+Each row is a test in `packages/assist/src/kb-content.test.ts` (`COVERAGE`): the article must be
+readable by the role, tied to the screen (related route or screen default), and returned in the
+top 3 for the plain-language question with AI off. Visitor rows also pass from the public bundle
+alone (the offline copy). Every article except the two planned-capability ones appears in the
+matrix.
+
+| Workflow                                | Role tested    | Screen                 | Question                                    | Article                     |
+| --------------------------------------- | -------------- | ---------------------- | ------------------------------------------- | --------------------------- |
+| Join by QR or link                      | Visitor        | `visitor.join`         | “how do I get a ticket”                     | `visitor.join.status`       |
+| Ticket status                           | Visitor        | `visitor.ticket`       | “what does on hold mean”                    | `visitor.ticket.states`     |
+| Wait estimate and uncertainty           | Visitor        | `visitor.ticket`       | “how long will I wait”                      | `visitor.wait.estimate`     |
+| Public display board                    | Visitor        | `public.display`       | “spoken announcements on the board”         | `visitor.display.board`     |
+| Save the recovery key                   | Visitor        | `visitor.ticket`       | “save my recovery key”                      | `visitor.recovery.key`      |
+| Sign out other devices                  | Visitor        | `visitor.ticket`       | “someone else has my key”                   | `visitor.recovery.key`      |
+| Recover on another device               | Visitor        | `visitor.recover`      | “I lost my phone, get my ticket back”       | `visitor.recovery.how`      |
+| Recovery without the key (visitor side) | Visitor        | `visitor.recover`      | “I lost my key, ask staff”                  | `visitor.recovery.staff`    |
+| Missed turn and grace window            | Visitor        | `visitor.ticket`       | “I missed my turn”                          | `visitor.missed.grace`      |
+| Automatic missed turn rule              | Visitor        | `visitor.ticket`       | “how long do I have to respond when called” | `visitor.auto_miss`         |
+| Offline ticket page                     | Visitor        | `visitor.ticket`       | “no internet connection”                    | `visitor.offline`           |
+| In-app alert, sound and vibration       | Visitor        | `visitor.ticket`       | “turn on sound alert”                       | `visitor.alerts`            |
+| Web Push opt-in                         | Visitor        | `visitor.ticket`       | “push notification”                         | `visitor.alerts.push`       |
+| Accessibility settings                  | Visitor        | any (header)           | “larger text and high contrast”             | `visitor.accessibility`     |
+| Organization sign-up                    | Visitor        | `public.signup`        | “create an organization”                    | `org.signup`                |
+| Sign in and out                         | Visitor        | `public.login`         | “forgot password”                           | `org.signin`                |
+| Accept a staff invitation               | Visitor        | `public.accept_invite` | “accept invitation”                         | `staff.invite.accept`       |
+| Create a facility                       | Org admin      | `admin.home`           | “create a facility”                         | `admin.facility.create`     |
+| Services and ordering policy            | Facility admin | `admin.facility`       | “add a service”                             | `admin.services`            |
+| Counters and their services             | Facility admin | `admin.facility`       | “add a counter”                             | `admin.counters`            |
+| Missed-turn and recovery policy         | Facility admin | `admin.facility`       | “change the grace window”                   | `admin.policy.recovery`     |
+| Readiness, join link and QR             | Facility admin | `admin.facility`       | “qr code not live yet”                      | `admin.readiness.join_link` |
+| Invite staff and manage roles           | Facility admin | `admin.facility.staff` | “invite staff”                              | `admin.staff.invite`        |
+| AI explanations opt-in                  | Facility admin | `admin.facility`       | “turn on AI explanations”                   | `admin.que_ai`              |
+| Roles and access                        | Reception      | `staff.home`           | “what can my role do”                       | `staff.roles.workflows`     |
+| Open, pause and close the queue         | Supervisor     | `staff.facility`       | “open today's queue”                        | `staff.queue.open`          |
+| Walk-in registration                    | Reception      | `staff.console`        | “visitor without a phone”                   | `staff.walkin`              |
+| Call, serve and complete                | Counter        | `staff.console`        | “call next visitor”                         | `staff.counter.calling`     |
+| Priority changes and reasons            | Supervisor     | `staff.console`        | “change priority reason”                    | `staff.fairness.priority`   |
+| Transfers                               | Counter        | `staff.console`        | “transfer to another service”               | `staff.transfers`           |
+| Audit view, verification and export     | Auditor        | `staff.audit`          | “verify integrity”                          | `staff.audit.trail`         |
+| Return a missed visitor                 | Reception      | `staff.console`        | “missed visitor came back late”             | `staff.missed.rejoin`       |
+| Automatic no-show (staff)               | Auditor        | `staff.audit`          | “missed automatically by the system”        | `staff.auto_miss`           |
+| Sync states                             | Counter        | `staff.console`        | “what does pending sync mean”               | `staff.sync.states`         |
+| Coordinator limits during an outage     | Counter        | `staff.console`        | “internet is down, can I still call”        | `staff.coordinator.limits`  |
+| Designate, renew, fail over             | Supervisor     | `staff.connectivity`   | “fail over the coordinator”                 | `staff.coordinator.manage`  |
+| Conflict review                         | Supervisor     | `staff.connectivity`   | “resolve a conflict”                        | `staff.conflicts.review`    |
+| Device health and alerts                | Auditor        | `staff.connectivity`   | “device alerts”                             | `staff.device.health`       |
+| Lost or stolen device                   | Counter        | `staff.console`        | “my tablet was stolen”                      | `staff.device.lost`         |
+| Staff-assisted recovery                 | Reception      | `staff.console`        | “visitor has no recovery key”               | `staff.recovery.assist`     |
+| Approve a recovery request              | Supervisor     | `staff.console`        | “approve recovery request”                  | `staff.recovery.approve`    |
+| Recovery activity view                  | Auditor        | `staff.audit`          | “recovery activity”                         | `staff.recovery.activity`   |
+| Push alert status                       | Counter        | `staff.console`        | “push sent not confirmed”                   | `staff.alerts.status`       |
+
+Browser checks (`apps/web/e2e/que-ui.spec.ts`, "MQ.5 knowledge-base inventory"): with the network
+off, a visitor's six representative questions and a counter operator's four are answered from
+the cached help; SMS gets the planned notice; a counter operator never sees the audit articles.
+
+### Security, privacy and capability checks
+
+| Check                                                                         | Evidence                                                                                                                                                                                                                                                                                                              |
+| ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Compilation of every article (schema, Safe Markdown, data patterns, D4, lock) | `kb-compile.test.ts` (committed KB) and `kb-content.test.ts`; `node scripts/build-kb.mjs` in every build                                                                                                                                                                                                              |
+| Article existence (deferred from MQ.1)                                        | every registry default exists and is readable on its screen; every body link is a related route                                                                                                                                                                                                                       |
+| Screen defaults                                                               | every screen gives at least one default article to every role that can open it                                                                                                                                                                                                                                        |
+| Public vs restricted                                                          | public bundle = exactly the visitor-audience articles; no `admin.*` id in it; DB: anonymous endpoint carries no staff ids                                                                                                                                                                                             |
+| Role and facility filtering                                                   | DB (`que-kb.db.test.ts`): each role receives exactly the articles its audience metadata allows, with the security-relevant ones named (auditor: no recovery procedure; reception and counter: no audit or approval articles); role grant and revoke change the set; cross-organization users get none of org A's data |
+| Role claims                                                                   | `apps/api/src/que-kb-content.test.ts`: 13 step lines and 8 permission lines equal the state machine and permission map; any unchecked role section fails                                                                                                                                                              |
+| D4                                                                            | no public article contains the staff verification questions or answers (compiler and tests)                                                                                                                                                                                                                           |
+| No tenant or secret data                                                      | compiler data patterns; DB: restricted bundles contain no names, emails, slugs or ids                                                                                                                                                                                                                                 |
+| No unsafe Markdown or external links                                          | schema plus an explicit lint over every body                                                                                                                                                                                                                                                                          |
+| Capability truth                                                              | SMS/USSD only behind planned capabilities (manifest the server builds); push withheld without VAPID; no manifest withholds every capability-dependent article; no article is dated before its capability                                                                                                              |
+| Truthfulness lint                                                             | no "conflict-free"/"globally final", no tamper-proof claims, no guaranteed delivery, no clock times, no background vibration, recovery never moves a visitor, a failed alert never causes a miss, policy described conditionally                                                                                      |
+| AI grounding                                                                  | DB: the adapter receives only articles a counter operator may read                                                                                                                                                                                                                                                    |
+
+**Mutation checks** (each change made a test fail, then was reverted; 8 applied, 8 killed): SMS
+named in the in-app alert article; a facility admin claimed for Call next; a registry default
+pointing to a missing article; the audit article given to counter staff; a clock time promised;
+recovery claimed to move a visitor; the push article no longer gated on Web Push; a staff
+verification answer added to a public article (refused by the compiler's D4 check).
+
+### Gate results (local, 2026-11-18)
+
+| Gate                                                             | Result                                                                                                                                                    |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build` | pass                                                                                                                                                      |
+| `pnpm test`                                                      | contracts 179, assist 235 (+73), api 172 (+29), web 168, domain 109, continuity 64, channels 33, worker 12, ui 6                                          |
+| `pnpm test:db`                                                   | api 677 (+1), worker 63                                                                                                                                   |
+| Playwright (4 projects)                                          | 285 passed (+2), 7 skipped (the same pre-existing conditional and phone-only skips)                                                                       |
+| Security gates                                                   | `pnpm audit --prod --audit-level high` clean; `node infra/scripts/audit-gate.js` PASS (only the approved, still unresolved GHSA-fc5q-39xc-vjpf exception) |
+| Bundle                                                           | main chunk 188.14 kB gzip (unchanged); Ask Que panel chunk 8.46 → 8.65 kB gzip; public KB asset 5.69 kB gzip                                              |
+
+**Existing assertions updated because the content they pinned grew** (intent kept, sets still
+exact): the KB delivery DB tests, the restricted-cache Playwright tests and the AI grounding test
+previously listed the four MQ.2 articles by name. They now derive the exact expected set from
+each article's audience metadata (`expectedFor`, `e2e/kb-expected.ts`) and also name the
+security-relevant inclusions and exclusions. The visitor D4 browser test now checks that no
+staff-only title appears, instead of a two-title allow-list. The stale-version test marks one
+article as outdated in the full index.
+
+### Defects found
+
+- **Fixed (Ask Que, MQ.3):** when a question matched nothing, the visible lead said "No help
+  article matched your question. Here is help for this screen." but the screen-reader
+  announcement counted the screen defaults ("4 help articles found."). Before MQ.5 the home
+  screen had no defaults, so the two never disagreed. `answer.ts` now exports the `NO_MATCH`
+  lead and `QuePanel.tsx` announces a no-match whenever the answer starts with it. The existing
+  Playwright test that caught it passes unchanged.
+- **Tooling:** Prettier rewrote long front-matter lists over several lines, which the KB
+  compiler does not read. `.prettierrc.json` now sets `embeddedLanguageFormatting: off` for
+  `packages/assist/knowledge/**/*.md` only; bodies are still formatted and checked.
+- **Five UI inconsistencies: OPEN, deferred to M7 (not resolved).** Each was checked for a
+  server-side authorization bypass or an integrity defect; none was found, so the UI correction
+  is deferred to M7 under the approved rule. They are tracked as unchecked items in `tasks.md`
+  (M7.1, "MQ.5 UI findings U1–U5"). The articles describe the API and state-machine behaviour.
+
+| ID  | Current API / state-machine behaviour (authoritative)                                                                                                                                           | Current UI behaviour                                                                                 | Correct future UI behaviour (M7 acceptance)                                                                                                            | Authorization or integrity impact                                                   |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| U1  | The grace window is counted from the moment the ticket was marked missed (`missed_at` + `grace_window_seconds`, `apps/api/src/queue/commands.ts`)                                               | The service form hint says "How long a called visitor may take to arrive before being marked missed" | The hint states that the window starts when the ticket is marked missed and limits how long it can still return to the queue                           | None: help text only; the server computes the window                                |
+| U2  | `call_specific` is allowed only to supervisors (plus organization admins); a facility admin gets 403, the denial is logged and no event is written (new DB test in `fairness.db.test.ts`, MQ.5) | Facility admins see the "Call out of order" form under "Supervisor actions"                          | The form is shown only to roles the transition allows (supervisor, organization admin); facility admins keep "Change priority"                         | None: the API refuses and records the attempt; no queue state changes               |
+| U3  | A transfer keeps `joined_at`; the queue place follows the destination's transfer placement policy (keep waiting time, or join the end)                                                          | The ticket page always says "Your original join time is kept."                                       | The note states the actual placement: original waiting time kept, or joined the end of the queue                                                       | None: display text; the server sets the place                                       |
+| U4  | The automatic no-show records `ticket.miss` with actor `system` and reason `call_window_elapsed` in the hash-chained event (M5 tests 8.R9 and 8.R12)                                            | The audit trail shows "Missed" by "Visitor / system", with no reason label                           | The audit trail shows the actor as the system and a plain label for the reason (for example "Call window elapsed")                                     | None: the event and its reason are recorded and verified; only the label is missing |
+| U5  | The state machine allows `waiting → paused` for counter operators and supervisors                                                                                                               | The console offers "Put on hold" only for a ticket being served                                      | Either offer "Put on hold" for waiting tickets to the allowed roles, or record a product decision that waiting tickets are not paused from the console | None: a missing control, not an extra permission                                    |
+
+- **Related content note (not a UI defect):** the pages never state the three-device limit or
+  the 24-hour status-link lifetime; the recovery-key article now states the device limit.
+
+### Checkpoint verification (2026-11-18)
+
+- **No-results announcement fix:** a matching search still announces "N help articles found"
+  and a failed search announces no match even when screen defaults are shown (Playwright
+  "screen context…" and "empty results…"); the visible lead and the announcement agree. The fix
+  depends on `answer()` starting the text with `NO_MATCH` exactly when nothing matched; a new
+  unit test in `answer.test.ts` pins that (miss, hit and empty question).
+- **Prettier override scope:** the same sample was formatted under four paths: front matter is
+  kept on one line only under `packages/assist/knowledge/`; under `docs/` and elsewhere in
+  `packages/assist` it is still reformatted. Article bodies are still formatted (blank lines
+  around blocks) and `pnpm format:check` covers them; every article compiles.
+- **Ids and versions:** the four staging articles keep their ids and paths (all at version 2);
+  44 lock entries; every compiled article's version equals its lock version; every bundle is
+  `kbVersion` 2; all 20 ids of design §11.10a exist.
+- **U2 authorization:** new DB test in `fairness.db.test.ts`: a facility admin's out-of-order
+  call is refused (403), the denial is logged, no queue event is written and the ticket stays
+  waiting.
+
+### Remaining content gaps
+
+- No review by real visitors or staff and no second human reviewer.
+- English only; no second language.
+- The SMS and USSD article bodies are minimal placeholders; M6 must rewrite them in the same PR
+  that changes those capabilities (MQ.6 rule).
+- Not covered in depth: closing a queue session during an outage, the `Needs review` ticket
+  state as seen by a visitor, "Clear local data on this device", and a "how to use Ask Que"
+  article.
+- Search is deterministic keyword ranking: questions using words outside an article's title,
+  keywords and headings may miss it. The matrix tests 43 questions, not every phrasing.
+
+### Obligations carried forward
+
+- **MQ.6** implements the ongoing KB consistency rule and CI check (Group 13.5) for later
+  milestones; MQ.5 added only the checks its own acceptance needs.
+- **M6** updates the SMS and USSD articles and capability entries together.
+- **M7** reviews every article against the final UI and the capability manifest.
+- No provider selected — AI disabled by default; any real provider needs separate product-owner
+  approval. M5 Set 2 manual acceptance stays deferred. The picomatch exception remains
+  unresolved and expires on 2026-12-15T00:00:00Z.

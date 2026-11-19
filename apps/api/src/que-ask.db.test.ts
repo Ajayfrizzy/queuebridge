@@ -417,10 +417,11 @@ describe('redaction, daily cap and rate limits', () => {
   it('the adapter receives only the redacted question and authorized generic articles', async () => {
     const adapter = new SandboxInferenceAdapter();
     const env = ai.env;
+    const kb = loadKnowledgeBase();
     const outcome = await askQue(
       {
         db: ai.db,
-        kb: loadKnowledgeBase(),
+        kb,
         adapter,
         manifest: buildCapabilityManifest(capabilityFlags(env), new Date()),
         deploymentAvailable: true,
@@ -441,13 +442,18 @@ describe('redaction, daily cap and rate limits', () => {
     const sent = JSON.stringify(adapter.lastParams);
     expect(sent).not.toMatch(/A123|amaka|example\.org|803/);
     expect(adapter.lastParams?.question).toContain('[redacted]');
+    // Only articles a counter operator may read (public or counter audience), never others
+    const readable = new Set(
+      [...kb.bundles.visitor.articles, ...kb.bundles.counter.articles].map((a) => a.id),
+    );
+    expect(adapter.lastParams?.articles.length).toBeGreaterThan(0);
     for (const a of adapter.lastParams?.articles ?? []) {
+      expect(readable.has(a.id), a.id).toBe(true);
       expect([
-        'staff.sync.states',
-        'staff.recovery.assist',
-        'visitor.recovery.how',
-        'visitor.recovery.staff',
-      ]).toContain(a.id);
+        'staff.audit.trail',
+        'staff.recovery.approve',
+        'staff.recovery.activity',
+      ]).not.toContain(a.id);
     }
     expect(sent).not.toContain(fac.id);
     expect(sent).not.toContain(org.organizationId);

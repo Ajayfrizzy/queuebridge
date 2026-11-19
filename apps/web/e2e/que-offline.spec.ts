@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { apiFacility, apiSignup, PASSWORD, uid } from './helpers.js';
+import { expectedRestricted } from './kb-expected.js';
 import { makeStaff } from './offline-helpers.js';
 
 const CSRF = { 'X-QB-CSRF': '1' };
@@ -84,7 +85,11 @@ test.describe('MQ.2 restricted help: per-user cache and invalidation', () => {
     await staff.page.goto('/staff');
     const rec = await waitForRecord(staff.page, staff.userId);
     expect(rec.audiences).toEqual(['counter']);
-    expect(ids(rec)).toEqual(['staff.recovery.assist', 'staff.sync.states']);
+    expect(ids(rec)).toEqual(expectedRestricted(['counter']));
+    expect(ids(rec)).toEqual(
+      expect.arrayContaining(['staff.recovery.assist', 'staff.sync.states']),
+    );
+    expect(ids(rec)).not.toContain('staff.audit.trail');
     expect(rec.roleDigest).toMatch(/^[0-9a-f]{64}$/);
     for (const a of rec.articles) expect(a.audiences).not.toContain('visitor');
     const raw = JSON.stringify(rec);
@@ -141,7 +146,8 @@ test.describe('MQ.2 restricted help: per-user cache and invalidation', () => {
     const staff = await makeStaff(browser, page.request, fac.id, 'auditor');
     await staff.page.goto('/staff');
     const before = await waitForRecord(staff.page, staff.userId);
-    expect(ids(before)).toEqual(['staff.sync.states']);
+    expect(ids(before)).toEqual(expectedRestricted(['auditor']));
+    expect(ids(before)).not.toContain('staff.recovery.assist');
 
     const grant = await page.request.post(
       `/api/v1/facilities/${fac.id}/staff/${staff.userId}/roles`,
@@ -154,7 +160,7 @@ test.describe('MQ.2 restricted help: per-user cache and invalidation', () => {
     await staff.page.reload();
     await expect
       .poll(async () => ids((await queRecords(staff.page))[0]))
-      .toEqual(['staff.recovery.assist', 'staff.sync.states']);
+      .toEqual(expectedRestricted(['reception', 'auditor']));
     const granted = (await queRecords(staff.page))[0]!;
     expect(granted.roleDigest).not.toBe(before.roleDigest);
 
@@ -166,7 +172,7 @@ test.describe('MQ.2 restricted help: per-user cache and invalidation', () => {
     await staff.page.reload();
     await expect
       .poll(async () => ids((await queRecords(staff.page))[0]))
-      .toEqual(['staff.sync.states']);
+      .toEqual(expectedRestricted(['auditor']));
     expect((await queRecords(staff.page))[0]!.roleDigest).toBe(before.roleDigest);
     await staff.ctx.close();
   });

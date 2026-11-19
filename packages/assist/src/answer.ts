@@ -32,6 +32,8 @@ export interface AnswerContext extends NavigationContext {
 export const MAX_CITATIONS = 5;
 export const MAX_LINKS = 5;
 export const ASK_STAFF = 'You can also ask a member of staff.';
+/** Lead of an answer whose question matched no article (screen defaults may still follow). */
+export const NO_MATCH = 'No help article matched your question.';
 
 /** Plain screen names for "which role is required" text. */
 export const SCREEN_NAMES: Readonly<Record<RouteId, string>> = {
@@ -151,7 +153,7 @@ export function answer(query: string, ctx: AnswerContext, bundle: KbBundle): Que
           .slice(0, MAX_CITATIONS)
       : [];
     cited = defaults;
-    const start = asked ? 'No help article matched your question.' : '';
+    const start = asked ? NO_MATCH : '';
     const middle = defaults.length > 0 ? 'Here is help for this screen.' : '';
     lead = [start, middle, ASK_STAFF].filter(Boolean).join(' ');
   }
