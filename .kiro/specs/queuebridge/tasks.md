@@ -494,17 +494,17 @@ Security follow-up from M5.1 (separate change, recorded in `M5-evidence.md`, "M5
 
 ### MQ.6 Incremental KB maintenance rule (applies to M6, M7 and later)
 
-- [ ] Each later milestone updates affected articles and capability entries in the same PR
-- [ ] Group 13.5 KB consistency test in CI blocks merges when articles and manifest disagree
+- [x] Each later milestone updates affected articles and capability entries in the same PR — **MQ.6 (2026-11-19):** rule recorded in `AGENTS.md` §4.7, `packages/assist/knowledge/README.md` (maintenance rule, with the M6 and M7 procedures) and `.github/pull_request_template.md`; capability coverage contract `packages/assist/knowledge/capabilities.json` records the status and default availability each capability's articles were reviewed for
+- [ ] Group 13.5 KB consistency test in CI blocks merges when articles and manifest disagree — `packages/assist/src/kb-consistency.ts` (rules C0–C5, A1–A3, R1–R3, V1), run by every build (`scripts/build-kb.mjs`), `kb-consistency.test.ts`, `apps/api/src/que-kb-consistency.test.ts` (the manifest the server builds, VAPID-absent fixture) and `apps/web/src/que/kbUiLabels.test.ts` (L1 screen labels); CI step "Knowledge-base version discipline against the base branch" (V2, `scripts/kb-base-check.mjs`, merge base, fails on an unresolvable base). 11 mutations, 11 rejected. **Open:** CI fails a non-compliant PR, but `staging` and `main` have no branch protection or rulesets (read 2026-11-19), so nothing technically blocks the merge; it stays procedural (`AGENTS.md` §6) until the repository owner makes the checks required. Evidence: `docs/testing/MQ-evidence.md` (MQ.6)
 
 ### MQ exit criteria
 
-- [ ] Group 13 tests pass (role restrictions, tenant isolation, offline fallback, navigation accuracy, KB consistency, accessibility, inference failures, zero-cost guard, privacy, read-only, prompt injection)
-- [ ] Que fully usable offline and with AI disabled; no workflow depends on AI
-- [ ] Offline staff-help expiry and invalidation verified (Group 13.12)
-- [ ] No Que endpoint or UI path can modify tickets, priorities, staff, permissions or facility settings
-- [ ] Every AI answer (if enabled) is disclosed, cited and validated; failures fall back deterministically
-- [ ] Evidence recorded in `docs/testing/MQ-evidence.md`
+- [x] Group 13 tests pass (role restrictions, tenant isolation, offline fallback, navigation accuracy, KB consistency, accessibility, inference failures, zero-cost guard, privacy, read-only, prompt injection) — mapping of 13.1–13.13 to tests in `docs/testing/MQ-evidence.md` (MQ.6, exit criteria); 13.9 log-privacy test added at MQ.6
+- [x] Que fully usable offline and with AI disabled; no workflow depends on AI — AI is disabled by default in every suite except the sandbox ones; coverage matrix answered deterministically and from the public bundle alone; offline Playwright (MQ.2, MQ.3, MQ.5)
+- [x] Offline staff-help expiry and invalidation verified (Group 13.12) — `offlineHelp.test.ts`, `helpClient.test.ts`, `que-kb.db.test.ts`, `que-offline.spec.ts`
+- [x] No Que endpoint or UI path can modify tickets, priorities, staff, permissions or facility settings — DB `orgCounts` unchanged after asks; Playwright read-only controls and GET-only requests; the only writes are the aggregate AI counter and the admin-only, audited AI opt-in (a facility setting changed through the settings screen, not through Que)
+- [x] Every AI answer (if enabled) is disclosed, cited and validated; failures fall back deterministically — `ai-guard.test.ts`, `que-ask.db.test.ts`, `que-ai.spec.ts` (sandbox adapter only; no provider selected)
+- [x] Evidence recorded in `docs/testing/MQ-evidence.md` — MQ.1–MQ.6 sections
 
 ---
 
@@ -540,7 +540,7 @@ Security follow-up from M5.1 (separate change, recorded in `M5-evidence.md`, "M5
 - [ ] Sandbox vs. live mode toggle with clear labeling
 - [ ] Delivery status monitoring
 - [ ] Optional "SMS only if the in-app alert was not seen within N seconds" cost-control setting (default: send immediately)
-- [ ] Knowledge-base articles and capability manifest entries for SMS turn alerts and USSD updated in the same PR (MQ.6)
+- [ ] Knowledge-base articles and capability manifest entries for SMS turn alerts and USSD updated in the same PR (MQ.6) — procedure in `packages/assist/knowledge/README.md` ("Applying it in M6"); CI fails with C4, C5, A1 and A2 for `visitor.alerts.sms` and `visitor.ussd` until the articles and `capabilities.json` are updated
 
 ### M6 exit criteria
 
@@ -565,6 +565,7 @@ Security follow-up from M5.1 (separate change, recorded in `M5-evidence.md`, "M5
 - [ ] Redesign of every role's screens on the shared tokens/components: visitor (join, ticket, recovery, alerts), reception, counter console, supervisor (fairness, audit, connectivity), administration, public board, Ask Que panel
 - [ ] No horizontal overflow at 320, 375, 768, 1280 and 1440 px; existing responsive/overflow/axe Playwright checks pass unchanged in intent
 - [ ] Statuses remain text + icon (never colour alone); high-contrast and large-text modes verified on the redesigned screens
+- [ ] Ask Que articles reviewed against the redesigned screens in the same PRs (MQ.6 rule; renamed controls fail L1, new screens fail D3 check 2 and the screen-default check until registered); final review recorded in `packages/assist/knowledge/README.md`
 - [ ] MQ.5 UI findings U1–U5 corrected in the redesigned screens (deferred from MQ.5; none is an authorization or integrity defect; details and the expected behaviour in `docs/testing/MQ-evidence.md`, MQ.5 "Defects found"): U1 grace-window hint counts from the missed time; U2 "Call out of order" shown only to supervisors and organization admins; U3 transfer note states the actual placement; U4 audit trail labels the automatic no-show actor and reason; U5 "Put on hold" for waiting tickets, or a recorded decision not to offer it. Affected Ask Que articles updated in the same PR (MQ.6 rule)
 
 ### M7.2 Animated public landing page and onboarding (F15)

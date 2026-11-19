@@ -1146,3 +1146,196 @@ article as outdated in the full index.
 - No provider selected — AI disabled by default; any real provider needs separate product-owner
   approval. M5 Set 2 manual acceptance stays deferred. The picomatch exception remains
   unresolved and expires on 2026-12-15T00:00:00Z.
+
+## MQ.6 Knowledge-base maintenance and CI consistency (2026-11-19)
+
+**Branch:** `feature/mq6-kb-consistency` from `staging` at `5149c54` (PR #16 merged; CI green).
+**Scope:** MQ.6 only (tasks.md). No M6 or M7 work, no AI activation or provider selection, no
+change to the Ask Que architecture, roles or queue behaviour.
+
+### The maintenance rule
+
+Every PR that changes user-visible behaviour, a capability, a route or a screen label updates the
+affected articles, the capability coverage contract and the registry screen defaults in the same
+PR. Recorded in `AGENTS.md` §4.7, `packages/assist/knowledge/README.md` (rule table and the M6
+and M7 procedures) and `.github/pull_request_template.md`. CI enforces it; the template is a
+reminder only.
+
+### What was built
+
+- **Capability coverage contract** `packages/assist/knowledge/capabilities.json`: for each of
+  the 16 manifest capabilities, the status and default availability its articles were reviewed
+  for, and the articles that document it. Shipped with the build as `dist/kb/capabilities.json`.
+- **Consistency checker** `packages/assist/src/kb-consistency.ts` (pure, imports `contracts`
+  only; covered by the package boundary test). Rules:
+
+| Rule | Fails when                                                                                                                                      | Runs in             |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| C0   | the contract is malformed                                                                                                                       | build, assist tests |
+| C1   | a manifest capability has no contract entry, or the contract names an unknown one                                                               | build, assist tests |
+| C2   | a capability lists no article, or a missing one                                                                                                 | build, assist tests |
+| C3   | an article requires a capability without being listed under it                                                                                  | build, assist tests |
+| C4   | the server manifest status differs from the reviewed status                                                                                     | API test            |
+| C5   | the server default availability differs from the reviewed one                                                                                   | API test            |
+| A1   | a shown article says its feature is "not offered" or "not available yet"                                                                        | API test            |
+| A2   | an article for a `sandbox` or `preview` capability does not label it                                                                            | API test            |
+| A3   | an article dated after the newest shown milestone is not gated on a non-live capability                                                         | API test            |
+| R1   | an article relates a route none of its audiences can open                                                                                       | build, assist tests |
+| R2   | a body link is not a related route                                                                                                              | build, assist tests |
+| R3   | a screen default article does not exist                                                                                                         | build, assist tests |
+| V1   | a review date is in the future                                                                                                                  | API test            |
+| V2   | against the base branch's lock: content changed without a version bump, a version went backwards, or the set changed without a `kbVersion` bump | CI step             |
+| L1   | an article quotes a screen label (bold) that no longer exists in `apps/web`, `packages/ui` or `packages/domain`                                 | web test            |
+
+- **Where CI runs them:** every `pnpm build` (the build job and every test job) runs
+  `scripts/build-kb.mjs`, which now also applies C0–C3 and R1–R3; `pnpm test` (job "Tests
+  (without DB)") runs `kb-consistency.test.ts`, `apps/api/src/que-kb-consistency.test.ts` and
+  `apps/web/src/que/kbUiLabels.test.ts`; the same job runs the new step "Knowledge-base version
+  discipline against the base branch" (`scripts/kb-base-check.mjs`, base = the PR's target
+  branch, `staging` for pushes; the job checks out full history). The base branch name reaches
+  the shell through an environment variable, and the script calls git without a shell.
+- **Server manifest:** `que-kb-consistency.test.ts` builds the manifest from the real
+  environment schema with production defaults (no optional settings), so C4/C5 compare with what
+  a production deployment reports; the content rules are also checked with Web Push configured,
+  online joining switched off and the TEST-ONLY sandbox AI.
+- **Group 13.5 VAPID fixture (design §11.2, D1):** with VAPID absent the manifest reports Web
+  Push `live` / `unavailable` / `not_configured`, and no answer for visitor, counter or
+  supervisor questions offers push as usable.
+
+**Content corrections found by the new rules** (knowledge-base version 3):
+`org.signup` (version 2) no longer relates and links the administration screen, which an
+anonymous visitor cannot open (R1); `admin.services` (version 2) quotes the real form legend
+"Reasons a supervisor may give for an override" (L1). Both were checked against staging's lock
+(V2).
+
+### Applicability to M6 and M7 (no future redesign needed)
+
+- **M6 SMS turn alerts and USSD:** changing `sms_turn_alerts` or `ussd` in the server manifest
+  fails C4/C5 (contract), A1 (the planned articles say "not offered here") and A2 (sandbox not
+  labelled) until the articles are rewritten and the contract updated. A unit test shows both the
+  failure and the compliant end state (`kb-consistency.test.ts`, "path to compliance"). A new
+  channel capability fails C1 until it has a contract entry and C2 until it is documented.
+- **M7 redesign and onboarding:** a renamed or removed control fails L1; a new screen fails D3
+  check 2 (router ⇔ registry) and the MQ.5 screen-default check; onboarding content dated M7
+  must stay gated until live (A3); every new article must join the MQ.5 coverage matrix.
+
+### CI-enforcement evidence (mutations)
+
+Each mutation simulates a later-milestone change made without the KB update and runs the same
+command CI runs; every touched file was restored afterwards (verified byte-identical).
+11 applied, 11 rejected:
+
+| #   | Mutation                                                                     | Rejected by                                                               |
+| --- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| 1   | M6: `sms_turn_alerts` becomes `sandbox` in the server manifest, KB untouched | API test (C4, C5, A1, A2)                                                 |
+| 2   | Web Push becomes available by default, articles not reviewed                 | API test (C5)                                                             |
+| 3   | M7: "Issue walk-in ticket" renamed in the console                            | web test (L1)                                                             |
+| 4   | M7: a new `/get-started` route without a registry entry                      | web D3 check 2                                                            |
+| 5   | `ussd` removed from `capabilities.json`                                      | build (C1)                                                                |
+| 6   | an article newly gated on `device_health` without a contract entry           | `kb:lock` / build (C3)                                                    |
+| 7   | a public article relates the staff audit screen                              | `kb:lock` / build (R1)                                                    |
+| 8   | a live article says "not available yet"                                      | API test (A1)                                                             |
+| 9   | a review date in the future                                                  | API test (V1)                                                             |
+| 10  | content changed without a version bump and the lock regenerated from scratch | the normal build passes (expected); the CI base-lock step rejects it (V2) |
+| 11  | question text added to the AI log line                                       | DB test (13.9, below)                                                     |
+
+### MQ exit criteria
+
+| Criterion                      | Evidence                                                                                                                                                                                                                                                                                                                   |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 13.1 Role restrictions         | `que-kb.db.test.ts` (each role receives exactly its articles; auditors never get the recovery procedure; reception and counter never get audit or approval articles); `que-ask.db.test.ts` (401 anonymous); `kb-content.test.ts`; `que-ui.spec.ts` (staff help, auditor)                                                   |
+| 13.2 Tenant isolation          | `que-consistency.test.ts` (D3 check 5); `que-kb.db.test.ts` (other organization); `que-ask.db.test.ts` (cross-organization 404 for ask and opt-in)                                                                                                                                                                         |
+| 13.3 Offline fallback          | `que-offline.spec.ts`; `que-ui.spec.ts` (MQ.3 offline, MQ.5 inventory offline)                                                                                                                                                                                                                                             |
+| 13.4 Navigation accuracy       | `que-consistency.test.ts` (registry ⇔ router), `registry.test.ts`, `links.test.ts`, `kb-content.test.ts` (existence, screen defaults, coverage matrix), `que-kb-content.test.ts` (role claims)                                                                                                                             |
+| 13.5 KB consistency            | MQ.6 rules above; MQ.5 checks; VAPID-absent fixture                                                                                                                                                                                                                                                                        |
+| 13.6 Accessibility             | `que-ui.spec.ts` (axe at desktop and the mobile sheet, keyboard open/search/read/close, focus return, announcements, no-match announcement); `que-ai.spec.ts` (axe, AI label as text)                                                                                                                                      |
+| 13.7 Inference failures        | `que-ask.db.test.ts` (disabled, timeout, quota, provider error, malformed, foreign or empty citations → deterministic answer with the right reason); `que-ai.spec.ts`                                                                                                                                                      |
+| 13.8 Zero-cost guard           | `que-inference.test.ts`, `que-ask.db.test.ts` (each switch alone keeps AI off; daily cap)                                                                                                                                                                                                                                  |
+| 13.9 Privacy                   | `ai-guard.test.ts` (redaction); `que-ask.db.test.ts` (the adapter receives only the redacted question and authorized articles); **new at MQ.6:** a real `/que/ask` round trip captures every API log line and finds no question or answer text, with `[SANDBOX]` marked (the design stated it; no test asserted it before) |
+| 13.10 Read-only                | `que-ask.db.test.ts` (queue events, tickets, client operations, roles and staff unchanged); `que-ui.spec.ts` (help controls only, GET requests only)                                                                                                                                                                       |
+| 13.11 Prompt injection         | `ai-guard.test.ts` (42 tests); `que-ask.db.test.ts` (injected instructions, claimed actions, links, markup, capability claims)                                                                                                                                                                                             |
+| 13.12 Offline authorization    | `offlineHelp.test.ts`, `helpClient.test.ts`, `que-kb.db.test.ts` (`authorizedUntil`, `validForMs`, short TTL), `que-offline.spec.ts`                                                                                                                                                                                       |
+| 13.13 AI independence          | AI is off by default in every unit and DB suite (the sandbox runs only where a suite enables it); the deterministic paths of the browser suites never call AI (the facility opt-in is off by default); the coverage matrix is answered with no AI and from the public bundle alone                                         |
+| No Que write path              | as 13.10; the only writes are the aggregate AI counter and the admin-only, audited opt-in on the facility settings screen                                                                                                                                                                                                  |
+| AI disclosed, cited, validated | `ai-guard.test.ts`, `que-ask.db.test.ts`, `que-ai.spec.ts`; no provider selected — AI disabled by default                                                                                                                                                                                                                  |
+
+### Gate results (local, 2026-11-19)
+
+| Gate                                                             | Result                                                                                                                                              |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build` | pass                                                                                                                                                |
+| `build-kb.mjs --base-lock` (staging's lock)                      | version discipline verified (kbVersion 2 → 3)                                                                                                       |
+| `pnpm test`                                                      | contracts 179, assist 260 (+25: 23 consistency, 2 boundary), api 182 (+10), web 171 (+3), domain 109, continuity 64, channels 33, worker 12, ui 6   |
+| `pnpm test:db`                                                   | api 678 (+1), worker 63                                                                                                                             |
+| Playwright (4 projects)                                          | 285 passed, 7 skipped (the same pre-existing conditional and phone-only skips)                                                                      |
+| Security gates                                                   | `pnpm audit --prod --audit-level high` clean; `node infra/scripts/audit-gate.js` PASS (only the approved, unresolved GHSA-fc5q-39xc-vjpf exception) |
+
+**Local environment note:** the first full Playwright run had 119 failures because Docker
+Desktop stopped during the run and took the local PostgreSQL container with it (sign-up
+returned 500 from then on). After restarting Docker and `queuebridge-pg` (as
+`docs/local-environment.md` describes) the full suite passed. No code was involved.
+
+### Checkpoint review (2026-11-19)
+
+**Corrected at the checkpoint: the base-branch version step.** As first written it compared
+with the base branch's tip from a depth-1 checkout. That was wrong in three ways: a push run on
+a branch that is behind `staging` would fail when `staging` had changed articles since the
+branch left it; a merge base could not be computed in a shallow clone; and the eventual
+`staging` → `main` release PR would fail with a confusing `git show` error, because `main` has no
+knowledge base yet. It is now `packages/assist/scripts/kb-base-check.mjs`, run with the job's
+full history (`fetch-depth: 0`) after an explicit fetch of the base branch:
+
+- it compares with the lock at the **merge base** of `HEAD` and the base branch (for
+  `pull_request` runs, `HEAD` is GitHub's merge commit, so the merge base is the base tip; for
+  pushes it is where the branch left `staging`);
+- it **fails** when the ref does not resolve, there is no merge base (shallow or unrelated
+  history), the base lock is not valid JSON or is malformed, or version discipline breaks;
+- a base with no knowledge-base lock is **reported explicitly** and has nothing to compare.
+
+Verified locally:
+
+| Case                                                                         | Result                                                                           |
+| ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `origin/staging` (valid)                                                     | pass, merge base `5149c54`, kbVersion 2 → 3                                      |
+| `origin/does-not-exist`                                                      | FAIL: does not resolve to a commit                                               |
+| an unrelated commit (no shared history)                                      | FAIL: no merge base                                                              |
+| a commit whose lock is not valid JSON (temporary detached worktree, removed) | FAIL: not valid JSON                                                             |
+| an option-looking ref (`--help`)                                             | FAIL: usage                                                                      |
+| `origin/main` (no knowledge base yet)                                        | reported: nothing to compare (exit 0)                                            |
+| content changed, no version bump, lock regenerated from scratch              | normal build passes; this check FAILS ("content changed without a version bump") |
+| the same change with the article and `kbVersion` bumped                      | pass                                                                             |
+
+**Capability semantics (6 more unit tests):** lifecycle status (C4) and deployment
+availability with its server-computed reason (C5) are compared separately, and the wording rules
+(A1, A2) use the status only. Tests now show:
+
+- SMS or USSD made `live` and `available` fails C4 and C5 while the contract is unreviewed, and
+  A1 while the article is unreviewed;
+- a different unavailable reason fails C5 only;
+- an unavailable entry without a reason fails closed;
+- a status change with the same availability fails C4 only;
+- push configured, joining switched off and the sandbox AI raise no content violation.
+
+C4 and C5 compare only with the production-default manifest, which is what the articles are
+written for, so a deployment's legitimate configuration never fails the contract.
+
+### Remaining findings
+
+- **Branch protection (read 2026-11-19, not changed):** `staging` and `main` are not protected
+  (`GET /branches/<b>/protection` 404 "Branch not protected", `protected: false`), and the
+  repository has no rulesets (`/rulesets` and `/rules/branches/<b>` empty). The checks therefore
+  fail a non-compliant PR's CI, but nothing technically prevents merging it: merge blocking is
+  procedural only (`AGENTS.md` §6, "never merge without a passing CI run"). Making the checks
+  required is a repository-owner decision; for a private repository it may depend on the GitHub
+  plan, which was not checked.
+- **L1 is a text match:** a quoted label must appear somewhere in the screen source. It catches
+  renamed and removed labels, not labels that move to another screen.
+- **A1/A2 are wording rules** with fixed phrases ("not offered", "not available yet",
+  "sandbox", "test only", "preview"). New phrasings need the rules extended.
+- **V2 compares with the merge base only:** it cannot detect history rewritten on the base
+  branch itself. A base without a knowledge base (today `main`) is reported and has nothing to
+  compare; the normal lock check still runs in every build.
+- The MQ.5 UI findings U1–U5, M5 Set 2 acceptance, the picomatch exception (expires
+  2026-12-15) and "No provider selected — AI disabled by default" remain as recorded.
+- The remote branch `fix/m5-device-health-stale-fixture-race` (PR #16, merged) still exists on
+  GitHub; it was not part of the earlier cleanup and was left alone.

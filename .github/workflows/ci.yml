@@ -63,6 +63,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history: the knowledge-base version check needs the merge base with the base branch
+          fetch-depth: 0
 
       - name: Install Node.js 24
         uses: actions/setup-node@v4
@@ -90,7 +93,17 @@ jobs:
 
       - name: Build packages
         run: pnpm build
-
+      # MQ.6 (Group 13.5, rule V2): article and knowledge-base versions are checked against the
+      # lock at the merge base with the base branch (the PR's target; `staging` for pushes), so a
+      # lock regenerated from scratch cannot hide a missing version bump. The script fails when
+      # the ref cannot be fetched or resolved, or there is no merge base. The KB consistency
+      # tests themselves run in `pnpm test` (assist, api and web).
+      - name: Knowledge-base version discipline against the base branch
+        env:
+          BASE_REF: ${{ github.base_ref || 'staging' }}
+        run: |
+          git fetch --no-tags origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          node packages/assist/scripts/kb-base-check.mjs "origin/${BASE_REF}"
       - name: Run tests
         run: pnpm test
         env:

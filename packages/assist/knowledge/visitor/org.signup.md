@@ -4,10 +4,10 @@ title: Creating an organization
 audiences: [visitor]
 topics: [facility_configuration]
 requiresCapabilities: []
-relatedRoutes: [public.signup, admin.home]
+relatedRoutes: [public.signup]
 availableSince: M1
-version: 1
-lastReviewed: 2026-11-18
+version: 2
+lastReviewed: 2026-11-19
 keywords: [sign up, create organization, register, new organization, get started, slug, url identifier, administrator account]
 ---
 
@@ -20,5 +20,5 @@ keywords: [sign up, create organization, register, new organization, get started
 
 ## Next steps
 
-- Create a facility in [administration](route:admin.home).
+- Create a facility in **Administration**, which opens after you sign up.
 - Add services and counters, and open today's queue before you share the join link.
