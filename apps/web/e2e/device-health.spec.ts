@@ -67,12 +67,30 @@ test.describe('@responsive M5.3 device-health dashboard', () => {
     const deviceId = await waitForDevice(counter.page);
     await walkIn(page.request, q);
     await assign(sup.page.request, q, deviceId, 60);
-    // time passes: the coordinator tablet has not been heard from for 20 minutes
+    // Time passes: the coordinator tablet has not been heard from for 20 minutes.
+    // A heartbeat that reached the API just before browser shutdown may still commit after
+    // ctx.close(). Establish the stale fixture against the REAL API, rather than racing
+    // that in-flight write and mistaking a fresh heartbeat for a device-health regression.
     await counter.ctx.close();
-    await withDb(
-      (sql) =>
-        sql`UPDATE devices SET last_seen_at = NOW() - INTERVAL '20 minutes' WHERE id = ${deviceId}`,
-    );
+    await expect
+      .poll(
+        async () => {
+          await withDb(
+            (sql) =>
+              sql`UPDATE devices SET last_seen_at = NOW() - INTERVAL '20 minutes' WHERE id = ${deviceId}`,
+          );
+          const response = await sup.page.request.get(
+            `/api/v1/facilities/${s.facility.id}/operations/health`,
+          );
+          expect(response.status()).toBe(200);
+          const body = (await response.json()) as {
+            health: { devices: { id: string; health: string }[] };
+          };
+          return body.health.devices.find((d) => d.id === deviceId)?.health;
+        },
+        { message: 'The disconnected counter device becomes stale in the authoritative API' },
+      )
+      .toBe('stale');
     runWorkerOnce();
 
     const p = sup.page;
