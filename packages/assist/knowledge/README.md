@@ -4,9 +4,9 @@ Source articles for Ask Que (F13), compiled by `scripts/build-kb.mjs` into one v
 bundle per audience (`dist/kb/<audience>.json`). Design: `.kiro/specs/queuebridge/design.md` §11.2,
 §11.5, §11.10 and §11.10a.
 
-**Status (MQ.6, knowledge-base version 3):** 44 articles (18 public, 26 restricted) covering the
-M1–M5 behaviour as implemented, plus two capability-gated articles for SMS and USSD that stay
-hidden until M6 makes those capabilities available. The capability coverage contract is
+**Status (M6.1, knowledge-base version 4):** 45 articles (18 public, 27 restricted) covering the
+M1–M5 behaviour and the M6.1 SMS sandbox as implemented. The SMS articles are shown only where
+the TEST-ONLY sandbox is set up and say so; the USSD article stays hidden until M6.2. The capability coverage contract is
 `capabilities.json`. Evidence and the coverage matrix: `docs/testing/MQ-evidence.md` (MQ.5,
 MQ.6).
 
@@ -23,6 +23,7 @@ enforces it (Group 13.5); there is no separate follow-up step.
 | A1          | a shown article says its feature is "not offered" or "not available yet"                                                                                     | API test                                                                                                                                     |
 | A2          | an article for a `sandbox` or `preview` capability does not say so                                                                                           | API test                                                                                                                                     |
 | A3          | an article dated after the newest shown milestone is not gated on a capability that is not live                                                              | API test                                                                                                                                     |
+| A4          | an article for a `live` capability still calls it sandbox or test mode (added in M6.1, for the SMS sandbox → live change)                                    | API test                                                                                                                                     |
 | R1–R3       | a related route its audiences cannot open, a body link that is not a related route, a missing screen default                                                 | every build and tests                                                                                                                        |
 | V1          | a review date in the future                                                                                                                                  | API test                                                                                                                                     |
 | V2          | a content change without an article version bump, a version going backwards, or a changed set without a `kbVersion` bump, **against the base branch's lock** | CI step "Knowledge-base version discipline against the base branch" (`scripts/kb-base-check.mjs`; merge base; fails on an unresolvable base) |
@@ -35,9 +36,10 @@ give default help to every role that can open it.
 
 ### Applying it in M6 (SMS turn alerts, USSD)
 
-1. Change the server manifest entry (`apps/api/src/que/capabilities.ts`), for example
-   `sms_turn_alerts` from `planned` to `sandbox`. CI now fails with C4, C5, A1 and A2 for
-   `visitor.alerts.sms`.
+1. Change the server manifest entry (`apps/api/src/que/capabilities.ts`). Done in M6.1 for SMS
+   (`planned` → `sandbox`). Still to come: USSD `planned` → `sandbox` (M6.2: C4, C5, A1 and A2
+   fail for `visitor.ussd`) and SMS `sandbox` → `live` once a provider is approved (C4, C5 and
+   A4 fail for `visitor.alerts.sms` and `staff.sms.alerts`).
 2. Rewrite the article for the new behaviour (consent, opt-out, caps) with an explicit sandbox
    label ("test only, no real messages"), and bump its `version`.
 3. Update `capabilities.json` (status, default availability, documenting articles). Add articles
@@ -101,13 +103,14 @@ remain open (MQ.5 evidence, remaining gaps).
 
 ## Review record
 
-| Date       | kbVersion | Reviewer    | Scope                                                                                                                                                                                |
-| ---------- | --------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 2026-11-17 | 1         | Kiro (MQ.2) | Four initial delivery articles                                                                                                                                                       |
-| 2026-11-18 | 2         | Kiro (MQ.5) | Full M1–M5 inventory; the four MQ.2 articles re-reviewed (three corrected, one unchanged apart from its review date)                                                                 |
-| 2026-11-19 | 3         | Kiro (MQ.6) | Consistency rules applied to all 44 articles: `org.signup` no longer relates the administration screen a visitor cannot open (R1); `admin.services` quotes the real form legend (L1) |
+| Date       | kbVersion | Reviewer    | Scope                                                                                                                                                                                                                                                                                                  |
+| ---------- | --------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2026-11-17 | 1         | Kiro (MQ.2) | Four initial delivery articles                                                                                                                                                                                                                                                                         |
+| 2026-11-18 | 2         | Kiro (MQ.5) | Full M1–M5 inventory; the four MQ.2 articles re-reviewed (three corrected, one unchanged apart from its review date)                                                                                                                                                                                   |
+| 2026-11-19 | 3         | Kiro (MQ.6) | Consistency rules applied to all 44 articles: `org.signup` no longer relates the administration screen a visitor cannot open (R1); `admin.services` quotes the real form legend (L1)                                                                                                                   |
+| 2026-11-19 | 4         | Kiro (M6.1) | SMS moved from `planned` to the TEST-ONLY `sandbox` (MQ.6 rule applied in the same PR): `visitor.alerts.sms` rewritten (v2), new `staff.sms.alerts`, `capabilities.json` updated (status `sandbox`, default `not_configured`), screen defaults for the join, ticket and console screens; rule A4 added |
 
-## Inventory (knowledge-base version 3)
+## Inventory (knowledge-base version 4)
 
 Audiences: V visitor, R reception, C counter, S supervisor, FA facility admin, A auditor. An
 organization administrator receives every staff audience.
@@ -120,7 +123,7 @@ organization administrator receives every staff audience.
 | `visitor.accessibility`     | Display and alert settings                             | V, R, C, S, FA, A | `accessibility_prefs`     | none                                                 | M5    | 1   |
 | `visitor.alerts`            | Turn alerts on your ticket page                        | V                 | `turn_alert_in_app`       | `visitor.ticket`                                     | M5    | 1   |
 | `visitor.alerts.push`       | Push alerts for your ticket                            | V                 | `turn_alert_web_push`     | `visitor.ticket`                                     | M5    | 1   |
-| `visitor.alerts.sms`        | Text message alerts                                    | V                 | `sms_turn_alerts`         | `visitor.ticket`                                     | M6    | 1   |
+| `visitor.alerts.sms`        | Text message alerts                                    | V                 | `sms_turn_alerts`         | `visitor.join`, `visitor.ticket`                     | M6    | 2   |
 | `visitor.auto_miss`         | Services that mark unanswered calls as missed          | V                 | `auto_miss`               | `visitor.ticket`                                     | M5    | 1   |
 | `visitor.display.board`     | The public display board                               | V, R, C, S, FA, A | none                      | `public.display`                                     | M2    | 1   |
 | `visitor.join.status`       | Joining a queue and following your ticket              | V                 | `visitor_join`            | `visitor.join`, `visitor.ticket`, `public.display`   | M2    | 1   |
@@ -155,6 +158,7 @@ organization administrator receives every staff audience.
 | `staff.recovery.approve`    | Approving a staff-assisted recovery                    | S, FA             | `staff_assisted_recovery` | `staff.console`                                      | M5    | 1   |
 | `staff.recovery.assist`     | Helping a visitor who has no recovery key              | R, C, S, FA       | `staff_assisted_recovery` | `staff.console`                                      | M5    | 2   |
 | `staff.roles.workflows`     | What each staff role can do                            | R, C, S, FA, A    | none                      | `staff.home`, `admin.facility.staff`                 | M1    | 1   |
+| `staff.sms.alerts`          | Text message alerts for visitors                       | R, C, S, FA       | `sms_turn_alerts`         | `staff.console`                                      | M6    | 1   |
 | `staff.sync.states`         | What the sync states mean                              | R, C, S, FA, A    | none                      | `staff.console`, `staff.connectivity`                | M3    | 2   |
 | `staff.transfers`           | Transferring a visitor                                 | C, S, FA, A       | none                      | `staff.console`, `staff.audit`                       | M4    | 1   |
 | `staff.walkin`              | Issuing a walk-in ticket                               | R, C, S, FA       | none                      | `staff.console`                                      | M2    | 1   |

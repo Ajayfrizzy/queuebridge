@@ -1,5 +1,5 @@
 {
-  "kbVersion": 3,
+  "kbVersion": 4,
   "articles": {
     "staff.alerts.status": {
       "version": 1,
@@ -81,6 +81,10 @@
       "version": 1,
       "hash": "048651cac165b3c33d73ee1f9a45a071744a8f7e67465f651c3249787639fc57"
     },
+    "staff.sms.alerts": {
+      "version": 1,
+      "hash": "0a2864877c507a01b49a6d5bc6a5a41039d2cc950ece05065d2d5761fe457a7f"
+    },
     "staff.walkin": {
       "version": 1,
       "hash": "d7cb1eca2d8b921bbae34ea9a404f89d60b412a082810e5c49551b9a2c0c9cf8"
@@ -130,8 +134,8 @@
       "hash": "7ab75264521fb3356ce996f6b3a64755ca38aa60f3d29bcb95455d4afb0e0a4e"
     },
     "visitor.alerts.sms": {
-      "version": 1,
-      "hash": "54f2293ecc89ca2e22f473ab0b1ac4d961e4018ebc8ba3c52bfae25f4aa6c6ee"
+      "version": 2,
+      "hash": "662f8f71e9ce9f2c39548ea7ef9338f2cf49e927fe2ce2e3dfb262571e090f15"
     },
     "visitor.auto_miss": {
       "version": 1,

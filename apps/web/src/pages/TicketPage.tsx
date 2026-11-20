@@ -9,6 +9,7 @@ import {
 } from '../components/DisplaySettings.js';
 import { RecoveryKeyPanel } from '../components/RecoveryKeyPanel.js';
 import { PushAlertPanel } from '../components/PushAlertPanel.js';
+import { TicketSmsPanel } from '../components/TicketSmsPanel.js';
 import { TURN_ALERT_EVENT } from '../components/PushHandoff.js';
 import { cuesFor } from '../lib/a11yPrefs.js';
 import { playTone, vibrate } from '../lib/alertCues.js';
@@ -650,6 +651,17 @@ function TicketView(): ReactElement {
             savedId={savedId}
             pushRef={pushRef}
             onPushRefChange={setPushRefState}
+          />
+        ) : null}
+
+        {['waiting', 'called', 'paused', 'missed'].includes(s.state) ? (
+          <TicketSmsPanel
+            code={code}
+            token={token}
+            state={s.sms_alert}
+            sandbox={s.sms_sandbox === true}
+            offline={Boolean(status.data?.cachedAt)}
+            onChanged={() => void status.reload()}
           />
         ) : null}
 

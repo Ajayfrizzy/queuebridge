@@ -52,6 +52,12 @@ const SWITCHED_OFF: CapabilityEntry = {
   unavailableReason: 'switched_off',
   since: 'MQ',
 };
+const SMS_NOT_SET_UP: CapabilityEntry = {
+  status: 'sandbox',
+  availability: 'unavailable',
+  unavailableReason: 'not_configured',
+  since: 'M6',
+};
 const live = (since: CapabilityEntry['since']): CapabilityEntry => ({
   status: 'live',
   availability: 'available',
@@ -72,11 +78,12 @@ const PRODUCTION = manifest({
   turn_alert_vibration: live('M5'),
   turn_alert_web_push: { ...NO_PUSH, since: 'M5' },
   accessibility_prefs: live('M5'),
-  sms_turn_alerts: PLANNED,
+  // M6.1: built as the TEST-ONLY sandbox; not set up by default (SMS_PROVIDER off)
+  sms_turn_alerts: SMS_NOT_SET_UP,
   ussd: PLANNED,
   ask_que_ai: SWITCHED_OFF,
 });
-const TODAY = '2026-11-19';
+const TODAY = '2026-11-20';
 
 const check = (
   over: {
@@ -166,41 +173,54 @@ describe('C rules: capability coverage contract', () => {
     );
   });
 
-  it('C4 a capability whose status changes (M6: SMS planned → sandbox) fails until its articles are reviewed', () => {
-    const m = manifest({
-      ...clone(PRODUCTION).capabilities,
-      sms_turn_alerts: { status: 'sandbox', availability: 'available', since: 'M6' },
-    });
+  it('C4 a capability whose status changes (live SMS after M6.1: sandbox → live) fails until its articles are reviewed', () => {
+    const m = manifest({ ...clone(PRODUCTION).capabilities, sms_turn_alerts: live('M6') });
     const p = check({ manifest: m });
     expect(p.find((x) => x.startsWith('C4 sms_turn_alerts'))).toMatch(
-      /visitor\.alerts\.sms.*reviewed for planned/,
+      /visitor\.alerts\.sms, staff\.sms\.alerts.*reviewed for sandbox/,
     );
-    // The stale article is caught on its own too: it says SMS is not offered, and is not labelled
+    expect(p.some((x) => x.startsWith('C5 sms_turn_alerts'))).toBe(true);
+    // The stale sandbox articles are caught on their own too: they still say "test mode"
     expect(p).toContain(
-      'A1 visitor.alerts.sms: says the feature is unavailable, but sms_turn_alerts is sandbox',
+      'A4 visitor.alerts.sms: sms_turn_alerts is live; the article still calls it sandbox or test mode',
     );
     expect(p).toContain(
-      'A2 visitor.alerts.sms: sms_turn_alerts is sandbox; the article must say so',
+      'A4 staff.sms.alerts: sms_turn_alerts is live; the article still calls it sandbox or test mode',
     );
   });
-
-  it('C4 the path to compliance: rewrite the article, label the sandbox, update the contract', () => {
-    const m = manifest({
-      ...clone(PRODUCTION).capabilities,
-      sms_turn_alerts: { status: 'sandbox', availability: 'available', since: 'M6' },
-    });
+  it('C4 the path to compliance: rewrite the articles for live, update the contract', () => {
+    const m = manifest({ ...clone(PRODUCTION).capabilities, sms_turn_alerts: live('M6') });
     const c = clone(CONTRACT);
     c.capabilities['sms_turn_alerts'] = {
-      status: 'sandbox',
+      status: 'live',
       defaultAvailability: 'available',
-      articles: ['visitor.alerts.sms'],
+      articles: ['visitor.alerts.sms', 'staff.sms.alerts'],
     };
-    const a = withArticle('visitor.alerts.sms', (x) => ({
+    let a = withArticle('visitor.alerts.sms', (x) => ({
       ...x,
       version: x.version + 1,
-      body: '# Text message alerts (sandbox)\n\nThis is a test only service. No real messages are sent.',
+      body: '# Text message alerts\n\nYou can ask for a text message when you are called.',
     }));
+    a = a.map((x) =>
+      x.id === 'staff.sms.alerts'
+        ? {
+            ...x,
+            version: x.version + 1,
+            body: '# Text message alerts\n\nThe visitor alert panel shows the text message state.',
+          }
+        : x,
+    );
     expect(check({ manifest: m, contract: c, articles: a })).toEqual([]);
+  });
+  it('A1 and A2 still apply to the next planned → sandbox change (USSD in M6.2)', () => {
+    const m = manifest({
+      ...clone(PRODUCTION).capabilities,
+      ussd: { status: 'sandbox', availability: 'available', since: 'M6' },
+    });
+    const p = check({ manifest: m });
+    expect(p.find((x) => x.startsWith('C4 ussd'))).toMatch(/visitor\.ussd.*reviewed for planned/);
+    expect(p).toContain('A1 visitor.ussd: says the feature is unavailable, but ussd is sandbox');
+    expect(p).toContain('A2 visitor.ussd: ussd is sandbox; the article must say so');
   });
 
   it('C5 a change of default availability fails until the articles are reviewed', () => {
@@ -230,15 +250,17 @@ describe('lifecycle status, deployment availability and unavailable reason are s
       const stale = check({ manifest: m });
       expect(stale.some((x) => x.startsWith(`C4 ${id}:`))).toBe(true);
       expect(stale.some((x) => x.startsWith(`C5 ${id}:`))).toBe(true);
-      // Contract updated, article not: the article still says the feature is not offered
+      // Contract updated, article not: USSD still says "not offered"; SMS still says "test mode"
       const c = clone(CONTRACT);
       c.capabilities[id] = {
         status: 'live',
         defaultAvailability: 'available',
-        articles: [article],
+        articles: CONTRACT.capabilities[id]?.articles ?? [article],
       };
       expect(check({ manifest: m, contract: c })).toContain(
-        `A1 ${article}: says the feature is unavailable, but ${id} is live`,
+        id === 'ussd'
+          ? `A1 ${article}: says the feature is unavailable, but ${id} is live`
+          : `A4 ${article}: ${id} is live; the article still calls it sandbox or test mode`,
       );
     },
   );

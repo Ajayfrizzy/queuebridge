@@ -5,12 +5,16 @@ import {
   DEFAULT_PUSH_HOSTS,
   SandboxPushTransport,
   WebPushTransport,
+  createContactCipher,
+  createSmsAdapter,
   createSubscriptionCipher,
   validatePushEndpoint,
   type PushTransport,
+  type SmsAdapter,
 } from '@queuebridge/channels';
 import { evaluateDeviceHealth, runHealthRetention } from './health.js';
 import { processTurnAlerts, purgeAlertData } from './turn-alerts.js';
+import { processSmsAlerts, purgeSmsData } from './sms-alerts.js';
 import { runRecoveryRetention } from './retention.js';
 
 /**
@@ -24,7 +28,10 @@ import { runRecoveryRetention } from './retention.js';
  *   in-product alerts; never changes authority, queues, tickets, events or devices
  * - turn-alert push delivery and retention (M5.4): web_push outbox rows, one device per row
  *   (sandbox or standard Web Push); never writes tickets, sessions or events
- * - SMS/USSD outbox delivery: not implemented yet — milestone M6
+ * - SMS turn-alert delivery and retention (M6.1): sms outbox rows through the SMS adapter
+ *   (TEST-ONLY sandbox; no live provider approved), daily caps, at most once per key; never
+ *   writes tickets, sessions or events; never logs a number or message text
+ * - USSD: milestone M6.2
  *
  * Logs are structured JSON; they never contain event payloads, tokens or keys.
  */
@@ -111,6 +118,43 @@ log('info', 'Turn-alert push', {
   ttl_seconds: env.TURN_ALERT_TTL_SECONDS,
 });
 
+/**
+ * M6.1: the SMS adapter, or null with the reason. Fails safe like push: a missing, wrong or
+ * refused configuration disables SMS sending, never the worker or its other jobs.
+ */
+function smsAdapter(): { adapter: SmsAdapter | null; reason: string } {
+  if (env.SMS_PROVIDER === 'off') return { adapter: null, reason: 'off' };
+  if (env.SMS_PROVIDER === 'sandbox' && env.NODE_ENV === 'production') {
+    log('error', 'SMS_PROVIDER=sandbox is refused in production: SMS sending disabled');
+    return { adapter: null, reason: 'sandbox_refused_in_production' };
+  }
+  try {
+    const a = createSmsAdapter(env.SMS_PROVIDER, { log: (line) => log('info', line) });
+    if (a.sandbox) log('warn', '[SANDBOX] SMS adapter: TEST-ONLY, no real text messages are sent');
+    return { adapter: a, reason: 'configured' };
+  } catch (err) {
+    log('error', 'SMS sending disabled', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return { adapter: null, reason: 'unknown_provider' };
+  }
+}
+const smsSetup = smsAdapter();
+const sms = smsSetup.adapter;
+const contactCipher = createContactCipher(env.CONTACT_ENCRYPTION_KEY);
+if (sms && !contactCipher) {
+  log('error', 'SMS sending disabled: CONTACT_ENCRYPTION_KEY is required to read numbers');
+}
+if (sms && contactCipher && env.SMS_DAILY_CAP === 0) {
+  log('warn', 'SMS_DAILY_CAP is 0: no text message will be sent');
+}
+log('info', 'SMS turn alerts', {
+  adapter: sms && contactCipher ? sms.provider : 'disabled',
+  reason: sms && !contactCipher ? 'no_contact_key' : smsSetup.reason,
+  sandbox: sms?.sandbox ?? false,
+  daily_cap: env.SMS_DAILY_CAP,
+});
+
 /** Non-secret configuration the API compares with its own (threshold drift, VAPID public key). */
 const workerConfig = {
   DEVICE_STALE_AFTER_SECONDS: env.DEVICE_STALE_AFTER_SECONDS,
@@ -118,6 +162,8 @@ const workerConfig = {
   CONFLICT_REVIEW_WARN_SECONDS: env.CONFLICT_REVIEW_WARN_SECONDS,
   HEALTH_EVALUATION_INTERVAL_SECONDS: env.HEALTH_EVALUATION_INTERVAL_SECONDS,
   TURN_ALERT_TTL_SECONDS: env.TURN_ALERT_TTL_SECONDS,
+  SMS_PROVIDER: sms && contactCipher ? sms.provider : 'disabled',
+  SMS_DAILY_CAP: env.SMS_DAILY_CAP,
   // null when this worker cannot send: the API then warns that its advertised key is not served
   vapid_public_key: transport && cipher ? (env.VAPID_PUBLIC_KEY ?? null) : null,
 };
@@ -159,6 +205,35 @@ async function runOnce(force = false): Promise<void> {
     }
   } catch (err) {
     log('error', 'Turn-alert delivery failed (other jobs continue)', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+  // SMS turn alerts: their own try/catch (independent of push and of the jobs that follow)
+  try {
+    const r = await processSmsAlerts(sql, sms && contactCipher ? sms : null, contactCipher, {
+      ttlSeconds: env.TURN_ALERT_TTL_SECONDS,
+      dailyCap: env.SMS_DAILY_CAP,
+    });
+    if (r.claimed + r.failed > 0) log('info', 'SMS turn alerts processed', { ...r });
+    if (r.errors > 0) {
+      log('error', 'SMS results could not be recorded; retried after the lease (no resend)', {
+        errors: r.errors,
+      });
+    }
+  } catch (err) {
+    log('error', 'SMS delivery failed (other jobs continue)', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+  try {
+    const p = await purgeSmsData(sql);
+    if (
+      p.erased + p.contactsDeleted + p.notificationsDeleted + p.noncesDeleted + p.countersDeleted >
+      0
+    )
+      log('info', 'SMS data retention', { ...p });
+  } catch (err) {
+    log('error', 'SMS retention failed (other jobs continue)', {
       error: err instanceof Error ? err.message : String(err),
     });
   }

@@ -29,6 +29,8 @@ import { recoveryRoutes } from './routes/recovery.js';
 import { pushRoutes } from './routes/push.js';
 import { queRoutes } from './routes/que.js';
 import { installTurnAlerts, setTurnAlertLogger } from './queue/turn-alerts.js';
+import { installSmsAlerts, setSmsAlertLogger } from './queue/sms-alerts.js';
+import { smsRoutes, smsWebhookRoutes } from './routes/sms.js';
 import { startAutoMissSweeper } from './queue/auto-miss.js';
 import type { RouteDeps } from './routes/deps.js';
 import { createRecoveryCrypto } from './recovery/crypto.js';
@@ -80,6 +82,9 @@ export async function buildApp(
   // Process-wide and stateless, so it is not removed on close (other app instances may share it).
   setTurnAlertLogger(app.log);
   installTurnAlerts();
+  // M6.1: SMS turn alerts use their own hook (own savepoint): independent of push and in-app
+  setSmsAlertLogger(app.log);
+  installSmsAlerts();
   app.addHook('onClose', async () => {
     await notifier.close();
   });
@@ -135,6 +140,9 @@ export async function buildApp(
     // send and CORS only permits for our origins) — including anonymous ones such as visitor
     // joins, so a third-party page cannot make browsers mass-join queues.
     if (!path.startsWith('/api/')) return;
+    // Provider webhooks carry no cookie or session and are authenticated by their HMAC
+    // signature, timestamp and nonce (routes/sms.ts), so the browser CSRF checks do not apply.
+    if (path.startsWith('/api/v1/webhooks/')) return;
     const origin = req.headers.origin;
     if (typeof origin === 'string' && !origins.includes(origin.replace(/\/$/, ''))) {
       throw problems.csrf();
@@ -267,6 +275,8 @@ export async function buildApp(
       await api.register(recoveryRoutes, deps);
       await api.register(pushRoutes, deps);
       await api.register(queRoutes, deps);
+      await api.register(smsRoutes, deps);
+      await api.register(smsWebhookRoutes, deps);
     },
     { prefix: '/api/v1' },
   );

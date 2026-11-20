@@ -216,3 +216,31 @@ deployment has no enabled adapter.
 
 The Playwright API server uses the sandbox adapter (see `apps/web/playwright.config.ts`); nothing
 leaves the machine. Migration `0010_que_ai.sql` adds the opt-in table and the daily counter.
+
+## SMS turn alerts (M6.1): TEST-ONLY sandbox, no real messages
+
+SMS is off unless every switch agrees. `SMS_PROVIDER` defaults to `off` for both the API and the
+worker (and is `off` in `.env.example`); set `sandbox` only to try it locally. Nothing is ever sent to a phone in this build: the only
+adapter is the sandbox, which records messages in memory, labels them `[TEST]`, logs
+`[SANDBOX]` lines without numbers or text, and is refused when `NODE_ENV=production`.
+
+1. In `.env` (both the API and the worker read it): `SMS_PROVIDER=sandbox`, a positive
+   `SMS_DAILY_CAP` (for example `50`), `CONTACT_ENCRYPTION_KEY` (numbers are stored encrypted)
+   and, to try receipts, `SMS_WEBHOOK_SECRET` (32+ random characters).
+2. Turn SMS on for a facility, with its own daily cap (facility administrator; the channel
+   settings screen comes in M6.3):
+   `PUT /api/v1/facilities/<id>/sms` with `{"enabled": true, "daily_cap": 20}`.
+3. Join from the facility's join page: the optional **Mobile number** field and the separate,
+   unticked consent box appear, with "Test mode: no real text messages are sent here."
+4. Call the ticket from the console, then run the worker once (`pnpm --filter
+@queuebridge/worker exec node dist/worker.js --once`). The console's visitor alert panel
+   shows "Test text message accepted (sandbox: nothing sent to a phone)".
+5. Optional, a simulated receipt: sign a JSON body
+   `{"kind":"receipt","message_id":"<sbx_… id>","status":"delivered"}` with
+   `signSmsWebhook(SMS_WEBHOOK_SECRET, body)` from `@queuebridge/channels` and post it to
+   `/api/v1/webhooks/sms/sandbox`. The message id is `sbx_` + the first 32 hex characters of
+   SHA-256 of the idempotency key `sms:ticket.called:<ticket_id>:<event_sequence>`.
+
+Sandbox outcomes are chosen by the number's last three digits: `…001` rejected, `…002`
+temporarily unavailable (retried), `…003` transport error (outcome unknown, never resent);
+any other number is accepted. Daily counters for sandbox and live are kept apart.

@@ -1,3 +1,4 @@
+import postgres from 'postgres';
 import { execFileSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -43,6 +44,50 @@ function messages(out: string): string {
 function record(label: string, ms: number, outcome: string): void {
   const file = process.env['QB_WORKER_TIMING_LOG'];
   if (file) appendFileSync(file, `${new Date().toISOString()} ${label} ${ms}ms ${outcome}\n`);
+}
+
+/**
+ * The worker's alert batch: due rows of one channel are taken oldest first (`next_attempt_at`,
+ * then id), at most this many per run (`batchSize` default in apps/worker turn-alerts.ts and
+ * sms-alerts.ts).
+ */
+export const WORKER_ALERT_BATCH = 50;
+
+/**
+ * Runs the real worker as many times as are needed to reach the given outbox rows, no more.
+ *
+ * Why one run is not enough (stabilization, 2026-11-20): the shared test database can hold older
+ * pending alert rows, because the API DB suites commit calls without running a worker. With more
+ * than `WORKER_ALERT_BATCH` rows ahead, a single run took only older rows and left the test's own
+ * row pending; reproduced deterministically for SMS (60 rows ahead) and for push (85 rows ahead,
+ * `turn-alerts.spec.ts`). The rows ahead of the LAST target are counted once, before running, in
+ * the claim's own order; rows created or re-leased later sort after it and concurrent workers
+ * only shorten the line, so ceil((ahead + 1) / batch) runs always reach every target. If they do
+ * not, the caller's outcome assertion fails: nothing is retried.
+ */
+export async function runWorkerUntilReached(
+  label: string,
+  channel: 'sms' | 'web_push',
+  notificationIds: string[],
+): Promise<void> {
+  const sql = postgres(DB_URL, { max: 1, onnotice: () => undefined });
+  let ahead = 0;
+  try {
+    const [row] = await sql<{ ahead: number }[]>`
+      WITH last AS (
+        SELECT o.next_attempt_at, o.id FROM notification_outbox o
+         WHERE o.notification_id IN ${sql(notificationIds)} AND o.processed_at IS NULL
+         ORDER BY o.next_attempt_at DESC, o.id DESC LIMIT 1)
+      SELECT count(*)::int AS ahead
+        FROM notification_outbox o JOIN notifications n ON n.id = o.notification_id, last
+       WHERE n.channel = ${channel} AND o.processed_at IS NULL
+         AND (o.next_attempt_at, o.id) < (last.next_attempt_at, last.id)`;
+    ahead = row?.ahead ?? 0;
+  } finally {
+    await sql.end({ timeout: 5 });
+  }
+  const runs = Math.ceil((ahead + 1) / WORKER_ALERT_BATCH);
+  for (let i = 0; i < runs; i += 1) runWorkerOnce(label);
 }
 
 export function runWorkerOnce(label: string): void {

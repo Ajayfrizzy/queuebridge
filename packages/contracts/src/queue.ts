@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { PriorityClass, QueueAction, QueueSessionState, TicketState } from './enums.js';
 import { UuidSchema, UuidV7Schema, WaitEstimateSchema } from './schemas.js';
+import { SmsAlertStateSchema, SmsJoinOptInSchema, SmsJoinResultSchema } from './sms.js';
 
 /**
  * M2 — online queue core DTOs.
@@ -141,6 +142,11 @@ export const JoinQueueRequestSchema = z
      * A retry after a lost response must present the same proof to recover the ticket.
      */
     join_proof: SecretTokenSchema,
+    /**
+     * M6.1: optional SMS turn alert (phone number plus the separate consent). Never required:
+     * a join without it, or with SMS unavailable, is an ordinary join.
+     */
+    sms: SmsJoinOptInSchema.optional(),
   })
   .strict();
 export type JoinQueueRequest = z.infer<typeof JoinQueueRequestSchema>;
@@ -163,6 +169,8 @@ export const JoinQueueResponseSchema = z.object({
   recovery_key: z.string().nullable(),
   /** Public path where the recovery key is entered (no secret in it). */
   recovery_path: z.string(),
+  /** M6.1: outcome of the optional SMS opt-in (absent or null when none was requested). */
+  sms_alert: SmsJoinResultSchema.optional(),
 });
 export type JoinQueueResponse = z.infer<typeof JoinQueueResponseSchema>;
 
@@ -212,6 +220,10 @@ export const TicketStatusSchema = z.object({
    * (null otherwise). The page alerts once per call sequence (REQ-F14.1.4).
    */
   call_sequence: z.number().int().positive().nullable(),
+  /** M6.1: the SMS turn alert for this ticket (`on`, `off` after opt-out, null when none). */
+  sms_alert: SmsAlertStateSchema.optional(),
+  /** M6.1: SMS for this ticket goes through the TEST-ONLY sandbox (no real message is sent). */
+  sms_sandbox: z.boolean().optional(),
 });
 export type TicketStatus = z.infer<typeof TicketStatusSchema>;
 
@@ -236,6 +248,11 @@ export const PublicFacilitySchema = z.object({
   organization_name: z.string(),
   facility_name: z.string(),
   queues: z.array(PublicQueueSchema),
+  /**
+   * M6.1: SMS turn alerts offered at joining here: `sandbox` (TEST-ONLY, no real messages) or
+   * `live` (an approved provider); null or absent when not offered.
+   */
+  sms_alerts: z.enum(['sandbox', 'live']).nullable().optional(),
 });
 export type PublicFacility = z.infer<typeof PublicFacilitySchema>;
 

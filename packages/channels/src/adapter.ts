@@ -43,3 +43,18 @@ export interface ChannelAdapter {
    */
   handleUssdSession(_params: UssdSessionParams): Promise<UssdResponse>;
 }
+
+/**
+ * An SMS-capable adapter (M6.1). `sandbox` adapters never use the network and their traffic is
+ * labelled test-only everywhere; `provider` names the adapter for receipts and logs.
+ */
+export interface SmsAdapter extends ChannelAdapter {
+  readonly provider: string;
+  readonly sandbox: boolean;
+  /** The provider forwards inbound replies, so "STOP" works (design §13.2) */
+  readonly supportsInboundKeywords: boolean;
+}
+
+/** Providers with an adapter in this build. Live providers are added only after approval. */
+export const SMS_PROVIDERS = ['sandbox'] as const;
+export type SmsProvider = (typeof SMS_PROVIDERS)[number];

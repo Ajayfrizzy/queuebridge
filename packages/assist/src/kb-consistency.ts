@@ -26,6 +26,8 @@ import { ROUTE_REGISTRY } from './registry.js';
  * - A1 an article that can be shown never says its feature is not offered / not available yet
  * - A2 an article for a `sandbox` or `preview` capability says so
  * - A3 an article dated after the newest shown milestone is gated on a capability not yet live
+ * - A4 an article for a `live` capability never calls it sandbox or test mode (M6.1: catches a
+ *      sandbox article left unchanged when a live provider is switched on)
  * - R1 every related route can be opened by at least one of the article's audiences
  * - R2 every body link is a related route
  * - R3 every screen default article exists
@@ -139,6 +141,8 @@ const order = (m: unknown): number => (MILESTONES as readonly unknown[]).indexOf
 export const UNAVAILABLE_WORDING = /\bnot (?:offered|available yet)\b/i;
 /** Wording that labels a sandbox or preview feature honestly (REQ-F13.9.1). */
 export const SANDBOX_WORDING = /\b(?:sandbox|test only|test-only|preview)\b/i;
+/** Wording that says a feature is not real (wrong for a `live` capability). */
+export const TEST_MODE_WORDING = /\b(?:sandbox|test mode|test only|test-only)\b/i;
 
 /**
  * Whether one of the article's audiences may open the route. Articles never list `org_admin`
@@ -215,6 +219,11 @@ export function kbConsistencyProblems(input: KbConsistencyInput): string[] {
         }
         if ((status === 'sandbox' || status === 'preview') && !SANDBOX_WORDING.test(a.body)) {
           problems.push(`A2 ${a.id}: ${c} is ${status}; the article must say so`);
+        }
+        if (status === 'live' && TEST_MODE_WORDING.test(a.body)) {
+          problems.push(
+            `A4 ${a.id}: ${c} is live; the article still calls it sandbox or test mode`,
+          );
         }
       }
     }

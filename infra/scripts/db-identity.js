@@ -62,6 +62,13 @@ export const SENTINELS = {
     'push_subscription_throttle',
   ],
   '0010_que_ai.sql': ['facility_que_ai_settings', 'que_ai_daily_usage'],
+  '0011_sms_turn_alerts.sql': [
+    'facility_sms_settings',
+    'sms_daily_usage',
+    'sms_webhook_nonces',
+    'visitor_contacts.phone_hash',
+    'notifications.send_started_at',
+  ],
 };
 
 /** Migration files of this checkout, in apply order. */

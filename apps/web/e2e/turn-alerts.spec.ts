@@ -10,7 +10,7 @@ import {
 import { uuidv7 } from '@queuebridge/contracts';
 import { apiQueueSetup, expectNoA11yViolations, hasHorizontalOverflow } from './helpers.js';
 import { E2E_PUSH_HOST } from './push-env.js';
-import { runWorkerOnce as runWorker } from './worker-once.js';
+import { runWorkerUntilReached } from './worker-once.js';
 
 /**
  * M5.4 Smart Turn Alerts in real browsers against the real stack (testing steering Group 14:
@@ -28,7 +28,6 @@ const CSRF = { 'X-QB-CSRF': '1' };
 const DB_URL = process.env['TEST_DATABASE_URL'] ?? '';
 type Setup = Awaited<ReturnType<typeof apiQueueSetup>>;
 
-const runWorkerOnce = (): void => runWorker('turn-alerts');
 async function withDb<T>(fn: (sql: postgres.Sql) => Promise<T>): Promise<T> {
   const sql = postgres(DB_URL, { max: 1, onnotice: () => undefined });
   try {
@@ -195,6 +194,23 @@ async function outcomeOf(ref: string): Promise<{ status: string; detail_code: st
     .poll(async () => (await notificationsOf(ref)).every((n) => n.status !== 'pending'))
     .toBe(true);
   return notificationsOf(ref);
+}
+/**
+ * The real worker (`--once`), run as often as the backlog of older push rows ahead of these
+ * devices' alerts needs (see `runWorkerUntilReached`; a single run is not enough when more than
+ * one batch is ahead, reproduced 2026-11-20). The outcome assertions that follow are unchanged.
+ */
+async function runWorkerFor(...refs: string[]): Promise<void> {
+  const ids = await withDb(
+    (sql) => sql<{ id: string }[]>`
+      SELECT id FROM notifications WHERE push_subscription_id IN ${sql(refs)}`,
+  );
+  expect(ids.length).toBeGreaterThan(0);
+  await runWorkerUntilReached(
+    'turn-alerts',
+    'web_push',
+    ids.map((r) => r.id),
+  );
 }
 async function notificationsOf(ref: string): Promise<{ status: string; detail_code: string }[]> {
   return withDb(
@@ -430,7 +446,7 @@ test.describe('14.3 push consent and the delivery pipeline', () => {
     await expect(v.page.getByTestId('turn-banner')).toBeVisible();
     // one entry for this device (pending until a worker, possibly another test's, sends it)
     expect(await notificationsOf(ref)).toHaveLength(1);
-    runWorkerOnce();
+    await runWorkerFor(ref);
     expect(await outcomeOf(ref)).toEqual([{ status: 'sent', detail_code: 'accepted' }]);
     // staff console: plain words, never "delivered" for an accepted push
     await page.goto(`/staff/queues/${s.queueId ?? ''}`);
@@ -576,7 +592,7 @@ test.describe('14.13 / 14.14 notification identity', () => {
     // both are called; each notification destination opens its own ticket
     await callNext(page, a);
     await callNext(staffB, b);
-    runWorkerOnce();
+    await runWorkerFor(refA, refB);
     for (const [ref, facilityId] of [
       [refA, a.facility.id],
       [refB, b.facility.id],
@@ -707,7 +723,7 @@ test.describe('14.7 failures never touch the queue; the dashboard counts them ho
     const code = await joinAsVisitor(v.page, s);
     const ref = await enablePush(v.page);
     await callNext(page, s);
-    runWorkerOnce();
+    await runWorkerFor(ref);
     expect(await outcomeOf(ref)).toEqual([{ status: 'failed', detail_code: 'gone' }]);
     await expect(v.page.getByTestId('ticket-state')).toHaveText('Called');
     const tid = await ticketId(page, s, code);

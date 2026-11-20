@@ -4,8 +4,13 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 /**
- * Scoped dependency-audit gate (infra/scripts/audit-gate.js) — MQ.2 security exception for
- * GHSA-fc5q-39xc-vjpf. Deterministic: every pnpm command is replaced by a fixture; no network.
+ * Scoped dependency-audit gate (infra/scripts/audit-gate.js). Deterministic: every pnpm command
+ * is replaced by a fixture; no network.
+ *
+ * The exception rules are exercised with the MQ.2 GHSA-fc5q-39xc-vjpf exception exactly as it
+ * was approved (`testing/audit-policy.fixture.json`). The committed policy holds no exception
+ * since 2026-11-20 (the advisory was withdrawn upstream on 2026-11-18); the last block of tests
+ * shows that, with it, the gate accepts nothing.
  */
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -52,7 +57,12 @@ interface Policy {
 }
 
 let gate: Gate;
+/** The exception rules' fixture (never read by the gate itself). */
 const POLICY = JSON.parse(
+  readFileSync(join(ROOT, 'apps/api/src/testing/audit-policy.fixture.json'), 'utf8'),
+) as Policy;
+/** The policy the gate actually reads in CI. */
+const COMMITTED = JSON.parse(
   readFileSync(join(ROOT, 'infra/security/audit-policy.json'), 'utf8'),
 ) as Policy;
 const EXC = POLICY.exceptions[0]!;
@@ -460,13 +470,41 @@ describe('10. upstream fix or changed vulnerability status', () => {
 });
 
 describe('policy file and CI wiring', () => {
-  it('the committed policy is valid and holds exactly this one exception', () => {
+  it('the fixture is the exception as approved (valid, one advisory, exact paths)', () => {
     expect(gate.validatePolicy(POLICY)).toEqual([]);
     expect(POLICY.exceptions.map((e) => e.advisory)).toEqual(['GHSA-fc5q-39xc-vjpf']);
     expect(EXC.findings.map((f) => [f.version, f.paths.length])).toEqual([
       ['2.3.2', 7],
       ['4.0.7', 215],
     ]);
+  });
+  it('the committed policy is valid and holds no exception (GHSA-fc5q-39xc-vjpf withdrawn and removed)', () => {
+    expect(gate.validatePolicy(COMMITTED)).toEqual([]);
+    expect(COMMITTED.exceptions).toEqual([]);
+    expect(COMMITTED.maxValidityDays).toBe(POLICY.maxValidityDays);
+  });
+  it('with the committed policy, the same picomatch finding (if ever re-published) blocks', () => {
+    const r = run({ policy: COMMITTED });
+    expect(r.ok).toBe(false);
+    expect(r.accepted).toEqual([]);
+    expect(blockedText(r)).toContain('GHSA-fc5q-39xc-vjpf');
+  });
+  it('with the committed policy, any new high or critical finding blocks; a clean audit passes', () => {
+    for (const severity of ['high', 'critical']) {
+      const a: Advisory = {
+        module_name: 'left-pad',
+        severity,
+        github_advisory_id: 'GHSA-xxxx-yyyy-zzzz',
+        vulnerable_versions: '<9.9.9',
+        patched_versions: '>=9.9.9',
+        findings: [{ version: '1.0.0', paths: ['apps/api > left-pad@1.0.0'] }],
+      };
+      const r = run({ policy: COMMITTED, audit: audit({ 7: a }) });
+      expect(r.ok, severity).toBe(false);
+      expect(blockedText(r)).toContain('GHSA-xxxx-yyyy-zzzz');
+    }
+    const clean = run({ policy: COMMITTED, audit: audit({}) });
+    expect(clean).toMatchObject({ ok: true, blocked: [], accepted: [] });
   });
 
   it('no blanket ignore exists in pnpm configuration', () => {

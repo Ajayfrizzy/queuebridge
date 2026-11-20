@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { IsoDateTimeSchema, UuidSchema } from './schemas.js';
+import { StaffSmsAlertSchema } from './sms.js';
 
 /**
  * M5.4 Smart Turn Alerts (REQ-F14, design §12, ADR-013).
@@ -127,6 +128,10 @@ export const StaffTicketAlertsSchema = z.object({
       updated_at: IsoDateTimeSchema,
     }),
   ),
+  /** M6.1: the SMS turn alert for this call, when the visitor gave a number (null otherwise) */
+  sms: StaffSmsAlertSchema.nullable().optional(),
+  /** M6.1: an SMS contact that has not opted out exists (staff may stop the messages) */
+  sms_active: z.boolean().optional(),
 });
 export type StaffTicketAlerts = z.infer<typeof StaffTicketAlertsSchema>;
 

@@ -1,5 +1,11 @@
 import { defineConfig, devices } from '@playwright/test';
-import { E2E_CONTACT_KEY, E2E_PUSH_HOST, E2E_VAPID_PUBLIC_KEY } from './e2e/push-env.js';
+import {
+  E2E_CONTACT_KEY,
+  E2E_PUSH_HOST,
+  E2E_SMS_DAILY_CAP,
+  E2E_SMS_WEBHOOK_SECRET,
+  E2E_VAPID_PUBLIC_KEY,
+} from './e2e/push-env.js';
 
 /** Dedicated test port: never the dev API (3002) nor other local projects (3001). */
 const API_PORT = 3101;
@@ -84,6 +90,11 @@ export default defineConfig({
         QUE_AI_DAILY_CAP: '100000',
         QUE_AI_TIMEOUT_MS: '1500',
         QUE_AI_RATE_LIMIT_MAX: '1000',
+        // M6.1: the TEST-ONLY SMS sandbox (refused in production). SMS still needs a facility
+        // opt-in, so other specs are unaffected; the worker run by the specs uses the same cap.
+        SMS_PROVIDER: 'sandbox',
+        SMS_DAILY_CAP: E2E_SMS_DAILY_CAP,
+        SMS_WEBHOOK_SECRET: E2E_SMS_WEBHOOK_SECRET,
         LOG_LEVEL: 'warn',
       },
     },

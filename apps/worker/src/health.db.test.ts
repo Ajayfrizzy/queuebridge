@@ -359,6 +359,9 @@ describe('8.D3 one open alert per (facility, kind, subject)', () => {
     const f = await facility();
     await f.device({ streak: 3 });
     const holder = postgres(dbUrl, { max: 1, onnotice: () => undefined });
+    // pg_locks is server-wide: wait for THIS holder's lock (its backend pid), not for any
+    // advisory lock another database on the same server happens to hold (M6.1 stabilization)
+    const [{ pid } = { pid: 0 }] = await holder<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`;
     let release: () => void = () => undefined;
     const released = new Promise<void>((r) => (release = r));
     // another evaluator "hangs" while holding the evaluation lock
@@ -372,7 +375,8 @@ describe('8.D3 one open alert per (facility, kind, subject)', () => {
           async () =>
             (
               await sql<{ n: number }[]>`
-              SELECT COUNT(*)::int AS n FROM pg_locks WHERE locktype = 'advisory' AND granted`
+              SELECT COUNT(*)::int AS n FROM pg_locks
+               WHERE locktype = 'advisory' AND granted AND pid = ${pid}`
             )[0]?.n,
         )
         .toBeGreaterThanOrEqual(1);
