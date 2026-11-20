@@ -66,6 +66,8 @@ interface Payload {
   facility_id: string;
   event_sequence: number;
   counter_id: string | null;
+  /** M6.3: a delayed alert, to skip if the visitor's page presented the in-app alert first */
+  skip_if_seen?: boolean;
 }
 
 type Outcome =
@@ -86,7 +88,7 @@ type Outcome =
       status: 'suppressed';
       detail: Extract<
         SmsDetailCode,
-        'ticket_changed' | 'opted_out' | 'contact_removed' | 'sms_disabled'
+        'ticket_changed' | 'opted_out' | 'contact_removed' | 'sms_disabled' | 'alert_seen'
       >;
     }
   | { status: 'unknown'; detail: Extract<SmsDetailCode, 'interrupted' | 'error'> }
@@ -105,7 +107,8 @@ function validPayload(p: Record<string, unknown>): p is Record<string, unknown> 
     UUID.test(p['facility_id']) &&
     Number.isInteger(p['event_sequence']) &&
     (p['counter_id'] === null ||
-      (typeof p['counter_id'] === 'string' && UUID.test(p['counter_id'])))
+      (typeof p['counter_id'] === 'string' && UUID.test(p['counter_id']))) &&
+    (p['skip_if_seen'] === undefined || typeof p['skip_if_seen'] === 'boolean')
   );
 }
 
@@ -286,6 +289,15 @@ async function attempt(
       if (contact.erased || !contact.phone_ciphertext) {
         return { kind: 'suppressed' as const, detail: 'contact_removed' as const };
       }
+      // M6.3 delayed alert: the visitor's page presented the in-app alert for THIS call event
+      // before the send started (the acknowledgement is written under this same contact row
+      // lock, so the order is exact). Skipped honestly, before any cap is reserved.
+      if (p.skip_if_seen === true) {
+        const seen = await tx`
+          SELECT 1 FROM turn_alert_seen
+           WHERE ticket_id = ${p.ticket_id} AND event_sequence = ${p.event_sequence}`;
+        if (seen.length > 0) return { kind: 'suppressed' as const, detail: 'alert_seen' as const };
+      }
       const phone = cipher.openPhone(contact.phone_ciphertext);
       const facilityCap = c.facility_cap ?? 0;
       if (o.dailyCap <= 0 || facilityCap <= 0) throw new CapReached();
@@ -402,7 +414,8 @@ async function finish(
  *    visit; a row without a number (consent and opt-out record) is deleted 24 hours after the
  *    number was erased or opted out, or at `retention_until`;
  *  - delete SMS notification rows (and their outbox and delivery rows) after 30 days;
- *  - delete webhook nonces after 24 hours and daily counters after 90 days.
+ *  - delete webhook nonces after 24 hours and daily counters after 90 days;
+ *  - delete in-app "alert seen" marks (M6.3) after 24 hours.
  */
 export interface SmsRetentionResult {
   erased: number;
@@ -410,6 +423,7 @@ export interface SmsRetentionResult {
   notificationsDeleted: number;
   noncesDeleted: number;
   countersDeleted: number;
+  seenDeleted: number;
 }
 
 export async function purgeSmsData(
@@ -455,11 +469,17 @@ export async function purgeSmsData(
        WHERE received_at < NOW() - INTERVAL '24 hours' LIMIT ${batch})`;
   const counters = await sql`
     DELETE FROM sms_daily_usage WHERE usage_date < (NOW() AT TIME ZONE 'UTC')::date - 90`;
+  // M6.3 in-app "alert seen" marks: needed only until the delayed SMS for that call is decided
+  const seen = await sql`
+    DELETE FROM turn_alert_seen WHERE (ticket_id, event_sequence) IN (
+      SELECT ticket_id, event_sequence FROM turn_alert_seen
+       WHERE seen_at < NOW() - INTERVAL '24 hours' LIMIT ${batch})`;
   return {
     erased: erased.count + backstop.count,
     contactsDeleted: contacts.count,
     notificationsDeleted: notifications.count,
     noncesDeleted: nonces.count,
     countersDeleted: counters.count,
+    seenDeleted: seen.count,
   };
 }

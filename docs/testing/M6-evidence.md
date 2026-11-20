@@ -689,3 +689,173 @@ Browsing, invalid input, failed joins, status and recovery append no `queue_even
 | Knowledge base                                                   | `kb-base-check` against `staging`: kbVersion 4 → 5 accepted, 45 articles                                                                                                                    |
 | `pnpm audit --prod --audit-level high`, `audit-gate.js`          | no known vulnerabilities; PASS with no exception                                                                                                                                            |
 | Migrations                                                       | fresh database 12/12, idempotent; `db:check` 12/12                                                                                                                                          |
+
+## M6.3 — Channel configuration and monitoring (2026-11-20)
+
+Branch `feature/m6-3-channel-configuration`, baseline `40a8f42` (M6.2 merge). No live provider,
+no M7 scope, no new capability ID. The existing `GET|PUT /facilities/:id/sms` and
+`GET|PUT /facilities/:id/ussd` endpoints, permissions (`FACILITY_READ` to read,
+`FACILITY_CONFIGURE` to change) and audit events are reused; no second settings store exists.
+
+### Migration `0013_channel_configuration.sql` (additive; nothing dropped)
+
+| Change                                                                                                                                  | Purpose                                                                                                                   |
+| --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `facility_sms_settings.delay_seconds` INTEGER NULL, CHECK 10–3600                                                                       | optional SMS delay; NULL = immediate (default, M6.1 behaviour)                                                            |
+| table `turn_alert_seen (ticket_id, organization_id, event_sequence > 0, seen_at)`, PK `(ticket_id, event_sequence)`, index on `seen_at` | the ticket page presented the in-app alert for one committed call; no device, address or personal data; purged after 24 h |
+| index `notifications_org_channel_created_idx (organization_id, channel, created_at DESC, id DESC)`                                      | bounded, newest-first monitoring pages                                                                                    |
+| `ussd_sessions.end_reason` TEXT NULL, CHECK `menu`/`timeout`/`out_of_step`                                                              | why a session ended, so an expiry is never counted as a completed menu or a join                                          |
+
+Registered in `infra/scripts/db-identity.js` (sentinels for the new table and columns).
+Idempotent (`IF NOT EXISTS`, guarded constraints).
+
+### The Channels screen (`/admin/facilities/:id/channels`, tab "Channels")
+
+`apps/web/src/pages/FacilityChannels.tsx`:
+
+- **SMS:** enable, facility daily cap (required ≥ 1 to turn on), today's use against the facility
+  and deployment caps (UTC), readiness (deployment set up / facility on / alerts sent here),
+  sandbox warning `Test mode — no real messages are sent`, optional delay with its warning.
+- **USSD:** enable, the server-generated 6-digit facility code (shown once created, described as
+  public and opening no ticket), the short menu explanation, the warning
+  `Test mode — no real mobile-network USSD session` and "There is no real USSD code to dial."
+- **Provider mode:** a disabled, read-only radio group "Provider mode (set by this deployment, not
+  on this screen)": Sandbox is checked only when the server reports `sandbox`; Live is always
+  disabled with the reason (no approved provider, no live credentials). With the deployment
+  `off`, no sandbox warning is shown and the screen says nothing is sent, not even in test mode.
+  The settings schema is strict, so a body carrying a mode is refused (400); no route activates
+  the sandbox (it remains `SMS_PROVIDER`/`USSD_PROVIDER` environment configuration, refused in
+  production).
+- **States:** loading, load error, client validation with a focused error summary whose links
+  move focus to the field, server problem summary, success in a `role=status` region plus an
+  announcement, controls disabled while saving (one request on a double click, tested).
+- **Read-only staff** see the settings in a disabled fieldset with no save buttons; the API
+  refuses their changes (403).
+
+### Monitoring (OPERATIONS_VIEW: supervisor, facility admin, org admin, auditor)
+
+- `GET /facilities/:id/sms/monitor?limit=1–50&before=<cursor>`: last-24-hour counts (waiting,
+  accepted, receipts, failed, limit reached, not sent, unknown) and rows (ticket code, template,
+  created, recorded state, safe detail code, provider mode, attempts, due time while delayed),
+  keyset paging on `(created_at, id)`, strict query schema, organization **and** facility scope.
+  No number, hash, ciphertext, message text, dedup key or provider message id is returned.
+  Wording: `sent` is "Accepted …, not confirmed" (sandbox: "nothing sent to a phone"), only a
+  receipt is "Delivered" (sandbox: "Test receipt (simulated, no real message)"), `unknown` is
+  "Outcome unknown", `suppressed` names its reason. Nothing is synthesized as delivered.
+- `GET /facilities/:id/ussd/monitor`: sessions open now, ended by the menu, timed out (late input
+  or expired without an end), out of order, sessions that created a ticket, and USSD tickets
+  created today (facility time zone). Sessions are deleted about an hour after they end, so the
+  session figures cover roughly the last hour; the screen says so. An expiry is never a join.
+
+### Optional delayed SMS
+
+**Setting.** "Send a text message only if the ticket page has not shown the alert after a
+delay"; off by default; the screen warns that the SMS then arrives later and is not recommended
+where timely calling matters, and that "no report does not mean the visitor missed it".
+
+**Bound.** `maxSmsDelaySeconds = min(TTL − 30, earliest automatic no-show − 30)`, null below
+10 s (`SMS_DELAY_MIN_SECONDS`). The 30 s margin (`SMS_DELAY_DISPATCH_MARGIN_SECONDS`) covers the
+worker poll interval and retry backoff. At save, the earliest automatic no-show is taken over
+**all** the facility's services (active or not, since a service can reopen); a longer value is
+422 `sms-delay-not-allowed` with a field error. The grace window is not a bound: it starts only
+after a no-show, which the bound already precedes. With the default TTL of 120 s the longest
+delay is 90 s. Changes are audited as `sms.delay_changed` (`delay_seconds`,
+`previous_delay_seconds`).
+
+**At enqueue** (`apps/api/src/queue/sms-alerts.ts`, still inside its savepoint): the delay is
+re-derived with the same `maxSmsDelaySeconds` from the API deployment's current
+`TURN_ALERT_TTL_SECONDS` (passed to `installSmsAlerts` at startup; the worker reads the same
+variable, same default and range) and the call's own service's current automatic no-show
+policy; if the saved delay is no longer safe the SMS is enqueued **immediately** (never later
+than allowed), with the same event-specific key. Delayed
+rows carry `next_attempt_at = NOW() + delay` (database time) and `skip_if_seen: true`.
+
+**At dispatch** (`apps/worker/src/sms-alerts.ts`): the existing re-checks run unchanged (ticket
+still called for this event, contact present and not opted out, facility SMS on, TTL). Then, for
+`skip_if_seen` rows only and before any cap is reserved, a `turn_alert_seen` row for the same
+ticket and call sequence closes the alert `suppressed` / `alert_seen` (not counted against
+caps). The acknowledgement is written under the same `visitor_contacts FOR UPDATE` lock the
+worker holds, so either the acknowledgement commits first (skip) or the send starts first (sent;
+a later acknowledgement changes nothing). At-most-once (`send_started_at`) is unchanged.
+
+**Acknowledgement.** `POST /api/v1/tickets/:code/alerts/seen` (`apps/api/src/routes/alert-seen.ts`),
+separate from the Web Push ack: the ticket's status token header, CSRF header, rate limit,
+strict body `{event_sequence}`; 404 for unknown code or token (no oracle); 409
+`alert-not-current` unless the ticket is `called` and the sequence is its latest committed call;
+idempotent (`ON CONFLICT DO NOTHING`, 204). The ticket page sends it only when the banner for a
+live (not cached offline) committed call is rendered **and** `document.visibilityState` is
+`visible`; a background tab waits for `visibilitychange`. It is never sent by a push, the
+service worker, a background fetch or a staff screen. It records that the page presented the
+alert, not that the visitor read it.
+
+**TTL lowered after configuration** (targeted correction after the M6.3 source review; the
+first version passed an unbounded TTL to the hook, so a saved delay was not rechecked against
+the TTL at enqueue): if an operator later lowers `TURN_ALERT_TTL_SECONDS` below a saved delay +
+30 s, the hook now enqueues that facility's SMS immediately (not skippable); a delay still within
+the new bound is kept. The worker's TTL check (`failed` / `ttl_elapsed`, never sent late) remains
+as a second line, and the Channels screen still warns that the saved delay exceeds the allowed
+one. The hook is process-wide: the most recently started app that is still open supplies the
+TTL (one app per process in production; tests that start a second app hand it back on close).
+
+### Independence
+
+No channel setting, monitoring read or acknowledgement writes `queue_events`, `tickets` or
+`queue_sessions`. The delayed path changes no ticket state (worker test "a ticket no longer
+called … the delay never changes ticket state"); the M6.1 independence tests (failing SMS hook
+cannot fail the call; push and SMS hooks independent; webhooks and opt-out change no queue
+state) pass unchanged.
+
+### Ask Que (MQ.6 applied in the same change)
+
+kbVersion 5 → 6, 47 articles. New screen `admin.facility.channels` registered (contracts
+`ROUTE_IDS` 17) with defaults `admin.channels.sms`, `admin.channels.ussd` (gated on
+`sms_turn_alerts` / `ussd`, labelled test mode) and the ungated `admin.readiness.join_link`, so
+every role that can open the screen gets default help where SMS and USSD are not set up.
+`visitor.alerts.sms` v3 and `staff.sms.alerts` v2 describe the delay and the `alert_seen`
+outcome. No capability added or changed. Consistency fixtures (C3/C4/A4) now include
+`admin.channels.sms`.
+
+### Tests added
+
+| Suite                                             | Covers                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| worker `sms-alerts.db.test.ts` (+12, 43 total)    | immediate unchanged; not due is left alone; seen suppresses with no cap used; no seen sends; seen for another sequence ignored; opt-out wins; ticket changed; seen during the send cannot undo it; seen holding the contact lock makes the worker wait then skip; crash → `unknown`/interrupted, never relabelled; two workers send once; seen retention                                                     |
+| API `channels.db.test.ts` (14)                    | delay bound (TTL, auto-miss over all services), TTL − 30 app refuses every delay, RBAC, tenancy (404), strict body, deployment off, delayed enqueue, lowered-TTL and stricter-policy fallbacks (an unchanged valid delay kept, same key), acknowledgement endpoint (token, CSRF, current call, idempotency), SMS monitor paging/privacy/RBAC, USSD monitor counts and isolation                              |
+| Playwright `channels.spec.ts` (10 + 3 responsive) | honest mode and warnings, validation and focus, single submit, keyboard-only save, read-only counter and 403s, auditor monitoring, Ask Que defaults, delayed SMS skipped after the visible page acknowledged (monitor wording, cap unused, no number on screen), no page → sent after the delay, background tab waits until shown, immediate default; axe and no overflow at 320, 375, 768, 1280 and 1440 px |
+| assist / web / API Ask Que suites                 | coverage, gating (`SMS_SANDBOX` manifest finds the admin articles), screen defaults per role, router/registry and UI-label checks                                                                                                                                                                                                                                                                            |
+
+### Mutation checks (each made a test fail, then reverted)
+
+1. Worker seen check disabled → 2 worker tests fail.
+2. SMS monitor without the facility filter → `channels.db.test.ts` scoping test fails.
+3. Expired USSD sessions counted as joined → USSD monitor test fails.
+4. Ticket page acknowledging from a hidden tab → `channels.spec.ts` "background tab" fails.
+5. Hook TTL back to unbounded (`Number.POSITIVE_INFINITY`) → `channels.db.test.ts` lowered-TTL test fails.
+
+Not mutated: removing the contact-row lock from the acknowledgement route (the lock ordering is
+tested in the worker suite with a lock held directly, not through the route).
+
+### Limitations
+
+- The acknowledgement proves the page rendered a visible alert, not that the visitor saw it.
+- USSD session figures cover about an hour (session retention); ticket counts cover the day.
+- No real device, handset, network or provider was exercised; screen-reader passes for the new
+  screen are part of the M5 Set 2 final acceptance after M7.
+- Live mode stays disabled: no provider is approved (gates in M6.1 and M6.2 above).
+
+### Gate results (local, 2026-11-20)
+
+| Gate                                                             | Result                                                                                                         |
+| ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build` | pass                                                                                                           |
+| `pnpm test`                                                      | contracts 205, ui 6, channels 66, domain 109, assist 262, continuity 64, api 196, worker 13, web 181: all pass |
+| `pnpm test:db`                                                   | api 757, worker 114: all pass                                                                                  |
+| Playwright (full)                                                | 308 passed, 7 skipped (the existing environment-dependent skips), 0 failed                                     |
+| Knowledge base                                                   | `kb-base-check` against `staging`: kbVersion 5 → 6 accepted, 47 articles                                       |
+| `pnpm audit --prod --audit-level high`, `audit-gate.js`          | no known vulnerabilities; PASS with no exception                                                               |
+| Migrations                                                       | fresh database 13/13, second run applies nothing; local dev database 0013 applied; `db:check` 13/13            |
+
+Two existing assertions were updated during the gates, not weakened: the M6.1 payload-key
+allow-list in `sms.db.test.ts` now lists the new non-sensitive `skip_if_seen` flag (still an
+exact match, plus a check that it is `false` without a delay), and the Channels intro text was
+reworded after the 14.9 copy-truthfulness scan flagged "always work".

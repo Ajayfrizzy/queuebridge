@@ -430,7 +430,13 @@ export const COVERAGE: readonly Workflow[] = [
 
 /** Gated articles that must never be shown in the default deployment (capability planned). */
 /** Articles for capabilities that are not usable in the default deployment (gated, never shown). */
-const NOT_LIVE = ['visitor.alerts.sms', 'staff.sms.alerts', 'visitor.ussd'] as const;
+const NOT_LIVE = [
+  'visitor.alerts.sms',
+  'staff.sms.alerts',
+  'visitor.ussd',
+  'admin.channels.sms',
+  'admin.channels.ussd',
+] as const;
 /** A development deployment with the TEST-ONLY SMS sandbox set up. */
 const SMS_SANDBOX = manifest({
   sms_turn_alerts: { status: 'sandbox', availability: 'available' },
@@ -629,6 +635,8 @@ describe('capability gating against the deployment manifest', () => {
       ['visitor', 'visitor.ticket', 'stop text messages', 'visitor.alerts.sms'],
       ['staff_reception', 'staff.console', 'stop text messages for a visitor', 'staff.sms.alerts'],
       ['staff_counter', 'staff.console', 'text message daily limit reached', 'staff.sms.alerts'],
+      ['facility_admin', 'admin.facility.channels', 'sms delay', 'admin.channels.sms'],
+      ['auditor', 'admin.facility.channels', 'delivery status', 'admin.channels.sms'],
     ] as const) {
       const out = answer(q, ctxFor(who, route, SMS_SANDBOX), BUNDLE);
       expect(out.citations.slice(0, 3), `"${q}" for ${who}`).toContain(id);

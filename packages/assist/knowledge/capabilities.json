@@ -74,12 +74,12 @@
     "sms_turn_alerts": {
       "status": "sandbox",
       "defaultAvailability": "not_configured",
-      "articles": ["visitor.alerts.sms", "staff.sms.alerts"]
+      "articles": ["visitor.alerts.sms", "staff.sms.alerts", "admin.channels.sms"]
     },
     "ussd": {
       "status": "sandbox",
       "defaultAvailability": "not_configured",
-      "articles": ["visitor.ussd"]
+      "articles": ["visitor.ussd", "admin.channels.ussd"]
     },
     "ask_que_ai": {
       "status": "live",

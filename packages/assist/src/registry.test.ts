@@ -28,12 +28,27 @@ const SIGNED_IN: RouteId[] = ['admin.home', 'staff.home'];
 /** Expected access matrix from design §11.3.1 (single role at facility A, context facility A). */
 const EXPECTED: Record<string, RouteId[]> = {
   anonymous: PUBLIC,
-  staff_reception: [...PUBLIC, ...SIGNED_IN, 'admin.facility', 'staff.facility', 'staff.console'],
-  staff_counter: [...PUBLIC, ...SIGNED_IN, 'admin.facility', 'staff.facility', 'staff.console'],
+  staff_reception: [
+    ...PUBLIC,
+    ...SIGNED_IN,
+    'admin.facility',
+    'admin.facility.channels',
+    'staff.facility',
+    'staff.console',
+  ],
+  staff_counter: [
+    ...PUBLIC,
+    ...SIGNED_IN,
+    'admin.facility',
+    'admin.facility.channels',
+    'staff.facility',
+    'staff.console',
+  ],
   supervisor: [
     ...PUBLIC,
     ...SIGNED_IN,
     'admin.facility',
+    'admin.facility.channels',
     'staff.facility',
     'staff.console',
     'staff.audit',
@@ -43,6 +58,7 @@ const EXPECTED: Record<string, RouteId[]> = {
     ...PUBLIC,
     ...SIGNED_IN,
     'admin.facility',
+    'admin.facility.channels',
     'admin.facility.staff',
     'staff.facility',
     'staff.console',
@@ -53,6 +69,7 @@ const EXPECTED: Record<string, RouteId[]> = {
     ...PUBLIC,
     ...SIGNED_IN,
     'admin.facility',
+    'admin.facility.channels',
     'staff.facility',
     'staff.console',
     'staff.audit',
@@ -62,6 +79,7 @@ const EXPECTED: Record<string, RouteId[]> = {
     ...PUBLIC,
     ...SIGNED_IN,
     'admin.facility',
+    'admin.facility.channels',
     'admin.facility.staff',
     'staff.facility',
     'staff.console',
@@ -111,6 +129,7 @@ describe('route registry (design §11.3.1)', () => {
       'admin.home': 'signed_in',
       'admin.facility': 'FACILITY_READ',
       'admin.facility.staff': 'STAFF_MANAGE',
+      'admin.facility.channels': 'FACILITY_READ',
       'staff.home': 'signed_in',
       'staff.facility': 'QUEUE_VIEW',
       'staff.console': 'QUEUE_VIEW',
@@ -120,6 +139,9 @@ describe('route registry (design §11.3.1)', () => {
     expect(ROUTE_REGISTRY['staff.console'].actionPermissions).toEqual(['WALK_IN', 'QUEUE_MANAGE']);
     expect(ROUTE_REGISTRY['staff.connectivity'].actionPermissions).toEqual(['QUEUE_MANAGE']);
     expect(ROUTE_REGISTRY['admin.facility'].actionPermissions).toEqual(['FACILITY_CONFIGURE']);
+    expect(ROUTE_REGISTRY['admin.facility.channels'].actionPermissions).toEqual([
+      'FACILITY_CONFIGURE',
+    ]);
   });
 
   it('names only permissions that exist in the shared map', () => {

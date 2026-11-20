@@ -194,6 +194,9 @@ describe('C rules: capability coverage contract', () => {
     expect(p).toContain(
       'A4 staff.sms.alerts: sms_turn_alerts is live; the article still calls it sandbox or test mode',
     );
+    expect(p).toContain(
+      'A4 admin.channels.sms: sms_turn_alerts is live; the article still calls it sandbox or test mode',
+    );
   });
   it('C4 the path to compliance: rewrite the articles for live, update the contract', () => {
     const m = manifest({ ...clone(PRODUCTION).capabilities, sms_turn_alerts: live('M6') });
@@ -201,7 +204,7 @@ describe('C rules: capability coverage contract', () => {
     c.capabilities['sms_turn_alerts'] = {
       status: 'live',
       defaultAvailability: 'available',
-      articles: ['visitor.alerts.sms', 'staff.sms.alerts'],
+      articles: ['visitor.alerts.sms', 'staff.sms.alerts', 'admin.channels.sms'],
     };
     let a = withArticle('visitor.alerts.sms', (x) => ({
       ...x,
@@ -215,7 +218,13 @@ describe('C rules: capability coverage contract', () => {
             version: x.version + 1,
             body: '# Text message alerts\n\nThe visitor alert panel shows the text message state.',
           }
-        : x,
+        : x.id === 'admin.channels.sms'
+          ? {
+              ...x,
+              version: x.version + 1,
+              body: '# Text message settings\n\nThe Channels screen shows the text message settings.',
+            }
+          : x,
     );
     expect(check({ manifest: m, contract: c, articles: a })).toEqual([]);
   });

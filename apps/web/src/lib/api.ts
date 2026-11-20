@@ -1,4 +1,9 @@
 import type {
+  FacilitySmsSettings,
+  FacilitySmsSettingsUpdate,
+  FacilityUssdSettings,
+  SmsMonitoring,
+  UssdMonitoring,
   ApiError,
   Board,
   CommandOutcome,
@@ -434,6 +439,42 @@ export const api = {
   queueAlerts: (queueId: string): Promise<{ alerts: StaffTicketAlerts[] }> =>
     request('GET', `/queues/${queueId}/alerts`),
   // ---- M6.1: SMS turn alerts (opt-out; the number itself never comes back from the server) ----
+  /**
+   * M6.3: tell the server this page presented the in-app turn alert for this committed call
+   * event (status token). Used only to skip a delayed SMS; idempotent.
+   */
+  turnAlertSeen: (code: string, token: string, sequence: number): Promise<void> =>
+    request(
+      'POST',
+      `/tickets/${encodeURIComponent(code)}/alerts/seen`,
+      { event_sequence: sequence },
+      tokenHeader(token),
+    ),
+  // M6.3 channel settings and monitoring (server truth; the deployment mode is never set here)
+  smsSettings: (facilityId: string): Promise<{ sms: FacilitySmsSettings }> =>
+    request('GET', `/facilities/${encodeURIComponent(facilityId)}/sms`),
+  setSmsSettings: (
+    facilityId: string,
+    body: FacilitySmsSettingsUpdate,
+  ): Promise<{ sms: FacilitySmsSettings }> =>
+    request('PUT', `/facilities/${encodeURIComponent(facilityId)}/sms`, body),
+  smsMonitor: (
+    facilityId: string,
+    before: string | null = null,
+  ): Promise<{ monitor: SmsMonitoring }> =>
+    request(
+      'GET',
+      `/facilities/${encodeURIComponent(facilityId)}/sms/monitor?limit=20${before ? `&before=${encodeURIComponent(before)}` : ''}`,
+    ),
+  ussdSettings: (facilityId: string): Promise<{ ussd: FacilityUssdSettings }> =>
+    request('GET', `/facilities/${encodeURIComponent(facilityId)}/ussd`),
+  setUssdSettings: (
+    facilityId: string,
+    enabled: boolean,
+  ): Promise<{ ussd: FacilityUssdSettings }> =>
+    request('PUT', `/facilities/${encodeURIComponent(facilityId)}/ussd`, { enabled }),
+  ussdMonitor: (facilityId: string): Promise<{ monitor: UssdMonitoring }> =>
+    request('GET', `/facilities/${encodeURIComponent(facilityId)}/ussd/monitor`),
   stopSms: (code: string, token: string): Promise<{ sms_alert: SmsAlertState }> =>
     request('POST', `/tickets/${encodeURIComponent(code)}/sms/opt-out`, {}, tokenHeader(token)),
   staffStopSms: (queueId: string, ticketId: string): Promise<{ sms_alert: SmsAlertState }> =>

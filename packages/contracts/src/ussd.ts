@@ -24,3 +24,25 @@ export const FacilityUssdSettingsSchema = z.object({
   deployment_mode: z.enum(['off', 'sandbox', 'live']),
 });
 export type FacilityUssdSettings = z.infer<typeof FacilityUssdSettingsSchema>;
+
+/**
+ * M6.3 USSD monitoring. Sessions are kept about an hour after they expire (then deleted), so the
+ * session figures cover only that window; tickets created over USSD come from the tickets table.
+ */
+export const UssdMonitoringSchema = z.object({
+  /** Sessions that entered this facility's code, still kept (about the last hour) */
+  sessions: z.object({
+    active: z.number().int().min(0),
+    /** The menu ended the session (any END screen: a ticket, a check, a refusal, Exit) */
+    ended_by_menu: z.number().int().min(0),
+    /** Timed out: no input before expiry (with or without a late input afterwards) */
+    expired: z.number().int().min(0),
+    /** Ended because a callback arrived out of order */
+    out_of_step: z.number().int().min(0),
+    /** Sessions that created a ticket (counted once each) */
+    joined: z.number().int().min(0),
+  }),
+  /** Tickets created over USSD at this facility today (facility time zone), from committed tickets */
+  tickets_today: z.number().int().min(0),
+});
+export type UssdMonitoring = z.infer<typeof UssdMonitoringSchema>;

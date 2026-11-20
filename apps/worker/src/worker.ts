@@ -230,7 +230,12 @@ async function runOnce(force = false): Promise<void> {
   try {
     const p = await purgeSmsData(sql);
     if (
-      p.erased + p.contactsDeleted + p.notificationsDeleted + p.noncesDeleted + p.countersDeleted >
+      p.erased +
+        p.contactsDeleted +
+        p.notificationsDeleted +
+        p.noncesDeleted +
+        p.countersDeleted +
+        p.seenDeleted >
       0
     )
       log('info', 'SMS data retention', { ...p });

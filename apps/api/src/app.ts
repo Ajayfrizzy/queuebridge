@@ -32,6 +32,7 @@ import { installTurnAlerts, setTurnAlertLogger } from './queue/turn-alerts.js';
 import { installSmsAlerts, setSmsAlertLogger } from './queue/sms-alerts.js';
 import { smsRoutes, smsWebhookRoutes } from './routes/sms.js';
 import { ussdRoutes, ussdWebhookRoutes } from './routes/ussd.js';
+import { alertSeenRoutes } from './routes/alert-seen.js';
 import { startAutoMissSweeper } from './queue/auto-miss.js';
 import type { RouteDeps } from './routes/deps.js';
 import { createRecoveryCrypto } from './recovery/crypto.js';
@@ -85,8 +86,10 @@ export async function buildApp(
   installTurnAlerts();
   // M6.1: SMS turn alerts use their own hook (own savepoint): independent of push and in-app
   setSmsAlertLogger(app.log);
-  installSmsAlerts();
+  // M6.3: the hook revalidates a saved SMS delay against this deployment's turn-alert TTL
+  const releaseSmsTtl = installSmsAlerts({ ttlSeconds: env.TURN_ALERT_TTL_SECONDS });
   app.addHook('onClose', async () => {
+    releaseSmsTtl();
     await notifier.close();
   });
   if (ownsDb) {
@@ -280,6 +283,7 @@ export async function buildApp(
       await api.register(smsWebhookRoutes, deps);
       await api.register(ussdRoutes, deps);
       await api.register(ussdWebhookRoutes, deps);
+      await api.register(alertSeenRoutes, deps);
     },
     { prefix: '/api/v1' },
   );

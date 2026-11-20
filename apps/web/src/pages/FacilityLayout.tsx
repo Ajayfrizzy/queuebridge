@@ -56,6 +56,9 @@ export function FacilityLayout(): ReactElement {
           <li>
             <NavLink to="counters">Counters</NavLink>
           </li>
+          <li>
+            <NavLink to="channels">Channels</NavLink>
+          </li>
           {canConfigure ? (
             <li>
               <NavLink to="staff">Staff</NavLink>

@@ -8,6 +8,7 @@ import { Layout } from './components/Layout.js';
 import { RequireAuth } from './components/RequireAuth.js';
 import { AcceptInvite } from './pages/AcceptInvite.js';
 import { AdminDashboard } from './pages/AdminDashboard.js';
+import { FacilityChannels } from './pages/FacilityChannels.js';
 import { FacilityCounters } from './pages/FacilityCounters.js';
 import { FacilityLayout } from './pages/FacilityLayout.js';
 import { FacilityOverview } from './pages/FacilityOverview.js';
@@ -51,6 +52,8 @@ export function App(): ReactElement {
                       <Route path="services" element={<FacilityServices />} />
                       <Route path="counters" element={<FacilityCounters />} />
                       <Route path="staff" element={<FacilityStaff />} />
+                      {/* SMS and USSD settings and monitoring (M6.3) */}
+                      <Route path="channels" element={<FacilityChannels />} />
                     </Route>
                   </Route>
 
