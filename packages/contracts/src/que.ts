@@ -60,6 +60,7 @@ export const ROUTE_IDS = [
   'admin.home',
   'admin.facility',
   'admin.facility.staff',
+  'admin.facility.channels',
   'staff.home',
   'staff.facility',
   'staff.console',

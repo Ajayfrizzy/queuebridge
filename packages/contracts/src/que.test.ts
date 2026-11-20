@@ -115,7 +115,7 @@ describe('SafeMarkdownSchema (design §11.2: links to RouteIds only)', () => {
 
 describe('RouteIdSchema (design §11.3.1)', () => {
   it('lists the verified screens and excludes the /supervisor placeholder', () => {
-    expect(ROUTE_IDS).toHaveLength(16);
+    expect(ROUTE_IDS).toHaveLength(17);
     expect(ROUTE_IDS.some((r) => r.startsWith('supervisor'))).toBe(false);
     expect(RouteIdSchema.safeParse('staff.connectivity').success).toBe(true);
     expect(RouteIdSchema.safeParse('supervisor').success).toBe(false);

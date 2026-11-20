@@ -219,6 +219,14 @@ const SPECS: Readonly<Record<RouteId, EntrySpec>> = {
       'admin.que_ai',
     ],
   },
+  'admin.facility.channels': {
+    path: '/admin/facilities/:id/channels',
+    access: { kind: 'permission', permission: 'FACILITY_READ' },
+    scope: 'facility',
+    linkable: true,
+    actionPermissions: ['FACILITY_CONFIGURE'],
+    defaultArticles: ['admin.channels.sms', 'admin.channels.ussd', 'admin.readiness.join_link'],
+  },
   'admin.facility.staff': {
     path: '/admin/facilities/:id/staff',
     access: { kind: 'permission', permission: 'STAFF_MANAGE' },

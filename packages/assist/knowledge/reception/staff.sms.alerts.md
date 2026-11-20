@@ -6,8 +6,8 @@ topics: [turn_alerts, staff_operations]
 requiresCapabilities: [sms_turn_alerts]
 relatedRoutes: [staff.console]
 availableSince: M6
-version: 1
-lastReviewed: 2026-11-19
+version: 2
+lastReviewed: 2026-11-20
 keywords: [sms, text message, visitor phone, stop text messages, opt out, test mode, daily limit]
 ---
 
@@ -24,6 +24,7 @@ When a visitor who asked for a text message is called, the visitor alert panel a
 - **Test receipt received (simulated: no real message)**
 - **Text message not sent: daily limit reached**
 - **Text message not sent (visitor stopped text messages)**
+- **Text message not needed: the ticket page showed the alert first** (only where the facility set a delay)
 
 Accepted is not delivered. Only a receipt from the provider counts as delivered.
 

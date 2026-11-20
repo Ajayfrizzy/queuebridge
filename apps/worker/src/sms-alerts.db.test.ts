@@ -531,6 +531,223 @@ describe('channel independence and queue neutrality (REQ-F11.10; Group 14.7 for 
   });
 });
 
+// ---------------------------------------------------------------------------------------------
+// M6.3 optional delay: "send SMS only if the in-app alert was not seen within N seconds"
+// ---------------------------------------------------------------------------------------------
+describe('delayed SMS and the in-app "seen" acknowledgement (M6.3)', () => {
+  /** What the API hook writes for a delayed alert: skip_if_seen, due `dueInSeconds` from now. */
+  async function enqueueDelayed(
+    f: Fixture,
+    dueInSeconds: number,
+  ): Promise<{ outboxId: string; notificationId: string }> {
+    const e = await enqueue(f);
+    await sql`
+      UPDATE notification_outbox
+         SET payload = payload || '{"skip_if_seen": true}'::jsonb,
+             next_attempt_at = NOW() + make_interval(secs => ${dueInSeconds})
+       WHERE id = ${e.outboxId}`;
+    return e;
+  }
+  const seen = async (f: Fixture, sequence = f.callSeq): Promise<void> => {
+    await sql`
+      INSERT INTO turn_alert_seen (ticket_id, organization_id, event_sequence)
+      VALUES (${f.ticketId}, ${f.orgId}, ${sequence}) ON CONFLICT DO NOTHING`;
+  };
+  const used = async (): Promise<number> =>
+    (await sql<{ n: number }[]>`SELECT COALESCE(SUM(sends), 0)::int AS n FROM sms_daily_usage`)[0]
+      ?.n ?? -1;
+
+  it('immediate mode is unchanged: an alert without the delay flag is sent even if the page saw the alert', async () => {
+    const f = await calledWithContact();
+    const e = await enqueue(f);
+    await seen(f);
+    await run();
+    expect((await notification(e.notificationId))?.status).toBe('sent');
+    expect(adapter.getSentMessages()).toHaveLength(1);
+  });
+
+  it('a delayed alert is not picked up before it is due (database time)', async () => {
+    const f = await calledWithContact();
+    const e = await enqueueDelayed(f, 60);
+    expect((await run()).claimed).toBe(0);
+    expect(await notification(e.notificationId)).toMatchObject({
+      status: 'pending',
+      send_started_at: null,
+    });
+    expect(await outboxRow(e.outboxId)).toMatchObject({ processed: false, attempts: 0 });
+  });
+
+  it('seen before it is due: suppressed as alert_seen, nothing sent, no cap used', async () => {
+    const f = await calledWithContact();
+    const e = await enqueueDelayed(f, 0);
+    await seen(f);
+    const r = await run();
+    expect(r).toMatchObject({ claimed: 1, suppressed: 1, sent: 0 });
+    expect(await notification(e.notificationId)).toMatchObject({
+      status: 'suppressed',
+      detail_code: 'alert_seen',
+      send_started_at: null,
+    });
+    expect(adapter.getSentMessages()).toHaveLength(0);
+    expect(await used()).toBe(0);
+  });
+
+  it('not seen by the time it is due: sent through every normal check', async () => {
+    const f = await calledWithContact();
+    const e = await enqueueDelayed(f, 0);
+    await run();
+    expect((await notification(e.notificationId))?.status).toBe('sent');
+    expect(adapter.getSentMessages()).toHaveLength(1);
+  });
+
+  it('a seen mark for another call event cannot suppress this one', async () => {
+    const f = await calledWithContact();
+    const e = await enqueueDelayed(f, 0);
+    await seen(f, f.callSeq + 5);
+    await run();
+    expect((await notification(e.notificationId))?.status).toBe('sent');
+  });
+
+  it('opt-out wins over everything (checked before the seen mark)', async () => {
+    const f = await calledWithContact();
+    const e = await enqueueDelayed(f, 0);
+    await seen(f);
+    await sql`
+      UPDATE visitor_contacts SET opted_out_at = NOW(), opt_out_source = 'visitor',
+             phone_ciphertext = NULL, phone_hash = NULL WHERE id = ${f.contactId}`;
+    await run();
+    expect(await notification(e.notificationId)).toMatchObject({
+      status: 'suppressed',
+      detail_code: 'opted_out',
+    });
+  });
+
+  it('a ticket no longer called (served, or missed) is suppressed as before; the delay never changes ticket state', async () => {
+    const f = await calledWithContact();
+    const e = await enqueueDelayed(f, 0);
+    await sql`UPDATE tickets SET state = 'serving' WHERE id = ${f.ticketId}`;
+    await run();
+    expect(await notification(e.notificationId)).toMatchObject({
+      status: 'suppressed',
+      detail_code: 'ticket_changed',
+    });
+    const [t] = await sql<{ state: string }[]>`SELECT state FROM tickets WHERE id = ${f.ticketId}`;
+    expect(t?.state).toBe('serving');
+  });
+
+  it('a seen mark that arrives while the send is in progress cannot undo it', async () => {
+    const f = await calledWithContact();
+    const e = await enqueueDelayed(f, 0);
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => (release = r));
+    let entered: () => void = () => undefined;
+    const inSend = new Promise<void>((r) => (entered = r));
+    const slow: SmsAdapter = Object.assign(new SandboxSmsAdapter(), {
+      sendMessage: async (params: SendMessageParams): Promise<SendResult> => {
+        entered();
+        await gate;
+        return new SandboxSmsAdapter().sendMessage(params);
+      },
+    });
+    const pass = run(slow);
+    await inSend; // the send marker is committed before the provider call
+    await seen(f);
+    release();
+    await pass;
+    expect(await notification(e.notificationId)).toMatchObject({
+      status: 'sent',
+      detail_code: 'accepted',
+    });
+    // a later pass changes nothing
+    expect((await run()).claimed).toBe(0);
+    expect((await notification(e.notificationId))?.status).toBe('sent');
+  });
+
+  it('a seen mark holding the contact lock makes the worker wait, then skip (exact order, no double outcome)', async () => {
+    const f = await calledWithContact();
+    const e = await enqueueDelayed(f, 0);
+    const u = new URL(URL_);
+    u.pathname = `/${DB_NAME}`;
+    const holder = postgres(u.toString(), { max: 1, onnotice: () => undefined });
+    let commit: () => void = () => undefined;
+    const committed = new Promise<void>((r) => (commit = r));
+    let locked: () => void = () => undefined;
+    const isLocked = new Promise<void>((r) => (locked = r));
+    try {
+      // the API's acknowledgement: contact row lock, then the insert, committed later
+      const ack = holder.begin(async (tx) => {
+        await tx`SELECT id FROM visitor_contacts WHERE ticket_id = ${f.ticketId} FOR UPDATE`;
+        await tx`INSERT INTO turn_alert_seen (ticket_id, organization_id, event_sequence)
+                 VALUES (${f.ticketId}, ${f.orgId}, ${f.callSeq})`;
+        locked();
+        await committed;
+      });
+      await isLocked;
+      const pass = run();
+      // wait (on database state, not a timer) until the worker is blocked on that row lock
+      await expect
+        .poll(
+          async () =>
+            (
+              await sql<{ n: number }[]>`
+                SELECT COUNT(*)::int AS n FROM pg_stat_activity
+                 WHERE datname = ${DB_NAME} AND wait_event_type = 'Lock'`
+            )[0]?.n,
+        )
+        .toBeGreaterThanOrEqual(1);
+      commit();
+      await ack;
+      await pass;
+      expect(await notification(e.notificationId)).toMatchObject({
+        status: 'suppressed',
+        detail_code: 'alert_seen',
+      });
+      expect(adapter.getSentMessages()).toHaveLength(0);
+      expect(await used()).toBe(0);
+    } finally {
+      commit();
+      await holder.end({ timeout: 5 });
+    }
+  });
+
+  it('crash after the send started: never resent, and a later seen mark cannot relabel it', async () => {
+    const f = await calledWithContact();
+    const e = await enqueueDelayed(f, 0);
+    // a previous worker committed the send marker and died before recording the result
+    await sql`UPDATE notifications SET send_started_at = NOW(), provider = 'sandbox' WHERE id = ${e.notificationId}`;
+    await seen(f);
+    await run();
+    expect(await notification(e.notificationId)).toMatchObject({
+      status: 'unknown',
+      detail_code: 'interrupted',
+    });
+    expect(adapter.getSentMessages()).toHaveLength(0);
+  });
+
+  it('two workers on a due delayed alert send it once; caps stay atomic', async () => {
+    const f = await calledWithContact();
+    const e = await enqueueDelayed(f, 0);
+    const second = new SandboxSmsAdapter({ log: () => undefined });
+    await Promise.all([run(), run(second)]);
+    expect(adapter.getSentMessages().length + second.getSentMessages().length).toBe(1);
+    expect((await notification(e.notificationId))?.status).toBe('sent');
+    const [g] = await sql<
+      { sends: number }[]
+    >`SELECT sends FROM sms_daily_usage WHERE scope = 'global'`;
+    expect(g?.sends).toBe(1);
+  });
+
+  it('seen marks are removed after 24 hours by the retention job', async () => {
+    const f = await calledWithContact();
+    await seen(f);
+    await sql`UPDATE turn_alert_seen SET seen_at = NOW() - INTERVAL '25 hours' WHERE ticket_id = ${f.ticketId}`;
+    const r = await purgeSmsData(sql);
+    expect(r.seenDeleted).toBeGreaterThanOrEqual(1);
+    const left = await sql`SELECT 1 FROM turn_alert_seen WHERE ticket_id = ${f.ticketId}`;
+    expect(left).toHaveLength(0);
+  });
+});
+
 describe('only the approved trigger is ever sent (M6.1 pre-PR review)', () => {
   it('a row for an inactive template (nearing, delayed, missed, joined) is closed without sending', async () => {
     for (const template of ['ticket.nearing', 'ticket.delayed', 'ticket.missed', 'ticket.joined']) {

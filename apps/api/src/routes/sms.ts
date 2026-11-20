@@ -1,7 +1,9 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { SMS_WEBHOOK_HEADERS } from '@queuebridge/channels';
+import { z } from 'zod';
 import {
   FacilitySmsSettingsUpdateSchema,
+  SMS_MONITOR_PAGE_MAX,
   SecretTokenSchema,
   TicketCodeSchema,
 } from '@queuebridge/contracts';
@@ -12,6 +14,8 @@ import { queueFacility, resolveStatusToken, type ResolvedStatusTicket } from '..
 import {
   applyDeliveryReceipt,
   applyInboundMessage,
+  decodeSmsCursor,
+  smsMonitoring,
   facilitySmsSettings,
   optOutTicket,
   smsDeployment,
@@ -21,6 +25,12 @@ import {
 import { uuidParam, type RouteDeps } from './deps.js';
 import { TICKET_TOKEN_HEADER } from './public.js';
 
+const SmsMonitorQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(SMS_MONITOR_PAGE_MAX).default(25),
+    before: z.string().max(200).optional(),
+  })
+  .strict();
 /**
  * M6.1 SMS routes (design §13): facility setting (API only; the channel screen is M6.3), visitor
  * and staff opt-out, and the provider webhook. No route returns, logs or audits a phone number.
@@ -70,6 +80,8 @@ export async function smsRoutes(app: FastifyInstance, deps: RouteDeps): Promise<
         enabled: body.enabled,
         dailyCap: body.daily_cap,
         deploymentAvailable: dep.available,
+        delaySeconds: body.delay_seconds ?? null,
+        ttlSeconds: dep.ttlSeconds,
       });
       return reply.send({
         sms: await facilitySmsSettings(db, dep, auth.organizationId, facility.id),
@@ -77,6 +89,35 @@ export async function smsRoutes(app: FastifyInstance, deps: RouteDeps): Promise<
     },
   );
 
+  /**
+   * GET /facilities/:id/sms/monitor — M6.3 SMS turn alerts at this facility (OPERATIONS_VIEW:
+   * supervisors, facility administrators, auditors read-only). Newest first, bounded pages,
+   * states exactly as recorded; never a number, a message text or an internal id.
+   */
+  app.get<{ Params: { id: string }; Querystring: Record<string, unknown> }>(
+    '/facilities/:id/sms/monitor',
+    { preHandler: authenticate },
+    async (req, reply) => {
+      const auth = requireAuth(req);
+      const facility = await requireFacilityPermission(
+        db,
+        auth,
+        uuidParam(req.params.id),
+        'OPERATIONS_VIEW',
+      );
+      const q = parseInput(SmsMonitorQuerySchema, req.query);
+      const before = q.before ? decodeSmsCursor(q.before) : null;
+      if (q.before && !before) {
+        throw problems.validation([{ field: 'before', message: 'not a valid page cursor' }]);
+      }
+      return reply.send({
+        monitor: await smsMonitoring(db, auth.organizationId, facility.id, {
+          limit: q.limit,
+          before,
+        }),
+      });
+    },
+  );
   async function resolveTicket(
     req: FastifyRequest<{ Params: { code: string } }>,
   ): Promise<ResolvedStatusTicket> {

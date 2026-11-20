@@ -27,6 +27,10 @@ export function smsStateText(s: StaffSmsAlert): string {
   if (s.state === 'suppressed' && s.detail_code === 'opted_out') {
     return 'Text message not sent (visitor stopped text messages)';
   }
+  // M6.3 delayed SMS: the ticket page showed the alert first (not proof it was read)
+  if (s.state === 'suppressed' && s.detail_code === 'alert_seen') {
+    return 'Text message not needed: the ticket page showed the alert first';
+  }
   if (s.sandbox) {
     if (s.state === 'sent') return 'Test text message accepted (sandbox: nothing sent to a phone)';
     if (s.state === 'delivered') return 'Test receipt received (simulated: no real message)';

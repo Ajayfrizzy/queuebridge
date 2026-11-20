@@ -74,6 +74,11 @@ export const SENTINELS = {
     'ussd_sessions.msisdn_hash',
     'ussd_sessions.last_response_ct',
   ],
+  '0013_channel_configuration.sql': [
+    'turn_alert_seen',
+    'facility_sms_settings.delay_seconds',
+    'ussd_sessions.end_reason',
+  ],
 };
 
 /** Migration files of this checkout, in apply order. */

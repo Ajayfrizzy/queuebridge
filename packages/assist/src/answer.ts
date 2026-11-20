@@ -48,6 +48,7 @@ export const SCREEN_NAMES: Readonly<Record<RouteId, string>> = {
   'admin.home': 'administration',
   'admin.facility': 'facility settings',
   'admin.facility.staff': 'facility staff management',
+  'admin.facility.channels': 'facility channels (SMS and USSD)',
   'staff.home': 'the staff console',
   'staff.facility': "the facility's queues",
   'staff.console': 'the queue console',

@@ -1,4 +1,8 @@
-import { SMS_TURN_ALERT_TEMPLATE, smsIdempotencyKey } from '@queuebridge/contracts';
+import {
+  SMS_TURN_ALERT_TEMPLATE,
+  maxSmsDelaySeconds,
+  smsIdempotencyKey,
+} from '@queuebridge/contracts';
 import type { Db } from '../db.js';
 import { registerTransitionHook, type AppendedTransition, type TransitionHook } from './events.js';
 
@@ -30,12 +34,48 @@ export function setSmsAlertFaultForTests(fault: ((sp: Db) => Promise<void>) | nu
 export function smsAlertEnqueueErrors(): number {
   return enqueueErrors;
 }
+/**
+ * M6.3: the API deployment's turn-alert TTL (`TURN_ALERT_TTL_SECONDS`, the value the worker also
+ * reads), supplied by each app at install. The hook is process-wide, so the most recently
+ * installed app that is still open supplies it; a closed app hands it back to the one before
+ * (one app per process in production; several only in tests). Until an app installs one, the
+ * environment schema's default applies.
+ */
+const DEFAULT_TTL_SECONDS = 120;
+const ttlStack: { ttlSeconds: number }[] = [];
+let lastTtlSeconds = DEFAULT_TTL_SECONDS;
+function currentTtlSeconds(): number {
+  return ttlStack.at(-1)?.ttlSeconds ?? lastTtlSeconds;
+}
 
 async function enqueueSmsTurnAlert(
   sp: Db,
   session: { id: string; organization_id: string; facility_id: string },
   call: { ticketId: string; sequence: number; counterId: string | null },
 ): Promise<void> {
+  // M6.3 optional delay: used only when it is still safe for THIS call under the deployment's
+  // CURRENT turn-alert TTL and this service's CURRENT automatic no-show (the same bound as at
+  // save, `maxSmsDelaySeconds`); otherwise the SMS goes immediately, as without the setting, so
+  // a TTL lowered or a stricter no-show set after the facility saved its delay can never make
+  // a delayed alert expire unsent or arrive after the no-show. The worker's own TTL check
+  // (`ttl_elapsed`, never sent late) is unchanged.
+  const [d] = await sp<
+    { delay_seconds: number | null; auto_on: boolean | null; auto_after: number | null }[]
+  >`
+    SELECT fs.delay_seconds,
+           (s.policy -> 'auto_miss' ->> 'enabled')::boolean AS auto_on,
+           (s.policy -> 'auto_miss' ->> 'after_seconds')::int AS auto_after
+      FROM queue_sessions qs
+      JOIN services s ON s.id = qs.service_id
+      LEFT JOIN facility_sms_settings fs
+        ON fs.facility_id = qs.facility_id AND fs.organization_id = qs.organization_id
+     WHERE qs.id = ${session.id} AND qs.organization_id = ${session.organization_id}`;
+  const saved = d?.delay_seconds ?? null;
+  const max =
+    saved !== null
+      ? maxSmsDelaySeconds(currentTtlSeconds(), d?.auto_on ? (d.auto_after ?? null) : null)
+      : null;
+  const delay = saved !== null && max !== null && saved <= max ? saved : 0;
   await sp`
     WITH c AS (
       SELECT vc.id AS contact_id, gen_random_uuid() AS nid
@@ -48,11 +88,13 @@ async function enqueueSmsTurnAlert(
          AND vc.opted_out_at IS NULL AND vc.erased_at IS NULL
          AND fs.enabled
     ), o AS (
-      INSERT INTO notification_outbox (notification_id, dedup_key, payload)
+      INSERT INTO notification_outbox (notification_id, dedup_key, payload, next_attempt_at)
       SELECT c.nid, ${smsIdempotencyKey(SMS_TURN_ALERT_TEMPLATE, call.ticketId, call.sequence)},
              jsonb_build_object('contact_id', c.contact_id, 'event_sequence', ${call.sequence}::int,
                                 'ticket_id', ${call.ticketId}::uuid, 'counter_id', ${call.counterId}::uuid,
-                                'facility_id', ${session.facility_id}::uuid)
+                                'facility_id', ${session.facility_id}::uuid,
+                                'skip_if_seen', ${delay > 0}::boolean),
+             NOW() + make_interval(secs => ${delay})
         FROM c
       ON CONFLICT (dedup_key) DO NOTHING
       RETURNING notification_id
@@ -100,7 +142,20 @@ export const smsAlertHook: TransitionHook = {
   },
 };
 
-/** Install the SMS alert hook (idempotent; registering by name replaces). */
-export function installSmsAlerts(): () => void {
-  return registerTransitionHook(smsAlertHook);
+/**
+ * Install the SMS alert hook (idempotent; registering by name replaces) with this app's
+ * turn-alert TTL. Returns a release function for the TTL only: the hook itself stays registered
+ * (process-wide, shared by other app instances), as before.
+ */
+export function installSmsAlerts(opts: { ttlSeconds: number }): () => void {
+  registerTransitionHook(smsAlertHook);
+  const entry = { ttlSeconds: opts.ttlSeconds };
+  ttlStack.push(entry);
+  lastTtlSeconds = opts.ttlSeconds;
+  return () => {
+    const i = ttlStack.indexOf(entry);
+    if (i >= 0) ttlStack.splice(i, 1);
+    const top = ttlStack.at(-1);
+    if (top) lastTtlSeconds = top.ttlSeconds;
+  };
 }

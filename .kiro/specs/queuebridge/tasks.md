@@ -553,19 +553,23 @@ Security follow-up from M5.1 (separate change, recorded in `M5-evidence.md`, "M5
 
 ### M6.3 Channel configuration UI
 
-- [ ] Per-facility SMS/USSD channel configuration
-- [ ] Sandbox vs. live mode toggle with clear labeling
-- [ ] Delivery status monitoring
-- [ ] Optional "SMS only if the in-app alert was not seen within N seconds" cost-control setting (default: send immediately)
-- [x] Knowledge-base articles and capability manifest entries for SMS turn alerts and USSD updated in the same PR (MQ.6) — **SMS part done in M6.1** (knowledge-base version 4); **USSD part done in M6.2** (knowledge-base version 5: `visitor.ussd` v2, capability `ussd` `sandbox` / `not_configured`) — procedure in `packages/assist/knowledge/README.md` ("Applying it in M6"); the move to `live` after a provider is approved is guarded by C4, C5 and A4
+- [x] Per-facility SMS/USSD channel configuration — **M6.3 (2026-11-20):** facility tab **Channels** (`/admin/facilities/:id/channels`, `apps/web/src/pages/FacilityChannels.tsx`) over the existing `GET|PUT /facilities/:id/sms` and `/ussd` (`FACILITY_READ` / `FACILITY_CONFIGURE`, audited): SMS enable, facility cap, deployment cap and today's use, readiness; USSD enable, 6-digit facility code, menu explanation, "no real USSD code to dial"; loading/error/validation/success states, single submit, read-only for other staff (API 403). Tests: `apps/api/src/channels.db.test.ts`, `apps/web/e2e/channels.spec.ts`
+- [x] Sandbox vs. live mode toggle with clear labeling — shown as a disabled radio group set by the deployment: Sandbox checked only when the server reports `sandbox`, Live always disabled with the reason (no approved provider); `off` makes no sandbox claim; exact texts `Test mode — no real messages are sent` and `Test mode — no real mobile-network USSD session`; strict settings body (a mode in the body is 400), no route activates the sandbox. Live activation stays open (M6.1/M6.2 gates)
+- [x] Delivery status monitoring — `GET /facilities/:id/sms/monitor` (24 h counts, keyset pages of ≤ 50, ticket code, template, state, safe detail code, mode, attempts; no number, hash, text or secret; `sent` ≠ `delivered` ≠ `unknown` ≠ `suppressed`) and `GET /facilities/:id/ussd/monitor` (open, ended by menu, timed out, out of order, joined, USSD tickets today; an expiry is never a join; migration `0013` adds `ussd_sessions.end_reason` and the monitoring index); `OPERATIONS_VIEW`, organization and facility scope (cross-tenant 404)
+- [x] Optional "SMS only if the in-app alert was not seen within N seconds" cost-control setting (default: send immediately) — `facility_sms_settings.delay_seconds` (NULL = immediate); bound min(TTL − 30, earliest automatic no-show − 30), ≥ 10 s, else refused (422); re-derived per call at enqueue against the deployment TTL and the service's current no-show (unsafe → immediate), due by database time; the worker skips (`suppressed` / `alert_seen`, no cap used) only if `turn_alert_seen` holds the same ticket and call sequence, under the contact row lock, before caps; a late acknowledgement cannot undo a send; acknowledgement `POST /tickets/:code/alerts/seen` (status token, CSRF, current call only, idempotent), sent by the ticket page only when the banner is shown in a visible tab. Evidence: `docs/testing/M6-evidence.md` (M6.3)
+- [x] Knowledge-base articles and capability manifest entries for SMS turn alerts and USSD updated in the same PR (MQ.6) — **SMS part done in M6.1** (knowledge-base version 4); **USSD part done in M6.2** (knowledge-base version 5: `visitor.ussd` v2, capability `ussd` `sandbox` / `not_configured`); **Channels screen in M6.3** (knowledge-base version 6: route `admin.facility.channels`, articles `admin.channels.sms` and `admin.channels.ussd`, `visitor.alerts.sms` v3, `staff.sms.alerts` v2; no capability change) — procedure in `packages/assist/knowledge/README.md` ("Applying it in M6"); the move to `live` after a provider is approved is guarded by C4, C5 and A4
 
 ### M6 exit criteria
 
-- [ ] Group 10 (channel adapter) tests pass in sandbox
-- [ ] SMS turn alert: sandbox end-to-end from committed call to recorded receipt; consent, opt-out, cap, replay and signature tests pass
-- [ ] SMS failure, cap or opt-out never blocks or alters queue progression, never affects in-app/push alerts, never marks a visitor missed (Group 14 invariants hold for SMS)
-- [ ] Live delivery only if approved provider and credentials available; no personal spending
-- [ ] Sandbox traffic labeled unmistakably as test
+Status after M6.3 (2026-11-20). Three kinds of evidence are kept apart: **sandbox verified**
+(automated, against the real API, PostgreSQL and worker with the TEST-ONLY adapters), **live
+gates open** (nothing live exists), **real devices untested** (no handset, network or provider).
+
+- [x] Group 10 (channel adapter) tests pass in sandbox — **sandbox verified:** `packages/channels` (`sandbox.test.ts`, `sms.test.ts`, `ussd.test.ts`) in `pnpm test`
+- [x] SMS turn alert: sandbox end-to-end from committed call to recorded receipt; consent, opt-out, cap, replay and signature tests pass — **sandbox verified:** `apps/web/e2e/sms.spec.ts`, `apps/api/src/sms.db.test.ts`, `apps/worker/src/sms-alerts.db.test.ts`; delayed variant in `channels.spec.ts`. **Real devices untested:** handset receipt and carrier STOP
+- [x] SMS failure, cap or opt-out never blocks or alters queue progression, never affects in-app/push alerts, never marks a visitor missed (Group 14 invariants hold for SMS) — **sandbox verified:** `sms.db.test.ts` (failing SMS hook cannot fail the call, push and SMS hooks independent, opt-out and webhooks change no queue state), worker delayed tests (the delay never changes ticket state)
+- [ ] Live delivery only if approved provider and credentials available; no personal spending — **live gates open:** no provider approved; no live adapter, credentials or spending exist; Live is disabled on the Channels screen. The criterion's safety half holds (nothing live can run); live delivery itself is not achieved
+- [x] Sandbox traffic labeled unmistakably as test — **sandbox verified:** `[TEST]` message text, `[SANDBOX]` logs and USSD screens, join and ticket labels, Channels screen warnings (`channels.spec.ts`), Ask Que sandbox notices
 
 ---
 

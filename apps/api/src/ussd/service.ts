@@ -11,6 +11,7 @@ import {
 import {
   normalizePhoneNumber,
   type FacilityUssdSettings,
+  type UssdMonitoring,
   type UssdResponse,
 } from '@queuebridge/contracts';
 import { recordAdminEvent } from '../admin-events.js';
@@ -263,6 +264,7 @@ export async function handleUssdStep(
         state?: UssdMenuState;
         facility?: { id: string; org: string } | null;
         joined?: boolean;
+        endReason?: 'menu' | 'timeout' | 'out_of_step';
       } = {},
     ): Promise<void> => {
       const screen = { action: r.action, message: r.message };
@@ -275,6 +277,7 @@ export async function handleUssdStep(
                organization_id = ${o.facility?.org ?? row.organization_id},
                expires_at = NOW() + make_interval(secs => ${dep.ttlSeconds}),
                ended_at = ${r.action === 'END' ? tx`NOW()` : null},
+               end_reason = ${r.action === 'END' ? (o.endReason ?? 'menu') : null},
                joined_at = ${o.joined ? tx`COALESCE(joined_at, NOW())` : tx`joined_at`},
                updated_at = NOW()
          WHERE id = ${row.id}`;
@@ -302,7 +305,7 @@ export async function handleUssdStep(
             ? 'This session has ended. Please dial again.'
             : 'Your session timed out. Please dial again.',
         );
-        if (!row.ended) await save(r);
+        if (!row.ended) await save(r, { endReason: 'timeout' });
         return { response: r, outcome: row.ended ? 'ended' : 'expired' };
       }
       // A fresh dial reusing the id: start over (the previous visit's join stays counted)
@@ -310,7 +313,7 @@ export async function handleUssdStep(
       outcome = 'restarted';
       await tx`
         UPDATE ussd_sessions SET state = '{}', step = 0, facility_id = NULL, organization_id = NULL,
-               ended_at = NULL, last_text_hash = NULL, last_response_ct = NULL
+               ended_at = NULL, end_reason = NULL, last_text_hash = NULL, last_response_ct = NULL
          WHERE id = ${row.id}`;
       row.facility_id = null;
       row.organization_id = null;
@@ -318,7 +321,7 @@ export async function handleUssdStep(
     }
     if (step !== row.step + 1) {
       const r = endScreen('This session is out of step. Please dial again.');
-      await save(r);
+      await save(r, { endReason: 'out_of_step' });
       return { response: r, outcome: 'out_of_step' };
     }
 
@@ -345,4 +348,39 @@ export async function handleUssdStep(
     });
     return { response: screen, outcome };
   });
+}
+
+/**
+ * M6.3 USSD monitoring (OPERATIONS_VIEW). Only what the tables support:
+ * - sessions that entered this facility's code and are still kept (rows are deleted about an
+ *   hour after they expire), by how they ended. A session that timed out is `expired`, never
+ *   "ended by the menu", and never a join; `joined` counts sessions that created a ticket.
+ * - tickets created over USSD today, from the committed tickets themselves.
+ * No number, session id, input, screen or state is read.
+ */
+export async function ussdMonitoring(
+  db: Db,
+  organizationId: string,
+  facilityId: string,
+): Promise<UssdMonitoring> {
+  const [s] = await db<UssdMonitoring['sessions'][]>`
+    SELECT COUNT(*) FILTER (WHERE ended_at IS NULL AND expires_at > NOW())::int AS active,
+           COUNT(*) FILTER (WHERE end_reason = 'menu')::int AS ended_by_menu,
+           COUNT(*) FILTER (WHERE end_reason = 'timeout'
+                            OR (ended_at IS NULL AND expires_at <= NOW()))::int AS expired,
+           COUNT(*) FILTER (WHERE end_reason = 'out_of_step')::int AS out_of_step,
+           COUNT(*) FILTER (WHERE joined_at IS NOT NULL)::int AS joined
+      FROM ussd_sessions
+     WHERE facility_id = ${facilityId} AND organization_id = ${organizationId}`;
+  const [t] = await db<{ n: number }[]>`
+    SELECT COUNT(*)::int AS n FROM tickets t
+      JOIN queue_sessions qs ON qs.id = t.queue_session_id
+      JOIN facilities f ON f.id = qs.facility_id
+     WHERE qs.facility_id = ${facilityId} AND t.organization_id = ${organizationId}
+       AND t.created_channel = 'ussd'
+       AND qs.operational_date = (NOW() AT TIME ZONE f.timezone)::date`;
+  return {
+    sessions: s ?? { active: 0, ended_by_menu: 0, expired: 0, out_of_step: 0, joined: 0 },
+    tickets_today: t?.n ?? 0,
+  };
 }

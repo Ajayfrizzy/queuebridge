@@ -7,15 +7,19 @@ import {
 } from '@queuebridge/channels';
 import {
   DeliveryStatus,
+  maxSmsDelaySeconds,
   normalizePhoneNumber,
   type DeliveryReceipt,
   type FacilitySmsSettings,
   type SmsAlertState,
   type SmsJoinResult,
+  type SmsMonitoring,
+  type SmsMonitorRow,
 } from '@queuebridge/contracts';
 import { recordAdminEvent } from '../admin-events.js';
 import type { Db } from '../db.js';
 import type { Env } from '../env.js';
+import { ApiProblem } from '../errors.js';
 
 /**
  * M6.1 SMS turn alerts, API side (design §13; REQ-F11.8–F11.13). The API stores the consented
@@ -43,12 +47,19 @@ export interface SmsDeployment {
   adapter: SmsAdapter | null;
   cipher: ContactCipher | null;
   dailyCap: number;
+  /** M6.3: the turn-alert TTL (an alert older than this is never sent); bounds the SMS delay */
+  ttlSeconds: number;
 }
 
 export function smsDeployment(
   env: Pick<
     Env,
-    'SMS_PROVIDER' | 'SMS_DAILY_CAP' | 'SMS_WEBHOOK_SECRET' | 'CONTACT_ENCRYPTION_KEY' | 'NODE_ENV'
+    | 'SMS_PROVIDER'
+    | 'SMS_DAILY_CAP'
+    | 'SMS_WEBHOOK_SECRET'
+    | 'CONTACT_ENCRYPTION_KEY'
+    | 'NODE_ENV'
+    | 'TURN_ALERT_TTL_SECONDS'
   >,
 ): SmsDeployment {
   const cipher = createContactCipher(env.CONTACT_ENCRYPTION_KEY);
@@ -67,6 +78,7 @@ export function smsDeployment(
     adapter,
     cipher,
     dailyCap: env.SMS_DAILY_CAP,
+    ttlSeconds: env.TURN_ALERT_TTL_SECONDS,
   };
 }
 
@@ -325,8 +337,8 @@ export async function facilitySmsSettings(
   organizationId: string,
   facilityId: string,
 ): Promise<FacilitySmsSettings> {
-  const [s] = await db<{ enabled: boolean; daily_cap: number }[]>`
-    SELECT enabled, daily_cap FROM facility_sms_settings
+  const [s] = await db<{ enabled: boolean; daily_cap: number; delay_seconds: number | null }[]>`
+    SELECT enabled, daily_cap, delay_seconds FROM facility_sms_settings
      WHERE facility_id = ${facilityId} AND organization_id = ${organizationId}`;
   return {
     enabled: s?.enabled ?? false,
@@ -335,7 +347,32 @@ export async function facilitySmsSettings(
     deployment_mode: dep.mode,
     deployment_daily_cap: dep.dailyCap,
     sent_today: await sentToday(db, dep.mode === 'sandbox' ? 'sandbox' : 'live', facilityId),
+    delay_seconds: s?.delay_seconds ?? null,
+    delay_max_seconds: await smsDelayMaxSeconds(db, dep.ttlSeconds, organizationId, facilityId),
   };
+}
+
+/**
+ * M6.3: the longest SMS delay this facility can use now, or null when none is possible. A delayed
+ * turn alert is still useful only if, after the delay, the worker has time to send it
+ * (`SMS_DELAY_DISPATCH_MARGIN_SECONDS`) before
+ *  - the turn-alert TTL, after which an alert is never sent (it would expire unsent), and
+ *  - the earliest automatic no-show among the facility's services (every service, active or not,
+ *    because a service can be reopened), after which the visitor is already marked missed.
+ * The grace window is not a bound: it starts only after a no-show, which this already precedes.
+ */
+export async function smsDelayMaxSeconds(
+  db: Db,
+  ttlSeconds: number,
+  organizationId: string,
+  facilityId: string,
+): Promise<number | null> {
+  const [r] = await db<{ earliest: number | null }[]>`
+    SELECT MIN((s.policy -> 'auto_miss' ->> 'after_seconds')::int) AS earliest
+      FROM services s
+     WHERE s.facility_id = ${facilityId} AND s.organization_id = ${organizationId}
+       AND (s.policy -> 'auto_miss' ->> 'enabled')::boolean IS TRUE`;
+  return maxSmsDelaySeconds(ttlSeconds, r?.earliest ?? null);
 }
 
 /** Change a facility's SMS setting; one audit event per real change (no number, no text). */
@@ -348,40 +385,174 @@ export async function updateFacilitySmsSettings(
     enabled: boolean;
     dailyCap: number;
     deploymentAvailable: boolean;
+    /** M6.3: null = send immediately */
+    delaySeconds: number | null;
+    ttlSeconds: number;
   },
 ): Promise<void> {
   await db.begin(async (tx) => {
-    const [before] = await tx<{ enabled: boolean; daily_cap: number }[]>`
-      SELECT enabled, daily_cap FROM facility_sms_settings
+    const [before] = await tx<
+      { enabled: boolean; daily_cap: number; delay_seconds: number | null }[]
+    >`
+      SELECT enabled, daily_cap, delay_seconds FROM facility_sms_settings
        WHERE facility_id = ${input.facilityId} AND organization_id = ${input.organizationId}
        FOR UPDATE`;
+    // M6.3: a delay is accepted only if the facility's policies leave the alert useful after it;
+    // otherwise the save is refused (never silently shortened or ignored)
+    if (input.delaySeconds !== null) {
+      const max = await smsDelayMaxSeconds(
+        tx,
+        input.ttlSeconds,
+        input.organizationId,
+        input.facilityId,
+      );
+      if (max === null || input.delaySeconds > max) {
+        const detail =
+          max === null
+            ? 'A delay is not possible here: the alert would expire or reach the visitor after an automatic no-show. Send text messages immediately.'
+            : `The longest delay this facility allows is ${max} seconds (turn-alert time limit and automatic no-show settings).`;
+        throw new ApiProblem(422, 'sms-delay-not-allowed', 'Delay not allowed', {
+          detail,
+          errors: [{ field: 'delay_seconds', message: detail }],
+        });
+      }
+    }
     await tx`
-      INSERT INTO facility_sms_settings (facility_id, organization_id, enabled, daily_cap, updated_by, updated_at)
+      INSERT INTO facility_sms_settings (facility_id, organization_id, enabled, daily_cap, delay_seconds, updated_by, updated_at)
       VALUES (${input.facilityId}, ${input.organizationId}, ${input.enabled}, ${input.dailyCap},
-              ${input.actorId}, NOW())
+              ${input.delaySeconds}, ${input.actorId}, NOW())
       ON CONFLICT (facility_id) DO UPDATE
         SET enabled = EXCLUDED.enabled, daily_cap = EXCLUDED.daily_cap,
+            delay_seconds = EXCLUDED.delay_seconds,
             updated_by = EXCLUDED.updated_by, updated_at = NOW()`;
     const wasOn = before?.enabled ?? false;
     const oldCap = before?.daily_cap ?? 0;
-    if (wasOn === input.enabled && oldCap === input.dailyCap) return;
-    await recordAdminEvent(tx, {
-      organizationId: input.organizationId,
-      facilityId: input.facilityId,
-      actorId: input.actorId,
-      eventType:
-        wasOn !== input.enabled
-          ? input.enabled
-            ? 'sms.enabled'
-            : 'sms.disabled'
-          : 'sms.cap_changed',
-      targetType: 'facility',
-      targetId: input.facilityId,
-      details: {
-        daily_cap: input.dailyCap,
-        previous_daily_cap: oldCap,
-        deployment_available: input.deploymentAvailable,
-      },
-    });
+    const oldDelay = before?.delay_seconds ?? null;
+    if (wasOn !== input.enabled || oldCap !== input.dailyCap) {
+      await recordAdminEvent(tx, {
+        organizationId: input.organizationId,
+        facilityId: input.facilityId,
+        actorId: input.actorId,
+        eventType:
+          wasOn !== input.enabled
+            ? input.enabled
+              ? 'sms.enabled'
+              : 'sms.disabled'
+            : 'sms.cap_changed',
+        targetType: 'facility',
+        targetId: input.facilityId,
+        details: {
+          daily_cap: input.dailyCap,
+          previous_daily_cap: oldCap,
+          deployment_available: input.deploymentAvailable,
+        },
+      });
+    }
+    if (oldDelay !== input.delaySeconds) {
+      await recordAdminEvent(tx, {
+        organizationId: input.organizationId,
+        facilityId: input.facilityId,
+        actorId: input.actorId,
+        eventType: 'sms.delay_changed',
+        targetType: 'facility',
+        targetId: input.facilityId,
+        details: { delay_seconds: input.delaySeconds, previous_delay_seconds: oldDelay },
+      });
+    }
   });
+}
+
+// ---------------------------------------------------------------------------
+// M6.3 monitoring (OPERATIONS_VIEW): bounded, facility-scoped, no number, no text, no ids
+// ---------------------------------------------------------------------------
+
+/** Keyset cursor over (created_at, id), opaque to clients. */
+export function encodeSmsCursor(createdAt: Date, id: string): string {
+  return Buffer.from(`${createdAt.toISOString()}|${id}`, 'utf8').toString('base64url');
+}
+export function decodeSmsCursor(raw: string): { createdAt: Date; id: string } | null {
+  const text = Buffer.from(raw, 'base64url').toString('utf8');
+  const m = /^(\d{4}-\d{2}-\d{2}T[0-9:.]+Z)\|([0-9a-f-]{36})$/.exec(text);
+  if (!m?.[1] || !m[2]) return null;
+  const createdAt = new Date(m[1]);
+  return Number.isNaN(createdAt.getTime()) ? null : { createdAt, id: m[2] };
+}
+
+/**
+ * The facility's SMS turn alerts as recorded: newest first, at most `limit` per page, scoped by
+ * organization and facility (through the ticket's queue session). States are shown exactly as
+ * stored: `sent` = the provider took it, `delivered` = an authenticated receipt, `unknown` = the
+ * outcome is not known, `suppressed` = not sent. Nothing here is synthesized.
+ */
+export async function smsMonitoring(
+  db: Db,
+  organizationId: string,
+  facilityId: string,
+  page: { limit: number; before: { createdAt: Date; id: string } | null },
+): Promise<SmsMonitoring> {
+  const rows = await db<
+    {
+      id: string;
+      public_code: string;
+      template_key: string;
+      created_at: Date;
+      status: SmsMonitorRow['status'];
+      detail_code: string | null;
+      provider: string | null;
+      attempts: number | null;
+      next_attempt_at: Date | null;
+      processed: boolean | null;
+    }[]
+  >`
+    SELECT n.id, t.public_code, n.template_key, n.created_at, n.status, n.detail_code, n.provider,
+           o.attempt_count AS attempts, o.next_attempt_at, (o.processed_at IS NOT NULL) AS processed
+      FROM notifications n
+      JOIN tickets t ON t.id = n.ticket_id AND t.organization_id = n.organization_id
+      JOIN queue_sessions qs ON qs.id = t.queue_session_id
+      LEFT JOIN notification_outbox o ON o.notification_id = n.id
+     WHERE n.organization_id = ${organizationId} AND n.channel = 'sms'
+       AND qs.facility_id = ${facilityId} AND qs.organization_id = ${organizationId}
+       ${page.before ? db`AND (n.created_at, n.id) < (${page.before.createdAt}, ${page.before.id})` : db``}
+     ORDER BY n.created_at DESC, n.id DESC
+     LIMIT ${page.limit + 1}`;
+  const [c] = await db<SmsMonitoring['last_24h'][]>`
+    SELECT COUNT(*) FILTER (WHERE n.status = 'pending')::int AS pending,
+           COUNT(*) FILTER (WHERE n.status = 'sent')::int AS sent,
+           COUNT(*) FILTER (WHERE n.status = 'delivered')::int AS delivered,
+           COUNT(*) FILTER (WHERE n.status = 'failed' AND n.detail_code IS DISTINCT FROM 'cap')::int AS failed,
+           COUNT(*) FILTER (WHERE n.status = 'failed' AND n.detail_code = 'cap')::int AS capped,
+           COUNT(*) FILTER (WHERE n.status = 'suppressed')::int AS suppressed,
+           COUNT(*) FILTER (WHERE n.status = 'unknown')::int AS unknown
+      FROM notifications n
+      JOIN tickets t ON t.id = n.ticket_id AND t.organization_id = n.organization_id
+      JOIN queue_sessions qs ON qs.id = t.queue_session_id
+     WHERE n.organization_id = ${organizationId} AND n.channel = 'sms'
+       AND qs.facility_id = ${facilityId} AND n.created_at > NOW() - INTERVAL '24 hours'`;
+  const shown = rows.slice(0, page.limit);
+  const last = shown[shown.length - 1];
+  return {
+    last_24h: c ?? {
+      pending: 0,
+      sent: 0,
+      delivered: 0,
+      failed: 0,
+      capped: 0,
+      suppressed: 0,
+      unknown: 0,
+    },
+    rows: shown.map((r) => ({
+      ticket_code: r.public_code,
+      template: r.template_key,
+      created_at: r.created_at.toISOString(),
+      status: r.status,
+      detail_code: r.detail_code,
+      provider_mode: r.provider === null ? null : r.provider === 'sandbox' ? 'sandbox' : 'live',
+      attempts: r.attempts ?? 0,
+      due_at:
+        r.status === 'pending' && r.processed === false && r.next_attempt_at
+          ? r.next_attempt_at.toISOString()
+          : null,
+    })),
+    next: rows.length > page.limit && last ? encodeSmsCursor(last.created_at, last.id) : null,
+  };
 }

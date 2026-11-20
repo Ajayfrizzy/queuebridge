@@ -353,6 +353,30 @@ function TicketView(): ReactElement {
   const liveCalled = s?.state === 'called' && !cachedAt;
   const bannerSeq = liveCalled ? (s?.call_sequence ?? 0) : null;
 
+  // M6.3: tell the server this page PRESENTED the in-app alert for this committed call (used only
+  // to skip a facility's optional delayed SMS). Only once the banner is on screen, from live
+  // committed state (never an offline copy), in a visible tab: a hidden or background tab waits
+  // until it is shown. Never because a push arrived, a service worker woke up or a status was
+  // fetched. Once per call per page; the server ignores repeats. Not proof it was read.
+  const seenSent = useRef<Set<number>>(new Set());
+  const seenCode = s?.public_code ?? code;
+  useEffect(() => {
+    const seq = bannerSeq;
+    if (!token || !seq || seq === dismissedSeq) return undefined;
+    const tryAck = (): void => {
+      if (!bannerRef.current || document.visibilityState !== 'visible') return;
+      if (seenSent.current.has(seq)) return;
+      seenSent.current.add(seq);
+      api.turnAlertSeen(seenCode, token, seq).catch((e: unknown) => {
+        // only a lost request may be tried again (a refusal, e.g. a newer call, is final)
+        if (e instanceof ApiRequestError && e.status === 0) seenSent.current.delete(seq);
+      });
+    };
+    tryAck();
+    document.addEventListener('visibilitychange', tryAck);
+    return () => document.removeEventListener('visibilitychange', tryAck);
+  }, [bannerSeq, dismissedSeq, token, seenCode]);
+
   // The tab title says it too, while the ticket is called (seen from another tab)
   const calledCode = liveCalled ? (s?.public_code ?? null) : null;
   useEffect(() => {

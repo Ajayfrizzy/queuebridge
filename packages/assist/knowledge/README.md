@@ -4,8 +4,8 @@ Source articles for Ask Que (F13), compiled by `scripts/build-kb.mjs` into one v
 bundle per audience (`dist/kb/<audience>.json`). Design: `.kiro/specs/queuebridge/design.md` §11.2,
 §11.5, §11.10 and §11.10a.
 
-**Status (M6.2, knowledge-base version 5):** 45 articles (18 public, 27 restricted) covering the
-M1–M5 behaviour and the M6.1 SMS and M6.2 USSD sandboxes as implemented. The SMS and USSD
+**Status (M6.3, knowledge-base version 6):** 47 articles (18 public, 29 restricted) covering the
+M1–M5 behaviour, the M6.1 SMS and M6.2 USSD sandboxes and the M6.3 Channels screen as implemented. The SMS and USSD
 articles are shown only where the TEST-ONLY sandbox is set up and say so. The capability coverage contract is
 `capabilities.json`. Evidence and the coverage matrix: `docs/testing/MQ-evidence.md` (MQ.5,
 MQ.6).
@@ -39,7 +39,8 @@ give default help to every role that can open it.
 1. Change the server manifest entry (`apps/api/src/que/capabilities.ts`). Done in M6.1 for SMS
    (`planned` → `sandbox`) and in M6.2 for USSD (`planned` → `sandbox`; `visitor.ussd` v2).
    Still to come: SMS and USSD `sandbox` → `live` once a provider is approved (C4, C5 and A4
-   fail for `visitor.alerts.sms`, `staff.sms.alerts` and `visitor.ussd`).
+   fail for `visitor.alerts.sms`, `staff.sms.alerts`, `admin.channels.sms`, `visitor.ussd` and
+   `admin.channels.ussd`).
 2. Rewrite the article for the new behaviour (consent, opt-out, caps) with an explicit sandbox
    label ("test only, no real messages"), and bump its `version`.
 3. Update `capabilities.json` (status, default availability, documenting articles). Add articles
@@ -103,15 +104,16 @@ remain open (MQ.5 evidence, remaining gaps).
 
 ## Review record
 
-| Date       | kbVersion | Reviewer    | Scope                                                                                                                                                                                                                                                                                                  |
-| ---------- | --------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 2026-11-17 | 1         | Kiro (MQ.2) | Four initial delivery articles                                                                                                                                                                                                                                                                         |
-| 2026-11-18 | 2         | Kiro (MQ.5) | Full M1–M5 inventory; the four MQ.2 articles re-reviewed (three corrected, one unchanged apart from its review date)                                                                                                                                                                                   |
-| 2026-11-19 | 3         | Kiro (MQ.6) | Consistency rules applied to all 44 articles: `org.signup` no longer relates the administration screen a visitor cannot open (R1); `admin.services` quotes the real form legend (L1)                                                                                                                   |
-| 2026-11-19 | 4         | Kiro (M6.1) | SMS moved from `planned` to the TEST-ONLY `sandbox` (MQ.6 rule applied in the same PR): `visitor.alerts.sms` rewritten (v2), new `staff.sms.alerts`, `capabilities.json` updated (status `sandbox`, default `not_configured`), screen defaults for the join, ticket and console screens; rule A4 added |
-| 2026-11-20 | 5         | Kiro (M6.2) | USSD moved from `planned` to the TEST-ONLY `sandbox` (MQ.6 rule applied in the same PR): `visitor.ussd` rewritten (v2: facility code, join, status and recovery with code and key, staff path), `capabilities.json` updated (status `sandbox`, default `not_configured`)                               |
+| Date       | kbVersion | Reviewer    | Scope                                                                                                                                                                                                                                                                                                                                                                                |
+| ---------- | --------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2026-11-17 | 1         | Kiro (MQ.2) | Four initial delivery articles                                                                                                                                                                                                                                                                                                                                                       |
+| 2026-11-18 | 2         | Kiro (MQ.5) | Full M1–M5 inventory; the four MQ.2 articles re-reviewed (three corrected, one unchanged apart from its review date)                                                                                                                                                                                                                                                                 |
+| 2026-11-19 | 3         | Kiro (MQ.6) | Consistency rules applied to all 44 articles: `org.signup` no longer relates the administration screen a visitor cannot open (R1); `admin.services` quotes the real form legend (L1)                                                                                                                                                                                                 |
+| 2026-11-19 | 4         | Kiro (M6.1) | SMS moved from `planned` to the TEST-ONLY `sandbox` (MQ.6 rule applied in the same PR): `visitor.alerts.sms` rewritten (v2), new `staff.sms.alerts`, `capabilities.json` updated (status `sandbox`, default `not_configured`), screen defaults for the join, ticket and console screens; rule A4 added                                                                               |
+| 2026-11-20 | 5         | Kiro (M6.2) | USSD moved from `planned` to the TEST-ONLY `sandbox` (MQ.6 rule applied in the same PR): `visitor.ussd` rewritten (v2: facility code, join, status and recovery with code and key, staff path), `capabilities.json` updated (status `sandbox`, default `not_configured`)                                                                                                             |
+| 2026-11-20 | 6         | Kiro (M6.3) | New Channels screen (`admin.facility.channels`, registered with defaults `admin.channels.sms`, `admin.channels.ussd` and the ungated `admin.readiness.join_link`); new gated articles `admin.channels.sms` and `admin.channels.ussd`; `visitor.alerts.sms` v3 and `staff.sms.alerts` v2 describe the optional SMS delay and the `alert_seen` outcome; no capability added or changed |
 
-## Inventory (knowledge-base version 5)
+## Inventory (knowledge-base version 6)
 
 Audiences: V visitor, R reception, C counter, S supervisor, FA facility admin, A auditor. An
 organization administrator receives every staff audience.
@@ -124,7 +126,7 @@ organization administrator receives every staff audience.
 | `visitor.accessibility`     | Display and alert settings                             | V, R, C, S, FA, A | `accessibility_prefs`     | none                                                 | M5    | 1   |
 | `visitor.alerts`            | Turn alerts on your ticket page                        | V                 | `turn_alert_in_app`       | `visitor.ticket`                                     | M5    | 1   |
 | `visitor.alerts.push`       | Push alerts for your ticket                            | V                 | `turn_alert_web_push`     | `visitor.ticket`                                     | M5    | 1   |
-| `visitor.alerts.sms`        | Text message alerts                                    | V                 | `sms_turn_alerts`         | `visitor.join`, `visitor.ticket`                     | M6    | 2   |
+| `visitor.alerts.sms`        | Text message alerts                                    | V                 | `sms_turn_alerts`         | `visitor.join`, `visitor.ticket`                     | M6    | 3   |
 | `visitor.auto_miss`         | Services that mark unanswered calls as missed          | V                 | `auto_miss`               | `visitor.ticket`                                     | M5    | 1   |
 | `visitor.display.board`     | The public display board                               | V, R, C, S, FA, A | none                      | `public.display`                                     | M2    | 1   |
 | `visitor.join.status`       | Joining a queue and following your ticket              | V                 | `visitor_join`            | `visitor.join`, `visitor.ticket`, `public.display`   | M2    | 1   |
@@ -136,6 +138,8 @@ organization administrator receives every staff audience.
 | `visitor.ticket.states`     | What your ticket status means                          | V                 | none                      | `visitor.ticket`                                     | M2    | 1   |
 | `visitor.ussd`              | USSD access                                            | V                 | `ussd`                    | none                                                 | M6    | 2   |
 | `visitor.wait.estimate`     | How wait estimates work                                | V, R, C, S, FA, A | none                      | `visitor.ticket`, `visitor.join`, `staff.console`    | M2    | 1   |
+| `admin.channels.sms`        | Text message settings and delivery monitoring          | R, C, S, FA, A    | `sms_turn_alerts`         | `admin.facility.channels`                            | M6    | 1   |
+| `admin.channels.ussd`       | USSD settings and session monitoring                   | R, C, S, FA, A    | `ussd`                    | `admin.facility.channels`                            | M6    | 1   |
 | `admin.counters`            | Setting up counters                                    | FA, S, A          | none                      | `admin.facility`                                     | M1    | 1   |
 | `admin.facility.create`     | Creating a facility                                    | FA                | none                      | `admin.home`, `admin.facility`                       | M1    | 1   |
 | `admin.policy.recovery`     | Missed-turn and recovery rules for a service           | FA                | none                      | `admin.facility`                                     | M5    | 1   |
@@ -159,7 +163,7 @@ organization administrator receives every staff audience.
 | `staff.recovery.approve`    | Approving a staff-assisted recovery                    | S, FA             | `staff_assisted_recovery` | `staff.console`                                      | M5    | 1   |
 | `staff.recovery.assist`     | Helping a visitor who has no recovery key              | R, C, S, FA       | `staff_assisted_recovery` | `staff.console`                                      | M5    | 2   |
 | `staff.roles.workflows`     | What each staff role can do                            | R, C, S, FA, A    | none                      | `staff.home`, `admin.facility.staff`                 | M1    | 1   |
-| `staff.sms.alerts`          | Text message alerts for visitors                       | R, C, S, FA       | `sms_turn_alerts`         | `staff.console`                                      | M6    | 1   |
+| `staff.sms.alerts`          | Text message alerts for visitors                       | R, C, S, FA       | `sms_turn_alerts`         | `staff.console`                                      | M6    | 2   |
 | `staff.sync.states`         | What the sync states mean                              | R, C, S, FA, A    | none                      | `staff.console`, `staff.connectivity`                | M3    | 2   |
 | `staff.transfers`           | Transferring a visitor                                 | C, S, FA, A       | none                      | `staff.console`, `staff.audit`                       | M4    | 1   |
 | `staff.walkin`              | Issuing a walk-in ticket                               | R, C, S, FA       | none                      | `staff.console`                                      | M2    | 1   |

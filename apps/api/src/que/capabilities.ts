@@ -56,6 +56,7 @@ export function capabilityFlags(
     | 'SMS_PROVIDER'
     | 'SMS_DAILY_CAP'
     | 'SMS_WEBHOOK_SECRET'
+    | 'TURN_ALERT_TTL_SECONDS'
     | 'USSD_PROVIDER'
     | 'USSD_WEBHOOK_SECRET'
     | 'USSD_SESSION_TTL_SECONDS'

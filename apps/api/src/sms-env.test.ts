@@ -34,6 +34,7 @@ describe('SMS deployment configuration (design §13.3)', () => {
         SMS_WEBHOOK_SECRET: undefined,
         CONTACT_ENCRYPTION_KEY: KEY,
         NODE_ENV: 'production',
+        TURN_ALERT_TTL_SECONDS: 120,
       }),
     ).toMatchObject({ mode: 'off', available: false });
   });

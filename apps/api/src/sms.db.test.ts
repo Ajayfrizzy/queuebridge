@@ -406,8 +406,11 @@ describe('committed calls enqueue one SMS (REQ-F11.8; design §13.1)', () => {
       'counter_id',
       'event_sequence',
       'facility_id',
+      'skip_if_seen',
       'ticket_id',
     ]);
+    // M6.3: no delay configured, so the alert is never skipped for a seen in-app alert
+    expect(rows[0]?.payload['skip_if_seen']).toBe(false);
     expect(JSON.stringify(rows[0]?.payload)).not.toContain('1234567');
     // replaying the same command (duplicate disposition) enqueues nothing
     const replay = await q.org.admin.post<{ outcome: { disposition: string } }>(

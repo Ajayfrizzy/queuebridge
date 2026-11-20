@@ -12,6 +12,7 @@ import {
   updateFacilityUssdSettings,
   ussdAdapterFor,
   ussdDeployment,
+  ussdMonitoring,
 } from '../ussd/service.js';
 import { uuidParam, type RouteDeps } from './deps.js';
 
@@ -40,6 +41,21 @@ export async function ussdRoutes(app: FastifyInstance, deps: RouteDeps): Promise
       return reply.send({
         ussd: await facilityUssdSettings(db, dep, auth.organizationId, facility.id),
       });
+    },
+  );
+  /** GET /facilities/:id/ussd/monitor — M6.3 session and join figures (OPERATIONS_VIEW). */
+  app.get<{ Params: { id: string } }>(
+    '/facilities/:id/ussd/monitor',
+    { preHandler: authenticate },
+    async (req, reply) => {
+      const auth = requireAuth(req);
+      const facility = await requireFacilityPermission(
+        db,
+        auth,
+        uuidParam(req.params.id),
+        'OPERATIONS_VIEW',
+      );
+      return reply.send({ monitor: await ussdMonitoring(db, auth.organizationId, facility.id) });
     },
   );
   /** PUT /facilities/:id/ussd — offer USSD at this facility or stop (administrators; audited). */

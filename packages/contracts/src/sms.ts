@@ -144,6 +144,8 @@ export const SMS_DETAIL_CODES = [
   'contact_removed',
   'sms_disabled',
   'sms_unavailable',
+  /** M6.3: a delayed SMS skipped because the visitor's page presented the in-app alert */
+  'alert_seen',
 ] as const;
 export type SmsDetailCode = (typeof SMS_DETAIL_CODES)[number];
 
@@ -158,16 +160,51 @@ export const StaffSmsAlertSchema = z.object({
 export type StaffSmsAlert = z.infer<typeof StaffSmsAlertSchema>;
 
 // ---------------------------------------------------------------------------
-// Facility setting (API only in M6.1; the channel screen is M6.3)
+// Facility setting (the channel screen is M6.3)
 // ---------------------------------------------------------------------------
 
 export const SMS_FACILITY_CAP_MAX = 100_000;
+
+/**
+ * M6.3 optional delay ("send SMS only if the in-app alert was not seen within N seconds").
+ * The shortest delay allowed. The longest is computed by the server (`delay_max_seconds`): it
+ * leaves `SMS_DELAY_DISPATCH_MARGIN_SECONDS` before the turn-alert TTL (after which an alert is
+ * never sent) and before the earliest automatic no-show of the facility's services (after which
+ * the alert would arrive too late to act on).
+ */
+export const SMS_DELAY_MIN_SECONDS = 10;
+/**
+ * Time kept free after the delay for the worker to pick the message up and finish its bounded
+ * retries: one poll interval (5 s by default) plus the two retry backoffs (5 s and 10 s), rounded
+ * up. A delay that leaves less would expire unsent or reach the visitor after a no-show.
+ */
+export const SMS_DELAY_DISPATCH_MARGIN_SECONDS = 30;
+/**
+ * The longest useful delay for a turn alert, or null when none is: it must leave the dispatch
+ * margin before the turn-alert TTL and before the earliest automatic no-show (null = none).
+ */
+export function maxSmsDelaySeconds(
+  ttlSeconds: number,
+  earliestAutoMissSeconds: number | null,
+): number | null {
+  let max = ttlSeconds - SMS_DELAY_DISPATCH_MARGIN_SECONDS;
+  if (earliestAutoMissSeconds !== null) {
+    max = Math.min(max, earliestAutoMissSeconds - SMS_DELAY_DISPATCH_MARGIN_SECONDS);
+  }
+  return max >= SMS_DELAY_MIN_SECONDS ? max : null;
+}
 
 export const FacilitySmsSettingsUpdateSchema = z
   .object({
     enabled: z.boolean(),
     /** Messages per UTC day for this facility; required (≥ 1) to turn SMS on */
     daily_cap: z.number().int().min(0).max(SMS_FACILITY_CAP_MAX),
+    /**
+     * M6.3: null or absent = send immediately (default). Otherwise wait this many seconds and
+     * send only if the visitor's page has not presented the in-app alert by then. The server
+     * refuses a value above `delay_max_seconds`.
+     */
+    delay_seconds: z.number().int().min(SMS_DELAY_MIN_SECONDS).max(3600).nullable().optional(),
   })
   .strict()
   .superRefine((v, ctx) => {
@@ -192,5 +229,57 @@ export const FacilitySmsSettingsSchema = z.object({
   deployment_daily_cap: z.number().int().min(0),
   /** Messages handed to the provider today (UTC), in this deployment's mode */
   sent_today: z.object({ facility: z.number().int().min(0), deployment: z.number().int().min(0) }),
+  /** M6.3: null = send immediately */
+  delay_seconds: z.number().int().nullable(),
+  /** M6.3: the longest delay this facility's policies allow now; null = no delay is possible */
+  delay_max_seconds: z.number().int().nullable(),
 });
 export type FacilitySmsSettings = z.infer<typeof FacilitySmsSettingsSchema>;
+
+// ---------------------------------------------------------------------------
+// M6.3 in-app alert acknowledgement and SMS monitoring
+// ---------------------------------------------------------------------------
+
+/**
+ * The visitor's ticket page presented the "it is your turn" alert for this committed call event.
+ * Sent only by the page, with the ticket's status token, once the banner is on screen in a
+ * visible tab. Not proof the visitor read it; its absence is not proof they did not.
+ */
+export const TurnAlertSeenRequestSchema = z
+  .object({ event_sequence: z.number().int().positive() })
+  .strict();
+export type TurnAlertSeenRequest = z.infer<typeof TurnAlertSeenRequestSchema>;
+
+export const SMS_MONITOR_PAGE_MAX = 50;
+
+/** One SMS turn alert as staff monitoring shows it: no number, no text, no internal id. */
+export const SmsMonitorRowSchema = z.object({
+  ticket_code: z.string(),
+  template: z.string(),
+  created_at: IsoDateTimeSchema,
+  status: z.enum(['pending', 'sent', 'delivered', 'failed', 'suppressed', 'unknown']),
+  detail_code: z.string().nullable(),
+  /** `sandbox` (TEST-ONLY), `live`, or null before any provider was involved */
+  provider_mode: z.enum(['sandbox', 'live']).nullable(),
+  attempts: z.number().int().min(0),
+  /** When a delayed message becomes due (pending only) */
+  due_at: IsoDateTimeSchema.nullable(),
+});
+export type SmsMonitorRow = z.infer<typeof SmsMonitorRowSchema>;
+
+export const SmsMonitoringSchema = z.object({
+  /** Last 24 hours, by recorded state */
+  last_24h: z.object({
+    pending: z.number().int().min(0),
+    sent: z.number().int().min(0),
+    delivered: z.number().int().min(0),
+    failed: z.number().int().min(0),
+    capped: z.number().int().min(0),
+    suppressed: z.number().int().min(0),
+    unknown: z.number().int().min(0),
+  }),
+  rows: z.array(SmsMonitorRowSchema),
+  /** Opaque cursor for the next (older) page; null at the end */
+  next: z.string().nullable(),
+});
+export type SmsMonitoring = z.infer<typeof SmsMonitoringSchema>;
