@@ -31,6 +31,7 @@ import { queRoutes } from './routes/que.js';
 import { installTurnAlerts, setTurnAlertLogger } from './queue/turn-alerts.js';
 import { installSmsAlerts, setSmsAlertLogger } from './queue/sms-alerts.js';
 import { smsRoutes, smsWebhookRoutes } from './routes/sms.js';
+import { ussdRoutes, ussdWebhookRoutes } from './routes/ussd.js';
 import { startAutoMissSweeper } from './queue/auto-miss.js';
 import type { RouteDeps } from './routes/deps.js';
 import { createRecoveryCrypto } from './recovery/crypto.js';
@@ -277,6 +278,8 @@ export async function buildApp(
       await api.register(queRoutes, deps);
       await api.register(smsRoutes, deps);
       await api.register(smsWebhookRoutes, deps);
+      await api.register(ussdRoutes, deps);
+      await api.register(ussdWebhookRoutes, deps);
     },
     { prefix: '/api/v1' },
   );

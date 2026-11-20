@@ -43,9 +43,10 @@ describe('worker parseEnv', () => {
     ).toBe('sandbox');
   });
 
-  it('defaults USSD_PROVIDER to sandbox', () => {
+  // M6.2: like SMS (M6.1 review), the sandbox is never a default; the API answers USSD
+  it('defaults USSD_PROVIDER to off', () => {
     const env = parseEnv({ DATABASE_URL: 'postgres://localhost:5432/test' });
-    expect(env.USSD_PROVIDER).toBe('sandbox');
+    expect(env.USSD_PROVIDER).toBe('off');
   });
 
   it('defaults poll interval to 5000ms', () => {

@@ -4,9 +4,9 @@ Source articles for Ask Que (F13), compiled by `scripts/build-kb.mjs` into one v
 bundle per audience (`dist/kb/<audience>.json`). Design: `.kiro/specs/queuebridge/design.md` §11.2,
 §11.5, §11.10 and §11.10a.
 
-**Status (M6.1, knowledge-base version 4):** 45 articles (18 public, 27 restricted) covering the
-M1–M5 behaviour and the M6.1 SMS sandbox as implemented. The SMS articles are shown only where
-the TEST-ONLY sandbox is set up and say so; the USSD article stays hidden until M6.2. The capability coverage contract is
+**Status (M6.2, knowledge-base version 5):** 45 articles (18 public, 27 restricted) covering the
+M1–M5 behaviour and the M6.1 SMS and M6.2 USSD sandboxes as implemented. The SMS and USSD
+articles are shown only where the TEST-ONLY sandbox is set up and say so. The capability coverage contract is
 `capabilities.json`. Evidence and the coverage matrix: `docs/testing/MQ-evidence.md` (MQ.5,
 MQ.6).
 
@@ -37,9 +37,9 @@ give default help to every role that can open it.
 ### Applying it in M6 (SMS turn alerts, USSD)
 
 1. Change the server manifest entry (`apps/api/src/que/capabilities.ts`). Done in M6.1 for SMS
-   (`planned` → `sandbox`). Still to come: USSD `planned` → `sandbox` (M6.2: C4, C5, A1 and A2
-   fail for `visitor.ussd`) and SMS `sandbox` → `live` once a provider is approved (C4, C5 and
-   A4 fail for `visitor.alerts.sms` and `staff.sms.alerts`).
+   (`planned` → `sandbox`) and in M6.2 for USSD (`planned` → `sandbox`; `visitor.ussd` v2).
+   Still to come: SMS and USSD `sandbox` → `live` once a provider is approved (C4, C5 and A4
+   fail for `visitor.alerts.sms`, `staff.sms.alerts` and `visitor.ussd`).
 2. Rewrite the article for the new behaviour (consent, opt-out, caps) with an explicit sandbox
    label ("test only, no real messages"), and bump its `version`.
 3. Update `capabilities.json` (status, default availability, documenting articles). Add articles
@@ -91,7 +91,7 @@ Each article was checked against the implemented screens, API and state machine:
 3. No promised times: estimates are ranges; no clock times; tested automatically.
 4. No promised delivery: push and sound are best effort; `sent` is not `delivered`; no
    background vibration; tested automatically.
-5. No fabricated capabilities: SMS and USSD are gated on planned capabilities; AI is described as
+5. No fabricated capabilities: SMS and USSD are gated on their sandbox capabilities; AI is described as
    off unless a provider exists; absent features (password reset, email invitations) are stated
    as absent.
 6. Privacy: no staff verification questions or answers in public articles (D4); no secrets.
@@ -109,8 +109,9 @@ remain open (MQ.5 evidence, remaining gaps).
 | 2026-11-18 | 2         | Kiro (MQ.5) | Full M1–M5 inventory; the four MQ.2 articles re-reviewed (three corrected, one unchanged apart from its review date)                                                                                                                                                                                   |
 | 2026-11-19 | 3         | Kiro (MQ.6) | Consistency rules applied to all 44 articles: `org.signup` no longer relates the administration screen a visitor cannot open (R1); `admin.services` quotes the real form legend (L1)                                                                                                                   |
 | 2026-11-19 | 4         | Kiro (M6.1) | SMS moved from `planned` to the TEST-ONLY `sandbox` (MQ.6 rule applied in the same PR): `visitor.alerts.sms` rewritten (v2), new `staff.sms.alerts`, `capabilities.json` updated (status `sandbox`, default `not_configured`), screen defaults for the join, ticket and console screens; rule A4 added |
+| 2026-11-20 | 5         | Kiro (M6.2) | USSD moved from `planned` to the TEST-ONLY `sandbox` (MQ.6 rule applied in the same PR): `visitor.ussd` rewritten (v2: facility code, join, status and recovery with code and key, staff path), `capabilities.json` updated (status `sandbox`, default `not_configured`)                               |
 
-## Inventory (knowledge-base version 4)
+## Inventory (knowledge-base version 5)
 
 Audiences: V visitor, R reception, C counter, S supervisor, FA facility admin, A auditor. An
 organization administrator receives every staff audience.
@@ -133,7 +134,7 @@ organization administrator receives every staff audience.
 | `visitor.recovery.key`      | Your recovery key                                      | V                 | `ticket_recovery_key`     | `visitor.recover`, `visitor.ticket`                  | M5    | 1   |
 | `visitor.recovery.staff`    | Getting help from staff without your recovery key      | V                 | `staff_assisted_recovery` | `visitor.recover`                                    | M5    | 2   |
 | `visitor.ticket.states`     | What your ticket status means                          | V                 | none                      | `visitor.ticket`                                     | M2    | 1   |
-| `visitor.ussd`              | USSD access                                            | V                 | `ussd`                    | none                                                 | M6    | 1   |
+| `visitor.ussd`              | USSD access                                            | V                 | `ussd`                    | none                                                 | M6    | 2   |
 | `visitor.wait.estimate`     | How wait estimates work                                | V, R, C, S, FA, A | none                      | `visitor.ticket`, `visitor.join`, `staff.console`    | M2    | 1   |
 | `admin.counters`            | Setting up counters                                    | FA, S, A          | none                      | `admin.facility`                                     | M1    | 1   |
 | `admin.facility.create`     | Creating a facility                                    | FA                | none                      | `admin.home`, `admin.facility`                       | M1    | 1   |

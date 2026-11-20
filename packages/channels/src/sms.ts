@@ -132,7 +132,22 @@ export const SMS_WEBHOOK_HEADERS = {
 /** Requests outside ±5 minutes are refused (replay window; nonces are kept longer). */
 export const SMS_WEBHOOK_TOLERANCE_SECONDS = 300;
 
-export function signSmsWebhook(
+/** Header names of one signed-webhook scheme (the MAC construction is shared). */
+export interface WebhookHeaderNames {
+  timestamp: string;
+  nonce: string;
+  signature: string;
+}
+
+/**
+ * Shared construction: `v1=` + HMAC-SHA-256(secret, `${context}${timestamp}.${nonce}.${rawBody}`).
+ * `context` separates channels (USSD signs with a `ussd.v1.` prefix), so a signature captured on
+ * one webhook can never be replayed on another, even if a secret were reused. SMS keeps the
+ * empty context it shipped with (M6.1).
+ */
+export function signWebhookWith(
+  names: WebhookHeaderNames,
+  context: string,
   secret: string,
   rawBody: string,
   opts: { timestamp?: number; nonce?: string } = {},
@@ -140,12 +155,12 @@ export function signSmsWebhook(
   const timestamp = String(opts.timestamp ?? Math.floor(Date.now() / 1000));
   const nonce = opts.nonce ?? randomBytes(16).toString('hex');
   const mac = createHmac('sha256', secret)
-    .update(`${timestamp}.${nonce}.${rawBody}`, 'utf8')
+    .update(`${context}${timestamp}.${nonce}.${rawBody}`, 'utf8')
     .digest('hex');
   return {
-    [SMS_WEBHOOK_HEADERS.timestamp]: timestamp,
-    [SMS_WEBHOOK_HEADERS.nonce]: nonce,
-    [SMS_WEBHOOK_HEADERS.signature]: `v1=${mac}`,
+    [names.timestamp]: timestamp,
+    [names.nonce]: nonce,
+    [names.signature]: `v1=${mac}`,
   };
 }
 
@@ -154,25 +169,45 @@ export function signSmsWebhook(
  * for a missing secret, a missing or malformed header, a stale or future timestamp, a body that
  * is not a string, or a wrong signature.
  */
-export function verifySmsWebhook(
+export function verifyWebhookWith(
+  names: WebhookHeaderNames,
+  context: string,
   secret: string | undefined,
   headers: Record<string, string>,
   rawBody: unknown,
   nowMs: number = Date.now(),
 ): boolean {
   if (!secret || secret.length < 32 || typeof rawBody !== 'string') return false;
-  const ts = headers[SMS_WEBHOOK_HEADERS.timestamp];
-  const nonce = headers[SMS_WEBHOOK_HEADERS.nonce];
-  const sig = headers[SMS_WEBHOOK_HEADERS.signature];
+  const ts = headers[names.timestamp];
+  const nonce = headers[names.nonce];
+  const sig = headers[names.signature];
   if (!ts || !/^\d{1,12}$/.test(ts) || !nonce || !/^[A-Za-z0-9_-]{16,128}$/.test(nonce))
     return false;
   if (!sig || !/^v1=[0-9a-f]{64}$/.test(sig)) return false;
   if (Math.abs(nowMs / 1000 - Number(ts)) > SMS_WEBHOOK_TOLERANCE_SECONDS) return false;
   const expected = createHmac('sha256', secret)
-    .update(`${ts}.${nonce}.${rawBody}`, 'utf8')
+    .update(`${context}${ts}.${nonce}.${rawBody}`, 'utf8')
     .digest();
   const given = Buffer.from(sig.slice(3), 'hex');
   return given.length === expected.length && timingSafeEqual(given, expected);
+}
+
+export function signSmsWebhook(
+  secret: string,
+  rawBody: string,
+  opts: { timestamp?: number; nonce?: string } = {},
+): Record<string, string> {
+  return signWebhookWith(SMS_WEBHOOK_HEADERS, '', secret, rawBody, opts);
+}
+
+/** The SMS scheme (unchanged since M6.1): see `verifyWebhookWith`. */
+export function verifySmsWebhook(
+  secret: string | undefined,
+  headers: Record<string, string>,
+  rawBody: unknown,
+  nowMs: number = Date.now(),
+): boolean {
+  return verifyWebhookWith(SMS_WEBHOOK_HEADERS, '', secret, headers, rawBody, nowMs);
 }
 
 /** Opt-out reply keywords (case-insensitive, whole message). */

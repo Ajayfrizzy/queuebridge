@@ -68,7 +68,7 @@ export const recoveryUnavailable = (): ApiProblem =>
     detail: 'Ticket recovery is not available here right now. Please ask a member of staff.',
   });
 
-interface CurrentTicket {
+export interface CurrentTicket {
   id: string;
   organization_id: string;
   queue_session_id: string;
@@ -125,12 +125,27 @@ export interface KeyRecoveryInput {
   source: string;
 }
 
-export async function recoverWithKey(
+/** The ticket a verified recovery key opens: its root (credentials) and current ticket. */
+export interface VerifiedRecoveryKey {
+  rootId: string;
+  current: CurrentTicket;
+}
+
+/**
+ * The recovery-key check, shared by web recovery and USSD (M6.2). Throttles first (L1–L4, keyed
+ * on public identifiers and the source, never on the guess); the same lookups and one HMAC
+ * whether or not anything matches (no oracle); the ONE uniform failure for unknown, wrong,
+ * expired and ended tickets alike. On a match, `onVerified` runs in the transaction that
+ * re-checks the key under the ticket's credential lock (a key replaced a moment ago no longer
+ * works); returning null there counts as a failure.
+ */
+async function withVerifiedRecoveryKey<T>(
   db: Db,
   crypto: RecoveryCrypto,
   limits: ThrottleLimits,
   input: KeyRecoveryInput,
-): Promise<RecoveredTicket> {
+  onVerified: (tx: Db, verified: VerifiedRecoveryKey) => Promise<T>,
+): Promise<T> {
   // Throttle first, keyed on public identifiers and the source — never on the guess
   const keys = targetKeys(crypto, input, input.source);
   await admitSource(db, keys.source, limits);
@@ -174,25 +189,16 @@ export async function recoverWithKey(
     !TERMINAL.has(current.state);
 
   if (ok && rootId && current) {
-    const issued = await db.begin(async (tx) => {
+    const outcome = await db.begin(async (tx) => {
       // Re-check under the ticket's credential lock: a key replaced a moment ago no longer works
       const locked = await lockProof(tx, rootId);
-      if (!locked?.key_hmac || !crypto.equal(locked.key_hmac, computed)) return null;
-      const token = await issueStatusToken(tx, rootId, 'recovery');
-      await recordAdminEvent(tx, {
-        organizationId: current.organization_id,
-        facilityId: current.facility_id,
-        actorId: null,
-        eventType: 'ticket_recovery.recovered',
-        targetType: 'ticket',
-        targetId: rootId,
-        details: { method: 'recovery_key' },
-      });
-      return token;
+      if (!locked?.key_hmac || !crypto.equal(locked.key_hmac, computed))
+        return { done: false as const };
+      return { done: true as const, value: await onVerified(tx, { rootId, current }) };
     });
-    if (issued) {
+    if (outcome.done) {
       await refundTargetCharge(db, keys);
-      return recoveredTicket(current, issued);
+      return outcome.value;
     }
   }
 
@@ -209,6 +215,41 @@ export async function recoverWithKey(
     });
   }
   throw recoveryFailed();
+}
+
+export async function recoverWithKey(
+  db: Db,
+  crypto: RecoveryCrypto,
+  limits: ThrottleLimits,
+  input: KeyRecoveryInput,
+): Promise<RecoveredTicket> {
+  return withVerifiedRecoveryKey(db, crypto, limits, input, async (tx, { rootId, current }) => {
+    const token = await issueStatusToken(tx, rootId, 'recovery');
+    await recordAdminEvent(tx, {
+      organizationId: current.organization_id,
+      facilityId: current.facility_id,
+      actorId: null,
+      eventType: 'ticket_recovery.recovered',
+      targetType: 'ticket',
+      targetId: rootId,
+      details: { method: 'recovery_key' },
+    });
+    return recoveredTicket(current, token);
+  });
+}
+
+/**
+ * M6.2 USSD: the same check, without issuing anything. A feature phone cannot hold a status
+ * token, so USSD shows the committed status after each successful check instead; no token is
+ * created, so the visitor's other devices keep theirs (the 3-token cap is not consumed).
+ */
+export async function verifyRecoveryKey(
+  db: Db,
+  crypto: RecoveryCrypto,
+  limits: ThrottleLimits,
+  input: KeyRecoveryInput,
+): Promise<VerifiedRecoveryKey> {
+  return withVerifiedRecoveryKey(db, crypto, limits, input, async (_tx, verified) => verified);
 }
 
 // ---------------------------------------------------------------------------

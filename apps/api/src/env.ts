@@ -132,6 +132,28 @@ const EnvSchema = z
     SMS_WEBHOOK_RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(10_000).default(120),
     /** Visitor and staff SMS opt-out and settings changes per minute per source address. */
     SMS_RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(1_000).default(30),
+    /**
+     * M6.2 USSD (REQ-F12). OFF by default. `sandbox` is the TEST-ONLY adapter (signed JSON
+     * requests from tests and demos, every screen labelled [SANDBOX]; no shortcode, no mobile
+     * network) and is refused in production. USSD is offered only with CONTACT_ENCRYPTION_KEY
+     * (session ids and numbers are stored as keyed hashes, replays encrypted) and a webhook
+     * secret. No live provider adapter exists until a provider and shortcode are approved.
+     */
+    USSD_PROVIDER: z.enum(['off', 'sandbox']).default('off'),
+    /** HMAC secret for `POST /webhooks/ussd/:provider` (at least 32 characters; none = refuse all). */
+    USSD_WEBHOOK_SECRET: z.string().min(32).optional(),
+    /** A USSD session ends after this many seconds without input (restart by dialling again). */
+    USSD_SESSION_TTL_SECONDS: z.coerce.number().int().min(30).max(900).default(180),
+    /**
+     * Webhook requests per minute per source address. Every request of a provider comes from its
+     * own few addresses, so this bounds the provider link; per-phone limits sit in the menu.
+     */
+    USSD_WEBHOOK_RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(100_000).default(600),
+    /**
+     * Tickets one phone may create over USSD per hour (the USSD counterpart of the per-address
+     * web join limit; a shared household phone still gets several).
+     */
+    USSD_JOINS_PER_PHONE_PER_HOUR: z.coerce.number().int().min(1).max(100).default(5),
     /** Set true only when running behind a trusted reverse proxy (honours X-Forwarded-For). */
     TRUST_PROXY: z
       .enum(['true', 'false'])
@@ -148,6 +170,13 @@ const EnvSchema = z
         code: 'custom',
         path: ['SMS_PROVIDER'],
         message: 'the sandbox SMS adapter is test-only and cannot run in production',
+      });
+    }
+    if (env.NODE_ENV === 'production' && env.USSD_PROVIDER === 'sandbox') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['USSD_PROVIDER'],
+        message: 'the sandbox USSD adapter is test-only and cannot run in production',
       });
     }
     if (env.NODE_ENV === 'production' && env.QUE_AI_ADAPTER === 'sandbox') {

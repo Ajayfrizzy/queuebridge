@@ -69,6 +69,11 @@ export const SENTINELS = {
     'visitor_contacts.phone_hash',
     'notifications.send_started_at',
   ],
+  '0012_ussd_sessions.sql': [
+    'facility_ussd_settings',
+    'ussd_sessions.msisdn_hash',
+    'ussd_sessions.last_response_ct',
+  ],
 };
 
 /** Migration files of this checkout, in apply order. */

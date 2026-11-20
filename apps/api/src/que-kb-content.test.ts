@@ -148,6 +148,7 @@ describe('capability gating against the manifest the server builds', () => {
     webPushAvailable: false,
     aiAvailable: 'off',
     smsAvailable: false,
+    ussdAvailable: false,
     ...over,
   });
   const DEFAULT = buildCapabilityManifest(flags(), NOW);
@@ -161,14 +162,22 @@ describe('capability gating against the manifest the server builds', () => {
     }
   });
 
-  it('only the USSD article depends on a planned capability, and it is not shown', () => {
+  it('no article depends on a planned capability any more (USSD became a sandbox in M6.2)', () => {
     const planned = ALL.filter((a) =>
       a.requiresCapabilities.some((c) => DEFAULT.capabilities[c]?.status === 'planned'),
     ).map((a) => a.id);
-    expect(planned.sort()).toEqual(['visitor.ussd']);
-    const out = visitor('ussd', WITH_PUSH);
-    expect(out.citations).not.toContain('visitor.ussd');
-    expect(out.text).toMatch(/not available yet/);
+    expect(planned).toEqual([]);
+  });
+
+  it('USSD help is withheld unless the sandbox is set up, and then it is labelled as a test', () => {
+    const off = visitor('ussd', WITH_PUSH);
+    expect(off.citations).not.toContain('visitor.ussd');
+    expect(off.text).toContain('USSD access: not set up here.');
+    const on = buildCapabilityManifest(flags({ ussdAvailable: true }), NOW);
+    expect(on.capabilities.ussd).toMatchObject({ status: 'sandbox', availability: 'available' });
+    const shown = visitor('ussd', on);
+    expect(shown.citations).toContain('visitor.ussd');
+    expect(shown.text).toContain('USSD access: sandbox');
   });
 
   it('SMS help is withheld unless the sandbox is set up, and then it is labelled as a test', () => {

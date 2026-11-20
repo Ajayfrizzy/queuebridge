@@ -6,6 +6,7 @@ import {
   type UssdResponse,
   type UssdSessionParams,
 } from '@queuebridge/contracts';
+import type { UssdRequest } from './ussd.js';
 
 /**
  * Provider-neutral channel adapter interface.
@@ -58,3 +59,20 @@ export interface SmsAdapter extends ChannelAdapter {
 /** Providers with an adapter in this build. Live providers are added only after approval. */
 export const SMS_PROVIDERS = ['sandbox'] as const;
 export type SmsProvider = (typeof SMS_PROVIDERS)[number];
+/**
+ * A USSD-capable adapter (M6.2, REQ-F12.2). The adapter owns everything provider-specific: the
+ * request format (`parseUssdRequest`), its authentication (`verifyWebhook` over the exact raw
+ * body) and the response format (`renderUssdResponse`). The menu is the shared `runUssdMenu`,
+ * reached through `handleUssdSession`; session state is stored by the API, never here.
+ */
+export interface UssdAdapter extends ChannelAdapter {
+  readonly provider: string;
+  readonly sandbox: boolean;
+  /** Normalized request, or null when the payload is not a valid request of this provider */
+  parseUssdRequest(payload: unknown): UssdRequest | null;
+  /** The HTTP body and content type the provider expects for a screen */
+  renderUssdResponse(r: UssdResponse): { contentType: string; body: string };
+}
+/** USSD providers with an adapter in this build. Live providers are added only after approval. */
+export const USSD_PROVIDERS = ['sandbox'] as const;
+export type UssdProvider = (typeof USSD_PROVIDERS)[number];

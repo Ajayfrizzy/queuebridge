@@ -7,6 +7,7 @@ import {
   SandboxUssdAdapter,
 } from './sandbox.js';
 import { signSmsWebhook } from './sms.js';
+import { signUssdWebhook } from './ussd.js';
 
 // ---------------------------------------------------------------------------
 // SandboxSmsAdapter (Group 10; M6.1 replaced the M0 stub, which claimed `delivered` on send and
@@ -155,118 +156,116 @@ describe('SandboxSmsAdapter', () => {
 });
 
 // ---------------------------------------------------------------------------
-// SandboxUssdAdapter
+// SandboxUssdAdapter (M6.2 Group 10 contract; replaces the M0 placeholder, which accepted every
+// webhook, logged every input and had no real flows). The menu itself is tested in ussd.test.ts.
 // ---------------------------------------------------------------------------
 
 describe('SandboxUssdAdapter', () => {
+  const SECRET = 'test-only-ussd-webhook-secret-0123456789abcdef';
   let adapter: SandboxUssdAdapter;
-  const SESSION_KEY = 'test-session-hash-abc';
-  const MSISDN = '+2348099887766';
-
   beforeEach(() => {
-    adapter = new SandboxUssdAdapter();
+    adapter = new SandboxUssdAdapter({ webhookSecret: SECRET });
   });
 
-  it('starts a USSD session with a welcome menu (step 0)', async () => {
-    const response = await adapter.handleUssdSession({
-      session_key_hash: SESSION_KEY,
-      msisdn: MSISDN,
-      input: '',
-      session_state: {},
+  it('is the TEST-ONLY sandbox provider', () => {
+    expect(adapter.provider).toBe('sandbox');
+    expect(adapter.sandbox).toBe(true);
+  });
+
+  it('verifies the USSD signature over the raw body; refuses unsigned, wrong, stale, SMS-signed or secretless requests', () => {
+    const body = '{"session_id":"sess_0001","msisdn":"+2348011111111","text":""}';
+    expect(adapter.verifyWebhook(signUssdWebhook(SECRET, body), body)).toBe(true);
+    expect(adapter.verifyWebhook({}, body)).toBe(false);
+    expect(adapter.verifyWebhook(signUssdWebhook('x'.repeat(48), body), body)).toBe(false);
+    expect(adapter.verifyWebhook(signUssdWebhook(SECRET, body), `${body} `)).toBe(false);
+    const stale = signUssdWebhook(SECRET, body, {
+      timestamp: Math.floor(Date.now() / 1000) - 3600,
     });
-    expect(response.action).toBe('CON');
-    expect(response.message).toContain(SANDBOX_PREFIX);
-    expect(response.message).toContain('Welcome');
-    expect(response.next_state).toEqual({ step: 1 });
+    expect(adapter.verifyWebhook(stale, body)).toBe(false);
+    // an SMS signature with the same secret, header names renamed, never verifies here
+    const sms = signSmsWebhook(SECRET, body);
+    const renamed = Object.fromEntries(
+      Object.entries(sms).map(([k, v]) => [k.replace('-sms-', '-ussd-'), v]),
+    );
+    expect(adapter.verifyWebhook(renamed, body)).toBe(false);
+    expect(new SandboxUssdAdapter().verifyWebhook(signUssdWebhook(SECRET, body), body)).toBe(false);
+    // a parsed object is not the raw representation
+    expect(adapter.verifyWebhook(signUssdWebhook(SECRET, body), JSON.parse(body))).toBe(false);
   });
 
-  it('navigates to join queue on input "1"', async () => {
-    const response = await adapter.handleUssdSession({
-      session_key_hash: SESSION_KEY,
-      msisdn: MSISDN,
-      input: '1',
-      session_state: { step: 1 },
-    });
-    expect(response.action).toBe('CON');
-    expect(response.message).toContain(SANDBOX_PREFIX);
-    expect(response.next_state).toMatchObject({ step: 2, intent: 'join' });
-  });
-
-  it('navigates to status check on input "2"', async () => {
-    const response = await adapter.handleUssdSession({
-      session_key_hash: SESSION_KEY,
-      msisdn: MSISDN,
-      input: '2',
-      session_state: { step: 1 },
-    });
-    expect(response.action).toBe('CON');
-    expect(response.next_state).toMatchObject({ step: 2, intent: 'status' });
-  });
-
-  it('handles invalid input gracefully', async () => {
-    const response = await adapter.handleUssdSession({
-      session_key_hash: SESSION_KEY,
-      msisdn: MSISDN,
-      input: '9',
-      session_state: { step: 1 },
-    });
-    expect(response.action).toBe('CON');
-    expect(response.message).toContain('Invalid');
-    expect(response.next_state).toEqual({ step: 1 });
-  });
-
-  it('ends session at final step', async () => {
-    const response = await adapter.handleUssdSession({
-      session_key_hash: SESSION_KEY,
-      msisdn: MSISDN,
-      input: 'confirm',
-      session_state: { step: 2, intent: 'join' },
-    });
-    expect(response.action).toBe('END');
-  });
-
-  it('logs all session interactions', async () => {
-    await adapter.handleUssdSession({
-      session_key_hash: SESSION_KEY,
-      msisdn: MSISDN,
-      input: '',
-      session_state: {},
-    });
-    const log = adapter.getSessionLog();
-    expect(log).toHaveLength(1);
-    expect(log[0]?.session_key_hash).toBe(SESSION_KEY);
-  });
-
-  it('message respects max 182 character USSD limit', async () => {
-    const response = await adapter.handleUssdSession({
-      session_key_hash: SESSION_KEY,
-      msisdn: MSISDN,
-      input: '',
-      session_state: {},
-    });
-    expect(response.message.length).toBeLessThanOrEqual(182);
-  });
-
-  it('all sandbox messages include the SANDBOX prefix', async () => {
-    const steps = [
-      { input: '', session_state: {} },
-      { input: '1', session_state: { step: 1 } },
-    ];
-    for (const step of steps) {
-      const response = await adapter.handleUssdSession({
-        session_key_hash: SESSION_KEY,
-        msisdn: MSISDN,
-        ...step,
-      });
-      expect(response.message).toContain(SANDBOX_PREFIX);
+  it('parses only the exact sandbox request shape', () => {
+    expect(
+      adapter.parseUssdRequest({
+        session_id: 'sess_0001',
+        msisdn: '+2348011111111',
+        text: '1*123456',
+      }),
+    ).toEqual({ sessionId: 'sess_0001', msisdn: '+2348011111111', text: '1*123456' });
+    expect(
+      adapter.parseUssdRequest({
+        session_id: 'sess_0001',
+        msisdn: '2348011111111',
+        text: '',
+        service_code: '*000#',
+      }),
+    ).not.toBeNull();
+    for (const bad of [
+      null,
+      [],
+      'x',
+      {},
+      { session_id: 'short', msisdn: '+2348011111111', text: '' },
+      { session_id: 'sess_0001', msisdn: 'call me', text: '' },
+      { session_id: 'sess_0001', msisdn: '+2348011111111', text: 'a'.repeat(241) },
+      { session_id: 'sess_0001', msisdn: '+2348011111111', text: '<script>' },
+      { session_id: 'sess_0001', msisdn: '+2348011111111', text: '', extra: 1 },
+      { session_id: 'sess_0001', msisdn: '+2348011111111', text: 1 },
+    ]) {
+      expect(adapter.parseUssdRequest(bad), JSON.stringify(bad)).toBeNull();
     }
   });
 
-  it('verifyWebhook returns true in sandbox mode', () => {
-    expect(adapter.verifyWebhook({}, {})).toBe(true);
+  it('renders the CON/END text contract', () => {
+    expect(adapter.renderUssdResponse({ action: 'CON', message: '[SANDBOX] Hi' })).toEqual({
+      contentType: 'text/plain; charset=utf-8',
+      body: 'CON [SANDBOX] Hi',
+    });
+    expect(adapter.renderUssdResponse({ action: 'END', message: 'x' }).body).toBe('END x');
   });
 
-  it('parseDeliveryReceipt throws (not an SMS adapter)', () => {
+  it('without an application it ends politely; it pushes nothing and handles no receipts', async () => {
+    const r = await adapter.handleUssdSession({ session_key_hash: 'h', msisdn: 'm', input: '' });
+    expect(r).toMatchObject({ action: 'END' });
+    expect(r.message).toContain(SANDBOX_PREFIX);
+    expect(
+      (
+        await adapter.sendMessage({
+          to: '+2348011111111',
+          template_key: 'ticket.called',
+          params: { code: 'A001' },
+          idempotency_key: 'k',
+          sandbox: true,
+        })
+      ).status,
+    ).toBe(DeliveryStatus.FAILED);
     expect(() => adapter.parseDeliveryReceipt({})).toThrow();
+    expect(adapter.parseInboundMessage({})).toBeNull();
+  });
+
+  it('never logs (inputs can contain a recovery key)', async () => {
+    const spy = [console.log, console.info, console.warn, console.error];
+    const lines: unknown[] = [];
+    console.log = console.info = console.warn = console.error = (...a: unknown[]) => lines.push(a);
+    try {
+      await adapter.handleUssdSession({ session_key_hash: 'h', msisdn: 'm', input: 'ABCD' });
+    } finally {
+      [console.log, console.info, console.warn, console.error] = spy as [
+        typeof console.log,
+        typeof console.log,
+        typeof console.log,
+        typeof console.log,
+      ];
+    }
+    expect(lines).toEqual([]);
   });
 });

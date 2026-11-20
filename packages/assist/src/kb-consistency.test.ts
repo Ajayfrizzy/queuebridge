@@ -10,7 +10,7 @@ import {
   parseCapabilityContract,
   type KbCapabilityContract,
 } from './kb-consistency.js';
-import { NO_PUSH, PLANNED, manifest } from './fixtures.testkit.js';
+import { NO_PUSH, manifest } from './fixtures.testkit.js';
 
 /**
  * MQ.6 — Group 13.5 knowledge-base consistency rules against the COMMITTED knowledge base and
@@ -58,6 +58,12 @@ const SMS_NOT_SET_UP: CapabilityEntry = {
   unavailableReason: 'not_configured',
   since: 'M6',
 };
+const USSD_NOT_SET_UP: CapabilityEntry = {
+  status: 'sandbox',
+  availability: 'unavailable',
+  unavailableReason: 'not_configured',
+  since: 'M6',
+};
 const live = (since: CapabilityEntry['since']): CapabilityEntry => ({
   status: 'live',
   availability: 'available',
@@ -80,7 +86,8 @@ const PRODUCTION = manifest({
   accessibility_prefs: live('M5'),
   // M6.1: built as the TEST-ONLY sandbox; not set up by default (SMS_PROVIDER off)
   sms_turn_alerts: SMS_NOT_SET_UP,
-  ussd: PLANNED,
+  // M6.2: built as the TEST-ONLY sandbox; not set up by default (USSD_PROVIDER off)
+  ussd: USSD_NOT_SET_UP,
   ask_que_ai: SWITCHED_OFF,
 });
 const TODAY = '2026-11-20';
@@ -212,15 +219,22 @@ describe('C rules: capability coverage contract', () => {
     );
     expect(check({ manifest: m, contract: c, articles: a })).toEqual([]);
   });
-  it('A1 and A2 still apply to the next planned → sandbox change (USSD in M6.2)', () => {
-    const m = manifest({
-      ...clone(PRODUCTION).capabilities,
-      ussd: { status: 'sandbox', availability: 'available', since: 'M6' },
-    });
-    const p = check({ manifest: m });
-    expect(p.find((x) => x.startsWith('C4 ussd'))).toMatch(/visitor\.ussd.*reviewed for planned/);
+  it('A1 and A2 guarded the planned → sandbox change (USSD in M6.2): the old article fails now', () => {
+    const v1 = withArticle('visitor.ussd', (x) => ({
+      ...x,
+      body: '# USSD\n\nUSSD access is not offered here. Without a smartphone, ask staff for a walk-in ticket.',
+    }));
+    const p = check({ articles: v1 });
     expect(p).toContain('A1 visitor.ussd: says the feature is unavailable, but ussd is sandbox');
     expect(p).toContain('A2 visitor.ussd: ussd is sandbox; the article must say so');
+    // and a contract still saying planned is caught against the sandbox manifest
+    const c = clone(CONTRACT);
+    c.capabilities['ussd'] = {
+      status: 'planned',
+      defaultAvailability: 'not_implemented',
+      articles: ['visitor.ussd'],
+    };
+    expect(check({ contract: c }).some((x) => x.startsWith('C4 ussd'))).toBe(true);
   });
 
   it('C5 a change of default availability fails until the articles are reviewed', () => {
@@ -250,7 +264,7 @@ describe('lifecycle status, deployment availability and unavailable reason are s
       const stale = check({ manifest: m });
       expect(stale.some((x) => x.startsWith(`C4 ${id}:`))).toBe(true);
       expect(stale.some((x) => x.startsWith(`C5 ${id}:`))).toBe(true);
-      // Contract updated, article not: USSD still says "not offered"; SMS still says "test mode"
+      // Contract updated, article not: both articles still say "test mode"
       const c = clone(CONTRACT);
       c.capabilities[id] = {
         status: 'live',
@@ -258,9 +272,7 @@ describe('lifecycle status, deployment availability and unavailable reason are s
         articles: CONTRACT.capabilities[id]?.articles ?? [article],
       };
       expect(check({ manifest: m, contract: c })).toContain(
-        id === 'ussd'
-          ? `A1 ${article}: says the feature is unavailable, but ${id} is live`
-          : `A4 ${article}: ${id} is live; the article still calls it sandbox or test mode`,
+        `A4 ${article}: ${id} is live; the article still calls it sandbox or test mode`,
       );
     },
   );
