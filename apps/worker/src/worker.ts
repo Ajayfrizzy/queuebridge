@@ -16,6 +16,7 @@ import { evaluateDeviceHealth, runHealthRetention } from './health.js';
 import { processTurnAlerts, purgeAlertData } from './turn-alerts.js';
 import { processSmsAlerts, purgeSmsData } from './sms-alerts.js';
 import { runRecoveryRetention } from './retention.js';
+import { purgeUssdSessions } from './ussd-retention.js';
 
 /**
  * QueueBridge worker.
@@ -31,7 +32,8 @@ import { runRecoveryRetention } from './retention.js';
  * - SMS turn-alert delivery and retention (M6.1): sms outbox rows through the SMS adapter
  *   (TEST-ONLY sandbox; no live provider approved), daily caps, at most once per key; never
  *   writes tickets, sessions or events; never logs a number or message text
- * - USSD: milestone M6.2
+ * - USSD session retention (M6.2): clears expired sessions' encrypted last screen and state,
+ *   then deletes them (counts only); the worker answers no USSD request itself
  *
  * Logs are structured JSON; they never contain event payloads, tokens or keys.
  */
@@ -234,6 +236,14 @@ async function runOnce(force = false): Promise<void> {
       log('info', 'SMS data retention', { ...p });
   } catch (err) {
     log('error', 'SMS retention failed (other jobs continue)', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+  try {
+    const u = await purgeUssdSessions(sql);
+    if (u.cleared + u.deleted > 0) log('info', 'USSD session retention', { ...u });
+  } catch (err) {
+    log('error', 'USSD retention failed (other jobs continue)', {
       error: err instanceof Error ? err.message : String(err),
     });
   }

@@ -12,6 +12,8 @@ export const E2E_PUSH_HOST = 'push.sandbox.test';
 export const E2E_CONTACT_KEY = 'e2e0'.repeat(16);
 /** M6.1: TEST-ONLY HMAC secret for the sandbox SMS webhook (never a real secret). */
 export const E2E_SMS_WEBHOOK_SECRET = 'e2e-only-sms-webhook-secret-0123456789abcdef';
+/** M6.2: TEST-ONLY HMAC secret for the sandbox USSD webhook (never a real secret). */
+export const E2E_USSD_WEBHOOK_SECRET = 'e2e-only-ussd-webhook-secret-0123456789abcdef';
 /** M6.1: TEST-ONLY daily cap for the sandbox SMS adapter (API and worker use the same value). */
 export const E2E_SMS_DAILY_CAP = '1000';
 

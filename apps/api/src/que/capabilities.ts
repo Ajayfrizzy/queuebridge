@@ -10,6 +10,7 @@ import type { Env } from '../env.js';
 import { VISITOR_JOIN_OPERATIONAL } from '../readiness.js';
 import { webPushAvailable } from '../routes/push.js';
 import { smsDeployment } from '../sms/service.js';
+import { ussdDeployment } from '../ussd/service.js';
 import { aiDeploymentAvailable } from './inference.js';
 
 /**
@@ -35,6 +36,12 @@ export interface CapabilityFlags {
    * and a positive daily cap). Per-facility opt-in narrows it further; it never widens it.
    */
   smsAvailable: boolean;
+  /**
+   * M6.2: this deployment can answer USSD sessions (the TEST-ONLY sandbox, with its webhook
+   * secret and the key-derived session crypto). There is no shortcode or mobile-network
+   * relationship, so it is never `live`; per-facility opt-in narrows it further.
+   */
+  ussdAvailable: boolean;
 }
 
 export function capabilityFlags(
@@ -49,6 +56,10 @@ export function capabilityFlags(
     | 'SMS_PROVIDER'
     | 'SMS_DAILY_CAP'
     | 'SMS_WEBHOOK_SECRET'
+    | 'USSD_PROVIDER'
+    | 'USSD_WEBHOOK_SECRET'
+    | 'USSD_SESSION_TTL_SECONDS'
+    | 'USSD_JOINS_PER_PHONE_PER_HOUR'
     | 'NODE_ENV'
   >,
 ): CapabilityFlags {
@@ -57,6 +68,7 @@ export function capabilityFlags(
     webPushAvailable: webPushAvailable(env),
     aiAvailable: aiDeploymentAvailable(env) && env.QUE_AI_ADAPTER === 'sandbox' ? 'sandbox' : 'off',
     smsAvailable: smsDeployment(env).available,
+    ussdAvailable: ussdDeployment(env).available,
   };
 }
 
@@ -71,15 +83,6 @@ function liveIf(
   return ok
     ? { ...AVAILABLE, since }
     : { status: 'live', availability: 'unavailable', unavailableReason: reason, since, note };
-}
-
-function planned(note: string): CapabilityEntry {
-  return {
-    status: 'planned',
-    availability: 'unavailable',
-    unavailableReason: 'not_implemented',
-    note,
-  };
 }
 
 /**
@@ -128,7 +131,22 @@ export function buildCapabilityManifest(flags: CapabilityFlags, now: Date): Capa
           since: 'M6',
           note: 'Text message alerts are not set up here.',
         },
-    ussd: planned('USSD access is planned (M6).'),
+    // M6.2: built as the TEST-ONLY sandbox (signed requests from tests and demos; no shortcode,
+    // no mobile network), so never `live`
+    ussd: flags.ussdAvailable
+      ? {
+          status: 'sandbox',
+          availability: 'available',
+          since: 'M6',
+          note: 'Test mode: no real USSD code can be dialled.',
+        }
+      : {
+          status: 'sandbox',
+          availability: 'unavailable',
+          unavailableReason: 'not_configured',
+          since: 'M6',
+          note: 'USSD access is not set up here.',
+        },
     // MQ.4: the layer is built; it is switched off unless a zero-cost adapter is enabled. No
     // provider is selected, so it is never `live` + `available` (D1).
     ask_que_ai:

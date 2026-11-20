@@ -341,8 +341,7 @@ export async function resolveStatusToken(
   token: string,
   publicCode: string,
 ): Promise<ResolvedStatusTicket | null> {
-  const cols = db.unsafe(`t.id, t.organization_id, t.queue_session_id, t.public_code, t.state,
-    t.current_counter_id, t.transferred_to_ticket_id, t.joined_at, t.updated_at`);
+  const cols = db.unsafe(TICKET_COLS);
   // M5.1: a revoked token (signed out elsewhere, replaced at the cap, staff revoke-all, join
   // replay) is as dead as an expired one
   const root = await db<
@@ -354,10 +353,9 @@ export async function resolveStatusToken(
       JOIN queue_sessions qs ON qs.id = t.queue_session_id
      WHERE trc.credential_hash = ${hashToken(token)} AND trc.expires_at > NOW()
        AND trc.revoked_at IS NULL`;
-  type Row = ResolvedTicket & { facility_id: string };
   const head = root[0];
   if (!head) return null;
-  const first: Row = head;
+  const first: ResolvedTicket & { facility_id: string } = head;
   // Housekeeping only (at most one write per token per minute); never blocks the read
   void db`
     UPDATE ticket_recovery_credentials SET last_used_at = NOW()
@@ -365,6 +363,22 @@ export async function resolveStatusToken(
        AND (last_used_at IS NULL OR last_used_at < NOW() - INTERVAL '1 minute')`.catch(
     () => undefined,
   );
+  return followChain(db, first, publicCode, head.token_id, head.token_created_at);
+}
+
+const TICKET_COLS = `t.id, t.organization_id, t.queue_session_id, t.public_code, t.state,
+    t.current_counter_id, t.transferred_to_ticket_id, t.joined_at, t.updated_at`;
+
+/** From the ROOT ticket to the current one (transfers, at most 10 hops); null if `publicCode` is not in the chain. */
+async function followChain(
+  db: Db,
+  first: ResolvedTicket & { facility_id: string },
+  publicCode: string,
+  tokenId: string,
+  tokenCreatedAt: Date,
+): Promise<ResolvedStatusTicket | null> {
+  type Row = ResolvedTicket & { facility_id: string };
+  const cols = db.unsafe(TICKET_COLS);
   let current: Row = first;
   const originalCode = current.public_code;
   const codes = [current.public_code];
@@ -384,9 +398,32 @@ export async function resolveStatusToken(
     codes,
     facilityId: current.facility_id,
     rootTicketId: first.id,
-    tokenId: head.token_id,
-    tokenCreatedAt: head.token_created_at,
+    tokenId,
+    tokenCreatedAt,
   };
+}
+
+/** Placeholder token id for a read authorized by a verified recovery key (no token exists). */
+const NO_TOKEN = '00000000-0000-0000-0000-000000000000';
+
+/**
+ * M6.2 USSD: the same resolution as `resolveStatusToken`, for a root ticket whose recovery key
+ * was just verified (`verifyRecoveryKey`). Tenant-scoped by the organization and facility the
+ * key was checked against. No token is involved, so "access granted elsewhere" is not reported.
+ */
+export async function resolveVerifiedTicket(
+  db: Db,
+  scope: { organizationId: string; facilityId: string },
+  rootTicketId: string,
+  publicCode: string,
+): Promise<ResolvedStatusTicket | null> {
+  const cols = db.unsafe(TICKET_COLS);
+  const [first] = await db<(ResolvedTicket & { facility_id: string })[]>`
+    SELECT ${cols}, qs.facility_id FROM tickets t JOIN queue_sessions qs ON qs.id = t.queue_session_id
+     WHERE t.id = ${rootTicketId} AND t.organization_id = ${scope.organizationId}
+       AND qs.facility_id = ${scope.facilityId}`;
+  if (!first) return null;
+  return followChain(db, first, publicCode, NO_TOKEN, new Date());
 }
 
 function statusMessage(

@@ -545,11 +545,11 @@ Security follow-up from M5.1 (separate change, recorded in `M5-evidence.md`, "M5
 
 ### M6.2 USSD adapter
 
-- [ ] `SandboxUssdAdapter` with stateful session menus
-- [ ] USSD webhook handler with replay defense
-- [ ] Menu flows: join, status, service discovery, recovery
-- [ ] Session expiration handling
-- [ ] Live USSD adapter (post provider selection and approval)
+- [x] `SandboxUssdAdapter` with stateful session menus — **M6.2 (2026-11-20):** `packages/channels/src/sandbox.ts` (replaces the M0 placeholder, which accepted every webhook and logged every input) over the shared, provider-neutral menu `runUssdMenu` (`packages/channels/src/ussd.ts`): CON/END, 182-character screens labelled `[SANDBOX]`, Back (9), Exit (0), paging (8), three invalid entries end the session; the menu reaches the queue only through `UssdApplication` (API services). Group 10 tests in `ussd.test.ts` and `sandbox.test.ts`
+- [x] USSD webhook handler with replay defense — `POST /api/v1/webhooks/ussd/:provider` (`apps/api/src/routes/ussd.ts`): configured provider only (404), structure before signature (400), HMAC over the raw body with a USSD-only context and a ±5 min window (401), nonce replay table (409), 4 KB body limit, per-address rate limit; sessions in PostgreSQL (`ussd_sessions`, migration `0012`): keyed hashes of the session id and the number, row lock per step, repeated callbacks return the stored (encrypted) screen, out-of-order and foreign-phone callbacks end without effect
+- [x] Menu flows: join, status, service discovery, recovery — discovery by a facility's 6-digit access code (`PUT /facilities/:id/ussd`, audited; screen in M6.3) over the public catalog; join through `joinQueue` (channel `ussd`, operation id fixed on the confirm screen, per-phone limit); status and recovery need the ticket code AND its recovery key (`verifyRecoveryKey`: the web throttles and uniform failure; no token issued); "lost code or key" gives the staff-assisted path only. PostgreSQL tests `apps/api/src/ussd.db.test.ts`, browser sandbox test `apps/web/e2e/ussd.spec.ts`
+- [x] Session expiration handling — `USSD_SESSION_TTL_SECONDS` (default 180, database time): an expired session ends (no join), a fresh dial restarts it; the worker clears stored screens 10 minutes after expiry and deletes rows after an hour (`apps/worker/src/ussd-retention.ts`)
+- [ ] Live USSD adapter (post provider selection and approval) — **open: no provider, shortcode or network relationship approved.** The boundary is in place (`UssdAdapter`, `createUssdAdapter`, webhook route); live-activation gates in `docs/testing/M6-evidence.md`
 
 ### M6.3 Channel configuration UI
 
@@ -557,7 +557,7 @@ Security follow-up from M5.1 (separate change, recorded in `M5-evidence.md`, "M5
 - [ ] Sandbox vs. live mode toggle with clear labeling
 - [ ] Delivery status monitoring
 - [ ] Optional "SMS only if the in-app alert was not seen within N seconds" cost-control setting (default: send immediately)
-- [ ] Knowledge-base articles and capability manifest entries for SMS turn alerts and USSD updated in the same PR (MQ.6) — **SMS part done in M6.1** (knowledge-base version 4; USSD remains for M6.2) — procedure in `packages/assist/knowledge/README.md` ("Applying it in M6"); CI fails with C4, C5, A1 and A2 for `visitor.alerts.sms` and `visitor.ussd` until the articles and `capabilities.json` are updated
+- [x] Knowledge-base articles and capability manifest entries for SMS turn alerts and USSD updated in the same PR (MQ.6) — **SMS part done in M6.1** (knowledge-base version 4); **USSD part done in M6.2** (knowledge-base version 5: `visitor.ussd` v2, capability `ussd` `sandbox` / `not_configured`) — procedure in `packages/assist/knowledge/README.md` ("Applying it in M6"); the move to `live` after a provider is approved is guarded by C4, C5 and A4
 
 ### M6 exit criteria
 

@@ -9,8 +9,16 @@ import {
   type UssdResponse,
   type UssdSessionParams,
 } from '@queuebridge/contracts';
-import type { ChannelAdapter, SmsAdapter } from './adapter.js';
+import type { SmsAdapter, UssdAdapter } from './adapter.js';
 import { renderSmsTemplate, verifySmsWebhook } from './sms.js';
+import {
+  parseSandboxUssdRequest,
+  renderUssdText,
+  runUssdMenu,
+  verifyUssdWebhook,
+  type UssdApplication,
+  type UssdRequest,
+} from './ussd.js';
 
 /** Prefix used on ALL sandbox log output — must never be stripped. */
 export const SANDBOX_PREFIX = '[SANDBOX]';
@@ -196,100 +204,63 @@ function sandboxInbound(v: unknown): { message_id: string; from: string; body: s
   return { message_id: id, from, body };
 }
 
+export interface SandboxUssdOptions {
+  /** HMAC secret for signed requests (`verifyUssdWebhook`); without it every request is refused */
+  webhookSecret?: string;
+  /** The queue operations the menu drives (the API's implementation); without it, a polite END */
+  application?: UssdApplication;
+  now?: () => number;
+}
+
 /**
- * SandboxUssdAdapter — test/development USSD adapter.
+ * SandboxUssdAdapter — TEST-ONLY USSD adapter (M6.2; REQ-F12). No shortcode, no mobile network:
+ * requests come from tests and demos as signed JSON (`{session_id, msisdn, text}`), and every
+ * screen starts with `[SANDBOX]`, so nothing can be mistaken for a real USSD session.
  *
- * Implements a simple stateful USSD menu for testing:
- *   1. Welcome → service list
- *   2. Select service → join confirmation
- *   3. END
+ * - `verifyWebhook`: the shared HMAC scheme with the USSD context (`verifyUssdWebhook`).
+ * - `parseUssdRequest`: exact-shape validation (`parseSandboxUssdRequest`).
+ * - `handleUssdSession`: the shared stateful menu (`runUssdMenu`) over the injected application.
+ * - `renderUssdResponse`: the CON/END text contract.
+ * It never logs (inputs can contain a recovery key) and never touches the network.
  */
-export class SandboxUssdAdapter implements ChannelAdapter {
-  private readonly sessionLog: { session_key_hash: string; input: string; response: string }[] = [];
+export class SandboxUssdAdapter implements UssdAdapter {
+  readonly provider = 'sandbox';
+  readonly sandbox = true;
 
-  getSessionLog(): ReadonlyArray<{ session_key_hash: string; input: string; response: string }> {
-    return this.sessionLog;
-  }
-
-  clearSessionLog(): void {
-    this.sessionLog.length = 0;
-  }
+  constructor(private readonly opts: SandboxUssdOptions = {}) {}
 
   async sendMessage(_params: SendMessageParams): Promise<SendResult> {
-    return {
-      status: DeliveryStatus.FAILED,
-      sandbox: true,
-    };
+    // USSD is pull-only: nothing is ever pushed to a phone
+    return { status: DeliveryStatus.FAILED, sandbox: true, retryable: false };
   }
 
-  verifyWebhook(_headers: Record<string, string>, _body: unknown): boolean {
-    return true;
+  verifyWebhook(headers: Record<string, string>, body: unknown): boolean {
+    return verifyUssdWebhook(this.opts.webhookSecret, headers, body, this.opts.now?.());
   }
 
   parseDeliveryReceipt(_payload: unknown): DeliveryReceipt {
-    throw new Error('SandboxUssdAdapter does not handle SMS delivery receipts');
+    throw new Error('SandboxUssdAdapter does not handle delivery receipts');
   }
 
   parseInboundMessage(_payload: unknown): InboundMessage | null {
     return null;
   }
 
+  parseUssdRequest(payload: unknown): UssdRequest | null {
+    return parseSandboxUssdRequest(payload);
+  }
+
+  renderUssdResponse(r: UssdResponse): { contentType: string; body: string } {
+    return { contentType: 'text/plain; charset=utf-8', body: renderUssdText(r) };
+  }
+
   async handleUssdSession(params: UssdSessionParams): Promise<UssdResponse> {
-    const state = (params.session_state ?? {}) as { step?: number };
-    const step = state.step ?? 0;
-
-    let response: UssdResponse;
-
-    if (step === 0) {
-      response = {
-        message: `${SANDBOX_PREFIX} Welcome to QueueBridge\n1. Join a queue\n2. Check status\n3. Recover ticket`,
-        action: 'CON',
-        next_state: { step: 1 },
-      };
-    } else if (step === 1) {
-      const input = params.input.trim();
-      if (input === '1') {
-        response = {
-          message: `${SANDBOX_PREFIX} Joining queue...\nYou will receive a ticket code.\nReply with any key to confirm.`,
-          action: 'CON',
-          next_state: { step: 2, intent: 'join' },
-        };
-      } else if (input === '2') {
-        response = {
-          message: `${SANDBOX_PREFIX} Enter your ticket code:`,
-          action: 'CON',
-          next_state: { step: 2, intent: 'status' },
-        };
-      } else if (input === '3') {
-        response = {
-          message: `${SANDBOX_PREFIX} Enter your ticket code:`,
-          action: 'CON',
-          next_state: { step: 2, intent: 'recover' },
-        };
-      } else {
-        response = {
-          message: `${SANDBOX_PREFIX} Invalid option. Please enter 1, 2, or 3.`,
-          action: 'CON',
-          next_state: { step: 1 },
-        };
-      }
-    } else {
-      response = {
-        message: `${SANDBOX_PREFIX} Thank you for using QueueBridge. Session ended.`,
+    if (!this.opts.application) {
+      return {
         action: 'END',
+        message: `${SANDBOX_PREFIX} USSD is not available here. Please ask staff.`,
       };
     }
-
-    this.sessionLog.push({
-      session_key_hash: params.session_key_hash,
-      input: params.input,
-      response: response.message,
-    });
-
-    console.log(
-      `${SANDBOX_PREFIX} USSD session=${params.session_key_hash} step=${step} input="${params.input}" -> action=${response.action}`,
-    );
-
-    return response;
+    return runUssdMenu(params, this.opts.application, { label: SANDBOX_PREFIX });
   }
 }

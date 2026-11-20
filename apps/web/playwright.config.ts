@@ -4,6 +4,7 @@ import {
   E2E_PUSH_HOST,
   E2E_SMS_DAILY_CAP,
   E2E_SMS_WEBHOOK_SECRET,
+  E2E_USSD_WEBHOOK_SECRET,
   E2E_VAPID_PUBLIC_KEY,
 } from './e2e/push-env.js';
 
@@ -95,6 +96,12 @@ export default defineConfig({
         SMS_PROVIDER: 'sandbox',
         SMS_DAILY_CAP: E2E_SMS_DAILY_CAP,
         SMS_WEBHOOK_SECRET: E2E_SMS_WEBHOOK_SECRET,
+        // M6.2: the TEST-ONLY USSD sandbox (signed requests from the specs; no shortcode, no
+        // mobile network; refused in production). A facility must opt in, so other specs are
+        // unaffected; the per-address webhook limit is raised (the limit is a DB test).
+        USSD_PROVIDER: 'sandbox',
+        USSD_WEBHOOK_SECRET: E2E_USSD_WEBHOOK_SECRET,
+        USSD_WEBHOOK_RATE_LIMIT_MAX: '100000',
         LOG_LEVEL: 'warn',
       },
     },

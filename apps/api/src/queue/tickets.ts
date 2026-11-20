@@ -52,7 +52,7 @@ export function formatTicketCode(prefix: string, issued: number): string {
 }
 
 export interface IssueTicketInput {
-  channel: 'web' | 'staff' | 'transfer';
+  channel: 'web' | 'staff' | 'transfer' | 'ussd';
   actorId: string | null;
   operationId: string | null;
   createdBy: string | null;

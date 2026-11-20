@@ -77,8 +77,8 @@
       "articles": ["visitor.alerts.sms", "staff.sms.alerts"]
     },
     "ussd": {
-      "status": "planned",
-      "defaultAvailability": "not_implemented",
+      "status": "sandbox",
+      "defaultAvailability": "not_configured",
       "articles": ["visitor.ussd"]
     },
     "ask_que_ai": {

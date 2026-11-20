@@ -309,7 +309,10 @@ export type InboundMessage = z.infer<typeof InboundMessageSchema>;
 export const UssdSessionParamsSchema = z.object({
   /** Hashed provider session key — never store raw */
   session_key_hash: z.string().min(1),
-  /** Subscriber MSISDN */
+  /**
+   * Subscriber identity as seen past the webhook boundary: since M6.2 a keyed hash of the
+   * MSISDN (the raw number never reaches the menu, its state or the logs)
+   */
   msisdn: z.string().min(1),
   /** User's menu input (empty for first request) */
   input: z.string(),

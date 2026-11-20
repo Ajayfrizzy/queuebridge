@@ -20,6 +20,7 @@ export * from './audit-key.js';
 export * from './recovery.js';
 export * from './health.js';
 export * from './sms.js';
+export * from './ussd.js';
 export * from './push.js';
 export * from './permissions.js';
 export * from './que.js';

@@ -23,7 +23,11 @@ const EnvSchema = z
      */
     SMS_DAILY_CAP: z.coerce.number().int().min(0).max(1_000_000).default(0),
     SMS_API_KEY: z.string().optional(),
-    USSD_PROVIDER: z.string().default('sandbox'),
+    /**
+     * Not read by the worker: USSD is answered by the API (M6.2). Kept for configuration parity;
+     * `off` like the API's default (the sandbox is never a default anywhere).
+     */
+    USSD_PROVIDER: z.string().trim().default('off'),
     USSD_WEBHOOK_SECRET: z.string().optional(),
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])

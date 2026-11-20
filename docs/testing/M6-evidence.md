@@ -1,7 +1,7 @@
 # M6 Test Evidence — SMS Turn Alerts and USSD
 
 **Branch:** `feature/m6-1-sms-adapter-outbox` (from `staging` @ `94c4b7e`, which contains M0–M5 and MQ.1–MQ.6; CI green at the baseline).
-**Status (2026-11-20):** M6.1 implemented, pre-PR security and deployment review applied, product-owner decisions recorded ("Product-owner decisions" below); submitted as a pull request against `staging`. M6.2 (USSD) and M6.3 (channel UI, delivery monitoring) not started.
+**Status (2026-11-20):** M6.1 merged into `staging` (PR #18, `80eb839`). M6.2 (USSD) implemented locally on `feature/m6-2-ussd-adapter`, uncommitted, awaiting review (section at the end). M6.3 not started. M6.2 (USSD) and M6.3 (channel UI, delivery monitoring) not started.
 **Environment:** macOS, Node 24, pnpm 9, Playwright Chromium, PostgreSQL in the disposable Docker container `queuebridge-pg` (port 55433, database `queuebridge_test`). Playwright runs the built API, web app and worker, `workers: 2` (as in CI).
 **Spend:** none. No provider account was created; no real message was sent.
 
@@ -502,3 +502,190 @@ Open for later decisions: activating the four inactive templates (needs purpose-
 | `pnpm db:check`                                                                      | applied 11, pending none                                                                                                                                                                                                                                 |
 
 The first-pass results (before the review) were: unit api 188, worker 12, contracts 204; DB api 708, worker 88; Playwright 293 passed. The audit gate then still carried the stale exception.
+
+---
+
+## M6.2 — USSD adapter (2026-11-20)
+
+Scope: REQ-F12.1–F12.5, ADR-009 (provider-neutral adapters), ADR-015 (recovery credentials). Baseline: `staging` at `80eb839` (M6.1 merged). No architectural change: no new package, no parallel queue engine. USSD reuses the public catalog, `joinQueue`, the recovery-key check and the status view.
+
+### Architecture mapping
+
+| Concern                                    | Where                                                                              | How                                                                                                              |
+| ------------------------------------------ | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| Request format, signature, response format | `SandboxUssdAdapter` (`packages/channels/src/sandbox.ts`), `UssdAdapter` interface | Exact-shape JSON `{session_id, msisdn, text}`; HMAC over the raw body with a USSD-only context; `CON`/`END` text |
+| Menu (shared by every adapter)             | `runUssdMenu` (`packages/channels/src/ussd.ts`)                                    | Stateful machine over JSON state; reaches the queue only through `UssdApplication`; no I/O, no logging           |
+| Queue operations                           | `apps/api/src/ussd/application.ts`                                                 | Existing services only (below)                                                                                   |
+| Session store, step order, replays, expiry | `apps/api/src/ussd/service.ts`                                                     | `ussd_sessions` in PostgreSQL; one transaction per step                                                          |
+| Webhook and facility setting               | `apps/api/src/routes/ussd.ts`                                                      | `POST /api/v1/webhooks/ussd/:provider`; `GET                                                                     | PUT /facilities/:id/ussd` |
+| Retention                                  | `apps/worker/src/ussd-retention.ts`                                                | Idempotent purge in the worker loop                                                                              |
+
+Reused, not duplicated:
+
+- **Discovery:** `findPublicFacility` and `publicFacilityView` (only queues with `accepting_visitors`).
+- **Joining:** `joinQueue`, with a new optional `channel: 'ussd'`. The web route passes nothing, so it stays `web`.
+- **Status and recovery:**
+  - `withVerifiedRecoveryKey`, the M5.1 key check moved into one function, now used by `recoverWithKey` (web) and `verifyRecoveryKey` (USSD);
+  - `resolveVerifiedTicket`, the token chain-following shared with `resolveStatusToken`;
+  - `ticketStatusView`.
+- The existing recovery tests (61) pass unchanged after the refactor.
+
+### Migration `0012_ussd_sessions.sql`
+
+- **`ussd_sessions`:**
+  - `facility_id` may be NULL until the facility code is entered;
+  - new columns:
+    - `organization_id`;
+    - `msisdn_hash` (keyed hash);
+    - `step`;
+    - `last_text_hash`;
+    - `last_response_ct` (AES-256-GCM);
+    - `ended_at`;
+    - `joined_at`;
+  - CHECK that facility and organization are set together, composite FK to `facilities(id, organization_id)`, `step >= 0`, and an index for the per-phone join count.
+- **New table `facility_ussd_settings`:** `enabled`, a server-generated `access_code` (`^[1-9][0-9]{5}$`, unique), `updated_by`, composite FK.
+- **`tickets_created_channel_chk`** widened to accept `ussd`, the way 0009 widened channel checks.
+- **Nothing destructive:** no drop, rename, delete or type change. Nothing wrote `ussd_sessions` before M6.2, so no data is affected.
+- **Validation:**
+  - fresh database 12/12;
+  - a second run applies nothing;
+  - `0012` re-executes cleanly;
+  - local development database migrated to 12/12 (`db:check`);
+  - registered in `infra/scripts/db-identity.js`.
+
+### The four flows
+
+- **Service discovery:** the visitor enters the facility's 6-digit access code.
+  - The code is a public identifier, generated by the server when an administrator turns USSD on (`PUT /facilities/:id/ussd`, audited `ussd.enabled` / `ussd.disabled`). It is kept when USSD is turned off, so posters stay valid.
+  - The menu lists only that facility's services accepting visitors, 4 per page, with waiting counts.
+  - Unknown, disabled and suspended facilities read "No facility has that code"; after three tries the session ends.
+  - With no open service: "No service … is taking visitors right now."
+- **Join:**
+  - The confirm screen re-reads committed figures and fixes an operation id (UUID v7) in the session state.
+  - `joinQueue` then creates an ordinary waiting ticket: normal class, no provisional source, under the same session lock and acceptance checks as a web join.
+  - The join proof is an HMAC bound to the USSD session; it is never stored.
+  - The end screen shows the real ticket code and its 32-character recovery key, grouped in fours.
+  - Refusals are explained: paused, closed, not taking visitors, per-phone limit (`USSD_JOINS_PER_PHONE_PER_HOUR`, default 5) or unavailable. None creates a ticket.
+- **Status:** ticket code, then recovery key. The result is the committed state:
+
+  - waiting, with "you are next" or "N ahead of you" and an estimate range, never a promise;
+  - called, with the counter;
+  - serving, on hold or missed.
+
+  No status token is issued, so the visitor's browser tokens and the 3-token cap are untouched.
+
+- **Recovery:** with the code and key, the visitor sees the current ticket, including "Moved from …" after a transfer. "I lost my code or key" gives the staff-assisted path and looks nothing up.
+
+### Authentication and recovery protections
+
+- A public ticket code alone, or a phone number alone, never opens a ticket. Status and recovery require the code and its recovery key, the approved credential (ADR-015).
+- The check is the web one: throttles L1–L4 keyed on public identifiers and the source, where the source is `ussd:<phone hash>` (never the provider's address, never the guess). The uniform failure applies to unknown, wrong, other-facility and ended tickets alike, and there is no lockout.
+- Tested on PostgreSQL:
+  - the 6th wrong key from one phone is throttled;
+  - the right key from a clean phone still succeeds.
+- The key is used for one check and never enters the session state.
+- The join end screen, which shows the key once, is stored encrypted for provider retries. It is cleared by the worker 10 minutes after the session expires.
+- Staff grants (QR redemption) are not offered over USSD: a feature phone cannot redeem one.
+- No admin event is recorded for a USSD check, because no credential is issued. Failures and abuse thresholds are still recorded by the shared throttle.
+
+### Session and webhook security
+
+- **Order of checks:**
+  1. configured provider (404);
+  2. JSON body, exact request shape and the three headers (400), before the signature;
+  3. HMAC-SHA-256 over the raw body with the context `ussd.v1.` and a ±5 min window (401);
+  4. nonce once per provider (409; stored in `sms_webhook_nonces` under `ussd:sandbox`, purged after 24 h with the SMS nonces);
+  5. the step.
+- **Signatures:** an SMS signature never verifies on the USSD webhook, even with the same secret and renamed headers.
+- **Limits:** 4 KB body limit (413); per-address rate limit `USSD_WEBHOOK_RATE_LIMIT_MAX` (default 600, tested `[200,200,429]`). Webhooks are CSRF-exempt, use no session, and ignore cookies.
+- **Concurrency:** one transaction per step, holding an advisory lock for the phone and the session row lock.
+  - A repeated callback (same step, same text) returns the stored screen. Tested: 6 concurrent repeats of a confirm give one ticket and identical screens.
+  - Different concurrent inputs for one step: one applies; the others end the session without effect.
+  - A gap in steps, or another phone using the session id, ends without effect.
+- **Expiry:** `USSD_SESSION_TTL_SECONDS` (default 180, database time). An expired session cannot join, and a fresh dial with the same id restarts safely.
+- **Restart:** a session resumes on a new API process (tested with two app instances).
+- **Database unavailable:** the reply is `503` with an END screen, and nothing is created.
+- **Bounded concurrency:** at most 2 USSD steps run per process, each holding one connection plus at most one more, so they can never exhaust the pool. Waits beyond 10 s get a "busy" END screen.
+- **Hashes only:** the session id and the number are stored as keyed hashes (HKDF purposes `ussd-session`, `ussd-msisdn` from `CONTACT_ENCRYPTION_KEY`). No log line contains a number, session id, input or screen.
+- **Tenant scope:** the first facility chosen is fixed for the session. Every lookup is filtered by that facility and its organization; another organization's ticket with the same code and its own key never opens.
+
+### Queue neutrality
+
+Browsing, invalid input, failed joins, status and recovery append no `queue_event` and change no ticket. A join appends exactly one `ticket.create`, and the event chain verifies.
+
+### Capability manifest and Ask Que (MQ.6)
+
+- **Manifest:** `ussd` is `sandbox` / `available` when the deployment can answer, and otherwise `sandbox` / `unavailable` / `not_configured`. It is never `live`.
+- **Article:** `visitor.ussd` v2 covers test mode, the facility code, the menu numbers and the code-and-key rule. It never names a shortcode to dial.
+- **Contract and version:** `capabilities.json` is updated; knowledge-base version 4 → 5 (`kb-base-check` passes); lock regenerated; README review record.
+- **Consistency tests:** the production fixture now has USSD `sandbox`. The former forward-looking test now asserts that the v1 "not offered" article fails A1 and A2.
+- **Ask Que wording:** the notice uses the shared sandbox text "sandbox (test only, no real messages)".
+
+### Corrections made during M6.2
+
+- **The M0 `SandboxUssdAdapter` placeholder** accepted every webhook (`verifyWebhook` returned true), logged every input with `console.log` (inputs can hold a recovery key) and had no real flows. It was replaced, and its tests replaced with Group 10 contract tests.
+- **Ticket position wording:** the menu first read `position` as a place in line. It is the number of tickets ahead (0 = next), as on the web page. Found by the PostgreSQL test, and fixed.
+- **Two static guards met false positives; both guards are unchanged.**
+  - The push guard bans `.open(` in the API, to keep push-subscription ciphertext from being decrypted there. The USSD screen cipher, a different purpose key, names its methods `sealScreen`/`openScreen`.
+  - The L1 label rule treats bold article text as web controls, so the USSD menu wording in `visitor.ussd` is plain text.
+- **Defaults:** the worker's unused `USSD_PROVIDER` default changed from `sandbox` to `off`, like SMS. `.env.example` ships `USSD_PROVIDER=off`.
+
+### Mutation checks (each made a test fail, then reverted)
+
+**Killed:**
+
+- **Webhook:**
+  - signature check skipped;
+  - nonce check skipped;
+  - signature without the USSD context.
+- **Session handling:**
+  - stored-screen replay removed;
+  - foreign phone accepted;
+  - expiry ignored;
+  - out-of-step processed.
+- **Recovery and status:**
+  - throttle source shared by all phones;
+  - any key opens.
+- **Joining and discovery:**
+  - per-phone join limit removed;
+  - channel `web` instead of `ussd`;
+  - non-accepting services listed.
+- **Menu engine:**
+  - a new operation id on every confirm;
+  - the key kept in state.
+
+**Survived, then explained:** "disabled facility still found" survived when only one of its two enabled-flag checks was removed (redundant layers). Removing both is killed.
+
+### Limitations and decisions for review
+
+1. **Key exposure.** The recovery key is shown on a USSD screen, so it transits the USSD provider and network. It never enters our logs, and our stored copy is encrypted and short-lived. This needs a product decision before any live provider.
+2. **Key entry.** Typing a 32-character key on a feature-phone keypad is laborious. A shorter credential would be a separate security decision; it was not invented here.
+3. **Same credential each time.** Status by USSD needs the code and key at every check, because a feature phone holds no token.
+4. **Access code.** The facility access code is a new public identifier. Its screen is in M6.3 (API-only today).
+5. **Trusted number.** The per-phone join limit relies on the number the provider reports.
+6. **Ask Que wording.** The generic Ask Que sandbox notice says "no real messages", which is accurate but message-oriented.
+7. **No SMS opt-in over USSD.**
+8. **Real devices.** No real handset or network was exercised. The sandbox proves server behaviour only.
+
+### Live-activation gates (all required before real traffic)
+
+1. An approved aggregator and shortcode, with no card and no personal funds, and its per-session cost.
+2. That provider's request format, response format, character set and session timeouts, implemented in its own `UssdAdapter`.
+3. Its callback authentication, which must be at least as strong as the sandbox HMAC.
+4. Its retry and nonce behaviour.
+5. How far its reported MSISDN can be trusted.
+6. The key-exposure decision (item 1 above).
+7. A real-device acceptance pass.
+
+### Test evidence (local, 2026-11-20)
+
+| Suite                                                            | Result                                                                                                                                                                                      |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build` | pass                                                                                                                                                                                        |
+| `pnpm test`                                                      | contracts 205, ui 6, channels 66, domain 109, assist 262, continuity 64, api 196, worker 13, web 177: all pass                                                                              |
+| `pnpm test:db`                                                   | api 744, worker 102: all pass                                                                                                                                                               |
+| New USSD tests                                                   | channels `ussd.test.ts` + `sandbox.test.ts` (Group 10); API `ussd.db.test.ts` 27 (3 consecutive runs), `ussd-env.test.ts` 4; worker `ussd-retention.db.test.ts` 2; browser `ussd.spec.ts` 2 |
+| Playwright (full)                                                | 295 passed, 7 skipped (the existing environment-dependent skips), 0 failed                                                                                                                  |
+| Knowledge base                                                   | `kb-base-check` against `staging`: kbVersion 4 → 5 accepted, 45 articles                                                                                                                    |
+| `pnpm audit --prod --audit-level high`, `audit-gate.js`          | no known vulnerabilities; PASS with no exception                                                                                                                                            |
+| Migrations                                                       | fresh database 12/12, idempotent; `db:check` 12/12                                                                                                                                          |

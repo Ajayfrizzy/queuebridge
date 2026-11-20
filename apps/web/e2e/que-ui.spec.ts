@@ -642,12 +642,13 @@ test.describe('MQ.5 knowledge-base inventory', () => {
       await expect.poll(() => titles(p), { message: question }).toContain(title);
       for (const t of await titles(p)) expect(RESTRICTED_TITLES).not.toContain(t);
     }
-    // Planned (USSD, M6.2): never offered, the planned notice instead
+    // M6.2: this test deployment runs the USSD sandbox, so the help is offered, always labelled
+    // as a test (no real code to dial), the offline copy included
     await search(p).fill('ussd short code');
     await expect(panel(p).getByTestId('que-notices')).toContainText(
-      'USSD access: not available yet.',
+      'USSD access: sandbox (test only, no real messages).',
     );
-    expect(await titles(p)).not.toContain('USSD access');
+    expect(await titles(p)).toContain('USSD access');
     // M6.1: this test deployment runs the SMS sandbox, so the help is offered, always labelled
     // as a test and never as usable (the offline copy keeps the label)
     await search(p).fill('text message sms alert');

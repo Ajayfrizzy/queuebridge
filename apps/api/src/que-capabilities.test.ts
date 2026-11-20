@@ -130,12 +130,13 @@ describe('GET /api/v1/que/capabilities (public, server-authoritative)', () => {
     }
   });
 
-  it('USSD is planned; SMS is the TEST-ONLY sandbox, not set up by default; AI is switched off; none is usable', async () => {
+  it('USSD and SMS are TEST-ONLY sandboxes, not set up by default; AI is switched off; none is usable', async () => {
     for (const app of [noPush, withPush]) {
       const m = (await manifestOf(app)).body;
-      expect(m.capabilities.ussd.status).toBe('planned');
+      // M6.2: built as the sandbox only (never `live`), and off unless USSD_PROVIDER is set up
+      expect(m.capabilities.ussd.status).toBe('sandbox');
       expect(m.capabilities.ussd.availability).toBe('unavailable');
-      expect(m.capabilities.ussd.unavailableReason).toBe('not_implemented');
+      expect(m.capabilities.ussd.unavailableReason).toBe('not_configured');
       expect(isCapabilityUsable(m, 'ussd')).toBe(false);
       // M6.1: built as the sandbox only (never `live`), and off unless SMS_PROVIDER is set up
       expect(m.capabilities.sms_turn_alerts.status).toBe('sandbox');

@@ -12,4 +12,5 @@ export * from './adapter.js';
 export * from './sandbox.js';
 export * from './push.js';
 export * from './sms.js';
+export * from './ussd.js';
 export * from './registry.js';

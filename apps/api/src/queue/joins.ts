@@ -33,6 +33,11 @@ export interface JoinInput {
   staffUserId: string | null;
   /** M5.1 recovery-key cryptography; null when recovery is not configured. */
   recovery: RecoveryCrypto | null;
+  /**
+   * M6.2: the visitor channel (`web` when absent, as before). USSD joins go through this same
+   * function, under the same session lock, acceptance checks and idempotency.
+   */
+  channel?: 'web' | 'ussd';
 }
 
 /** Facility name and the public slugs used in the recovery path. */
@@ -115,7 +120,7 @@ export async function joinQueue(db: Db, input: JoinInput): Promise<JoinQueueResp
       }
 
       const issued = await issueTicket(tx, session, {
-        channel: input.staffUserId ? 'staff' : 'web',
+        channel: input.staffUserId ? 'staff' : (input.channel ?? 'web'),
         actorId: input.staffUserId,
         operationId: input.operationId,
         createdBy: input.staffUserId,
