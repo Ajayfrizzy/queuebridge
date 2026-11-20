@@ -58,15 +58,23 @@ const article = (id: string): KbArticle => {
   return a;
 };
 
-/** The default deployment: SMS and USSD planned (M6), AI switched off, push configured. */
+/**
+ * The default deployment: SMS built as the TEST-ONLY sandbox but not set up (M6.1), USSD planned
+ * (M6.2), AI switched off, push configured.
+ */
+const SMS_NOT_SET_UP = {
+  status: 'sandbox',
+  availability: 'unavailable',
+  unavailableReason: 'not_configured',
+} as const;
 const DEPLOYED = manifest({
-  sms_turn_alerts: PLANNED,
+  sms_turn_alerts: SMS_NOT_SET_UP,
   ussd: PLANNED,
   ask_que_ai: { status: 'live', availability: 'unavailable', unavailableReason: 'switched_off' },
 });
 /** The same deployment without the VAPID key pair (push `not_configured`). */
 const NO_VAPID = manifest({
-  sms_turn_alerts: PLANNED,
+  sms_turn_alerts: SMS_NOT_SET_UP,
   ussd: PLANNED,
   ask_que_ai: { status: 'live', availability: 'unavailable', unavailableReason: 'switched_off' },
   turn_alert_web_push: NO_PUSH,
@@ -421,7 +429,14 @@ export const COVERAGE: readonly Workflow[] = [
 ];
 
 /** Gated articles that must never be shown in the default deployment (capability planned). */
-const NOT_LIVE = ['visitor.alerts.sms', 'visitor.ussd'] as const;
+/** Articles for capabilities that are not usable in the default deployment (gated, never shown). */
+const NOT_LIVE = ['visitor.alerts.sms', 'staff.sms.alerts', 'visitor.ussd'] as const;
+/** A development deployment with the TEST-ONLY SMS sandbox set up. */
+const SMS_SANDBOX = manifest({
+  sms_turn_alerts: { status: 'sandbox', availability: 'available' },
+  ussd: PLANNED,
+  ask_que_ai: { status: 'live', availability: 'unavailable', unavailableReason: 'switched_off' },
+});
 
 describe('the committed knowledge base compiles', () => {
   it('every article compiles in check mode against the lock, with no tenant data', () => {
@@ -595,15 +610,37 @@ describe('roles and the public/restricted boundary', () => {
 });
 
 describe('capability gating against the deployment manifest', () => {
-  it('SMS and USSD are never offered before M6: a question gets the planned notice only', () => {
+  it('USSD is never offered before M6.2, and SMS is never offered where it is not set up', () => {
     for (const [q, id, notice] of [
-      ['text message sms alert', 'visitor.alerts.sms', 'SMS turn alerts: not available yet.'],
+      ['text message sms alert', 'visitor.alerts.sms', 'SMS turn alerts: not set up here.'],
       ['ussd short code', 'visitor.ussd', 'USSD access: not available yet.'],
     ] as const) {
       const out = answer(q, ctxFor('visitor', 'visitor.ticket'), BUNDLE);
       expect(out.citations).not.toContain(id);
       expect(out.text).toContain(notice);
     }
+    const staff = answer('stop text messages', ctxFor('staff_counter', 'staff.console'), BUNDLE);
+    expect(staff.citations).not.toContain('staff.sms.alerts');
+  });
+
+  it('where the SMS sandbox is set up, the SMS help is found and always labelled as a test', () => {
+    for (const [who, route, q, id] of [
+      ['visitor', 'visitor.join', 'text me when I am called', 'visitor.alerts.sms'],
+      ['visitor', 'visitor.ticket', 'stop text messages', 'visitor.alerts.sms'],
+      ['staff_reception', 'staff.console', 'stop text messages for a visitor', 'staff.sms.alerts'],
+      ['staff_counter', 'staff.console', 'text message daily limit reached', 'staff.sms.alerts'],
+    ] as const) {
+      const out = answer(q, ctxFor(who, route, SMS_SANDBOX), BUNDLE);
+      expect(out.citations.slice(0, 3), `"${q}" for ${who}`).toContain(id);
+      expect(out.text).toContain('SMS turn alerts: sandbox (test only, no real messages).');
+    }
+    // auditors never get the staff procedure
+    const auditor = answer(
+      'stop text messages',
+      ctxFor('auditor', 'staff.console', SMS_SANDBOX),
+      BUNDLE,
+    );
+    expect(auditor.citations).not.toContain('staff.sms.alerts');
   });
 
   it('without VAPID, push help is withheld and the reliable fallback is named', () => {

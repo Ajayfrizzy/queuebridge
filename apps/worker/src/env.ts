@@ -10,7 +10,18 @@ const EnvSchema = z
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     DATABASE_URL: z.string().url('DATABASE_URL must be a valid postgres:// URL'),
     WORKER_POLL_INTERVAL_MS: z.coerce.number().int().min(1000).default(5000),
-    SMS_PROVIDER: z.string().default('sandbox'),
+    /**
+     * M6.1 SMS adapter: `off` (default: explicit safe disabled mode, the same default as the API)
+     * or `sandbox` (TEST-ONLY, no network, refused in production). Any other value, and the
+     * sandbox in production, disables SMS sending at startup with one error line; the worker and
+     * every other job keep running (the same fail-safe rule as push). No live provider exists.
+     */
+    SMS_PROVIDER: z.string().trim().default('off'),
+    /**
+     * M6.1 hard cap on SMS handed to the provider per UTC day, deployment-wide, in the adapter's
+     * mode (sandbox counted apart from live). 0 (the default) sends nothing. Use the API's value.
+     */
+    SMS_DAILY_CAP: z.coerce.number().int().min(0).max(1_000_000).default(0),
     SMS_API_KEY: z.string().optional(),
     USSD_PROVIDER: z.string().default('sandbox'),
     USSD_WEBHOOK_SECRET: z.string().optional(),

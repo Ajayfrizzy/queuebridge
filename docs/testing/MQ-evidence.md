@@ -423,6 +423,8 @@ then):
 
 ### Approved temporary exception (active; NOT a resolution)
 
+> **Update 2026-11-20:** GitHub withdrew GHSA-fc5q-39xc-vjpf on 2026-11-18 as not a security issue, and the exception was removed from `infra/security/audit-policy.json` (no exception is active). The installed picomatch versions did not change. Proof and the gate tests: `docs/testing/M6-evidence.md`, "Audit exception GHSA-fc5q-39xc-vjpf". The text below is the record as approved.
+
 **Approval.** Product owner, 2026-11-17: a narrowly scoped, temporary risk exception for
 GHSA-fc5q-39xc-vjpf (CVE-2026-112366), limited to the demonstrated development-tool exposure. It
 does not authorize disabling the security audit or ignoring any other vulnerability.

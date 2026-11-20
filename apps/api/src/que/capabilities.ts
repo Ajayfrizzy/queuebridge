@@ -9,6 +9,7 @@ import {
 import type { Env } from '../env.js';
 import { VISITOR_JOIN_OPERATIONAL } from '../readiness.js';
 import { webPushAvailable } from '../routes/push.js';
+import { smsDeployment } from '../sms/service.js';
 import { aiDeploymentAvailable } from './inference.js';
 
 /**
@@ -29,6 +30,11 @@ export interface CapabilityFlags {
    * the TEST-ONLY sandbox adapter, which the manifest reports as `sandbox`, never `live`.
    */
   aiAvailable: 'off' | 'sandbox';
+  /**
+   * M6.1: SMS can be sent by this deployment (the TEST-ONLY sandbox, with the contact cipher
+   * and a positive daily cap). Per-facility opt-in narrows it further; it never widens it.
+   */
+  smsAvailable: boolean;
 }
 
 export function capabilityFlags(
@@ -40,12 +46,17 @@ export function capabilityFlags(
     | 'QUE_AI_ENABLED'
     | 'QUE_AI_COST_MODE'
     | 'QUE_AI_DAILY_CAP'
+    | 'SMS_PROVIDER'
+    | 'SMS_DAILY_CAP'
+    | 'SMS_WEBHOOK_SECRET'
+    | 'NODE_ENV'
   >,
 ): CapabilityFlags {
   return {
     visitorJoinOperational: VISITOR_JOIN_OPERATIONAL,
     webPushAvailable: webPushAvailable(env),
     aiAvailable: aiDeploymentAvailable(env) && env.QUE_AI_ADAPTER === 'sandbox' ? 'sandbox' : 'off',
+    smsAvailable: smsDeployment(env).available,
   };
 }
 
@@ -102,7 +113,21 @@ export function buildCapabilityManifest(flags: CapabilityFlags, now: Date): Capa
       'Push alerts are not set up here.',
     ),
     accessibility_prefs: { ...AVAILABLE, since: 'M5' },
-    sms_turn_alerts: planned('SMS turn alerts are planned (M6).'),
+    // M6.1: built as the TEST-ONLY sandbox (no live provider approved), so never `live`
+    sms_turn_alerts: flags.smsAvailable
+      ? {
+          status: 'sandbox',
+          availability: 'available',
+          since: 'M6',
+          note: 'Test mode: no real text messages are sent.',
+        }
+      : {
+          status: 'sandbox',
+          availability: 'unavailable',
+          unavailableReason: 'not_configured',
+          since: 'M6',
+          note: 'Text message alerts are not set up here.',
+        },
     ussd: planned('USSD access is planned (M6).'),
     // MQ.4: the layer is built; it is switched off unless a zero-cost adapter is enabled. No
     // provider is selected, so it is never `live` + `available` (D1).

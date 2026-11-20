@@ -724,6 +724,7 @@ export function StaffConsole(): ReactElement {
                       ticketId={atCounter.id}
                       revision={q.revision}
                       reachable={reachable}
+                      canStopSms={canWalkIn}
                     />
                   ) : null}
                   {atCounter.state === 'called' && !counterInService ? (

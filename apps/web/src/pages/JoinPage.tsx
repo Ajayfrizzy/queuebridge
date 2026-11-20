@@ -3,6 +3,12 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { PublicQueue } from '@queuebridge/contracts';
 import { useAnnounce } from '../components/Announcer.js';
 import { Loading } from '../components/Form.js';
+import {
+  EMPTY_SMS_OPT_IN,
+  SmsOptIn,
+  smsOptInFor,
+  type SmsOptInState,
+} from '../components/SmsOptIn.js';
 import { api, apiUrl, ApiRequestError } from '../lib/api.js';
 import { formatEstimate } from '../lib/format.js';
 import { stashRecoveryKey } from '../lib/recoveryKey.js';
@@ -34,6 +40,9 @@ export function JoinPage(): ReactElement {
     retryable: boolean;
   } | null>(null);
   const [forSomeoneElse, setForSomeoneElse] = useState(false);
+  // M6.1: the optional number stays in memory only (never in the pending-join record)
+  const [smsOptIn, setSmsOptIn] = useState<SmsOptInState>(EMPTY_SMS_OPT_IN);
+  const [smsError, setSmsError] = useState<string | null>(null);
   const joinPath = `/join/${orgSlug}/${facilitySlug}`;
 
   const reload = facility.reload;
@@ -68,6 +77,12 @@ export function JoinPage(): ReactElement {
       });
       return;
     }
+    const opt = f.sms_alerts ? smsOptInFor(smsOptIn) : { sms: null, error: null };
+    setSmsError(opt.error);
+    if (opt.error) {
+      document.getElementById('sms-phone')?.focus();
+      return;
+    }
     setBusyQueue(q.queue_id);
     setError(null);
     // Idempotency key and proof are saved BEFORE sending: a retry can never create a second ticket
@@ -76,6 +91,7 @@ export function JoinPage(): ReactElement {
       const res = await api.join(q.queue_id, {
         operation_id: p.operationId,
         join_proof: p.joinProof,
+        ...(opt.sms ? { sms: opt.sms } : {}),
       });
       const saved = saveTicket({
         code: res.ticket.public_code,
@@ -94,7 +110,12 @@ export function JoinPage(): ReactElement {
           path: res.ticket.recovery_path,
         });
       }
-      announce(`Your ticket is ${res.ticket.public_code}.`);
+      setSmsOptIn(EMPTY_SMS_OPT_IN);
+      announce(
+        opt.sms && res.ticket.sms_alert !== 'on'
+          ? `Your ticket is ${res.ticket.public_code}. Text messages are not available here right now.`
+          : `Your ticket is ${res.ticket.public_code}.`,
+      );
       void navigate(
         saved ? ticketPath(saved) : `/ticket/${encodeURIComponent(res.ticket.public_code)}`,
         { state: saved ? undefined : { token: res.ticket.status_token, unsaved: true } },
@@ -105,6 +126,12 @@ export function JoinPage(): ReactElement {
       // Network failure: the ticket may exist — retrying reuses the saved key safely.
       // Conflict (closed/paused) is final for this attempt: drop the pending key.
       if (err.status !== 0 && err.status < 500) finishJoin(q.queue_id);
+      // The server refused the number (nothing was created): show it on the number field
+      if (err.problem?.type?.endsWith('sms-phone-invalid')) {
+        setSmsError(err.message);
+        document.getElementById('sms-phone')?.focus();
+        return;
+      }
       setError({
         queueId: q.queue_id,
         message: err.message,
@@ -156,6 +183,9 @@ export function JoinPage(): ReactElement {
         </Link>
       </p>
 
+      {f.sms_alerts && f.queues.length > 0 ? (
+        <SmsOptIn mode={f.sms_alerts} value={smsOptIn} onChange={setSmsOptIn} error={smsError} />
+      ) : null}
       {f.queues.length === 0 ? (
         <p role="status" data-testid="no-open-queues">
           No queue is open right now. Please ask a member of staff.

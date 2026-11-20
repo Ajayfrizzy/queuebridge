@@ -279,8 +279,14 @@ export type SendMessageParams = z.infer<typeof SendMessageParamsSchema>;
 
 export const SendResultSchema = z.object({
   provider_message_id: z.string().optional(),
+  /**
+   * The provider's answer to the send. `sent` means accepted for delivery, never delivered:
+   * `delivered` may only come from a receipt (REQ-F11.4); a worker records `sent` regardless.
+   */
   status: z.nativeEnum(DeliveryStatus),
   sandbox: z.boolean(),
+  /** M6.1: the provider did not accept the message and a retry is safe (nothing was sent) */
+  retryable: z.boolean().optional(),
 });
 export type SendResult = z.infer<typeof SendResultSchema>;
 

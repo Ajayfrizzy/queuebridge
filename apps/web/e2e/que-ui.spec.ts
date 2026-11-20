@@ -642,12 +642,19 @@ test.describe('MQ.5 knowledge-base inventory', () => {
       await expect.poll(() => titles(p), { message: question }).toContain(title);
       for (const t of await titles(p)) expect(RESTRICTED_TITLES).not.toContain(t);
     }
-    // Not live before M6: never offered, the planned notice and the reliable fallback instead
+    // Planned (USSD, M6.2): never offered, the planned notice instead
+    await search(p).fill('ussd short code');
+    await expect(panel(p).getByTestId('que-notices')).toContainText(
+      'USSD access: not available yet.',
+    );
+    expect(await titles(p)).not.toContain('USSD access');
+    // M6.1: this test deployment runs the SMS sandbox, so the help is offered, always labelled
+    // as a test and never as usable (the offline copy keeps the label)
     await search(p).fill('text message sms alert');
     await expect(panel(p).getByTestId('que-notices')).toContainText(
-      'SMS turn alerts: not available yet.',
+      'SMS turn alerts: sandbox (test only, no real messages).',
     );
-    expect(await titles(p)).not.toContain('Text message alerts');
+    expect(await titles(p)).toContain('Text message alerts');
     await ctx.close();
   });
 

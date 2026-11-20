@@ -517,14 +517,31 @@ Security follow-up from M5.1 (separate change, recorded in `M5-evidence.md`, "M5
 
 ### M6.1 SMS adapter and outbox
 
-- [ ] `SandboxSmsAdapter` with full interface compliance
-- [ ] Notification outbox worker: SMS consumer on the M5.4 pipeline (committed events only, savepoint enqueue, `FOR UPDATE SKIP LOCKED`, bounded retries)
-- [ ] SMS templates for all 5 notification types, with `ticket.called` (the SMS turn alert) first
-- [ ] Consent at joining (separate, unticked, purpose-stated), `visitor_contacts.phone_ciphertext` with `consent_at` and `retention_until`; opt-out in the ticket page, staff UI and (where supported) inbound keyword
-- [ ] Delivery receipt handling and status recording (`delivered` only from a provider receipt)
-- [ ] `SMS_DAILY_CAP` enforced before every send (cap reason, no overage); per-facility cap setting
-- [ ] Provider research recorded (tariffs, sender-ID, sandbox, webhooks, receipts, spending controls, free/sponsored credits); no account requiring a payment card or personal funds
-- [ ] Live provider adapter (post provider selection; real provider support preserved: send, signed webhook verification with replay defense, receipt parsing) — enabled only with approved sponsored/free credentials; otherwise sandbox stays the default and is labelled
+- [x] `SandboxSmsAdapter` with full interface compliance — **M6.1 (2026-11-19):** `packages/channels/src/sandbox.ts` (replaces the M0 stub, which claimed `delivered` on send and accepted every webhook): no network, `sent` never `delivered`, deterministic outcomes (accepted, rejected, temporarily unavailable, transport error), stable message id per idempotency key, signed simulated receipts and inbound replies, `[TEST]` text and `[SANDBOX]` logs without numbers; registry `createSmsAdapter` refuses any other provider; Group 10 tests in `sandbox.test.ts`, `sms.test.ts`
+- [x] Notification outbox worker: SMS consumer on the M5.4 pipeline (committed events only, savepoint enqueue, `FOR UPDATE SKIP LOCKED`, bounded retries) — API hook `apps/api/src/queue/sms-alerts.ts` (own savepoint, key `sms:ticket.called:<ticket_id>:<event_sequence>`), worker `apps/worker/src/sms-alerts.ts` (lease, TTL, 3 attempts with backoff, at most once per key via `send_started_at`, re-check under a contact row lock); migration `0011`
+- [x] SMS templates for all 5 notification types, with `ticket.called` (the SMS turn alert) first — `renderSmsTemplate` (joined, nearing, called, delayed, missed); only `ticket.called` is enqueued, because the approved consent text states that purpose; the other four are inactive definitions (`SMS_INACTIVE_TEMPLATES`, never sent; the worker refuses them) until purpose-specific consent wording and trigger rules are approved (product-owner decision 2026-11-20)
+- [x] Consent at joining (separate, unticked, purpose-stated), `visitor_contacts.phone_ciphertext` with `consent_at` and `retention_until`; opt-out in the ticket page, staff UI and (where supported) inbound keyword — join page `SmsOptIn`, server-side normalization (`normalizePhoneNumber`), AES-256-GCM with a purpose-derived key and a keyed lookup hash, DB CHECKs (no number without consent; none after opt-out), erased when the visit ends (or at once on opt-out), the consent record kept while the number is held and deleted 24 h after erasure, `retention_until` = join + 7 days as a backstop only (pre-PR review 2026-11-20); opt-out on the ticket page, in the console's visitor alert panel (`WALK_IN` roles, audited) and by STOP reply through the webhook, tenant-scoped (applies only to the one organization that messaged the number; ambiguous or unmatched replies change nothing)
+- [x] Delivery receipt handling and status recording (`delivered` only from a provider receipt) — `POST /api/v1/webhooks/sms/:provider`: configured provider only, structure check, HMAC signature over timestamp, nonce and raw body, ±5 min window, nonce replay table, idempotent transitions (delivered never downgraded), no existence oracle
+- [x] `SMS_DAILY_CAP` enforced before every send (cap reason, no overage); per-facility cap setting — atomic reservation of the global and facility counters (`sms_daily_usage`, UTC day, sandbox counted apart from live) in the same transaction as the opt-out check; `failed` / `cap`, closed, never held; `GET|PUT /facilities/:id/sms` (`FACILITY_CONFIGURE`, audited; the screen is M6.3)
+- [x] Provider research recorded (tariffs, sender-ID, sandbox, webhooks, receipts, spending controls, free/sponsored credits); no account requiring a payment card or personal funds — `docs/testing/M6-evidence.md` (7 providers, public sources dated 2026-11-19; no account created; none usable live without spending)
+- [ ] Live provider adapter (post provider selection; real provider support preserved: send, signed webhook verification with replay defense, receipt parsing) — enabled only with approved sponsored/free credentials; otherwise sandbox stays the default and is labelled — **open: no provider approved.** The boundary is in place (`SmsAdapter`, `createSmsAdapter`, webhook route, signature scheme); activation gates in `docs/testing/M6-evidence.md`
+
+**M6.1 status (product-owner review, 2026-11-20; `docs/testing/M6-evidence.md`):**
+
+- **Completed, sandbox implementation:** TEST-ONLY sandbox adapter, committed-event enqueue, worker consumer (at most once per key), `ticket.called` template, join consent and opt-out paths, signed receipt and reply webhook, sandbox end-to-end test.
+- **Completed, security and privacy controls:** encrypted numbers with database CHECKs; erasure when the visit ends or on opt-out; consent record deleted 24 h after erasure; 7-day backstop for abandoned contacts; tenant-scoped STOP (ambiguous or unmatched replies change nothing); atomic global and facility daily caps; webhook signature, timestamp and nonce replay checks; `SMS_PROVIDER=off` by default (the sandbox is refused in production); production-disabled startup tested on the real processes; both audit gates green with no exception.
+- **Deferred to M6.3:** the facility SMS configuration screen (API only today), the sandbox/live toggle, delivery monitoring, the cost-control setting.
+- **Not approved: live-provider adapter** (open task above). Live-activation gates, all required before any real traffic:
+  1. an approved sponsored or free provider (no card, no personal funds), with a current price;
+  2. DND/transactional route eligibility and the sender ID timeline;
+  3. provider-side hard caps;
+  4. authenticated callbacks;
+  5. inbound and STOP handling;
+  6. KYC;
+  7. send windows;
+  8. **recipient verification**: today a visitor can enter someone else's number;
+  9. **ambiguous STOP handling**: a reply matched to several organizations changes nothing today; the provider setup must either give each organization its own sender, or the user-facing wording must keep directing visitors to the ticket page and staff.
+- **Remaining real-device acceptance:** handset receipt of a real SMS, carrier STOP behaviour, and the new controls on real devices (screen readers, 320/375 px). These run with the M5 Set 2 final acceptance after M7, and only after a live provider is approved.
 
 ### M6.2 USSD adapter
 
@@ -540,7 +557,7 @@ Security follow-up from M5.1 (separate change, recorded in `M5-evidence.md`, "M5
 - [ ] Sandbox vs. live mode toggle with clear labeling
 - [ ] Delivery status monitoring
 - [ ] Optional "SMS only if the in-app alert was not seen within N seconds" cost-control setting (default: send immediately)
-- [ ] Knowledge-base articles and capability manifest entries for SMS turn alerts and USSD updated in the same PR (MQ.6) — procedure in `packages/assist/knowledge/README.md` ("Applying it in M6"); CI fails with C4, C5, A1 and A2 for `visitor.alerts.sms` and `visitor.ussd` until the articles and `capabilities.json` are updated
+- [ ] Knowledge-base articles and capability manifest entries for SMS turn alerts and USSD updated in the same PR (MQ.6) — **SMS part done in M6.1** (knowledge-base version 4; USSD remains for M6.2) — procedure in `packages/assist/knowledge/README.md` ("Applying it in M6"); CI fails with C4, C5, A1 and A2 for `visitor.alerts.sms` and `visitor.ussd` until the articles and `capabilities.json` are updated
 
 ### M6 exit criteria
 

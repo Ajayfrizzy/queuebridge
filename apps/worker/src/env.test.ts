@@ -15,9 +15,32 @@ describe('worker parseEnv', () => {
     expect(() => parseEnv({})).toThrow('DATABASE_URL');
   });
 
-  it('defaults SMS_PROVIDER to sandbox', () => {
+  // M6.1 pre-PR review (2026-11-20): the M0 default `sandbox` became the explicit safe disabled
+  // mode `off`, the API's default, so an unconfigured worker never runs any SMS adapter
+  it('defaults SMS_PROVIDER to off and SMS_DAILY_CAP to 0 (SMS disabled unless configured)', () => {
     const env = parseEnv({ DATABASE_URL: 'postgres://localhost:5432/test' });
-    expect(env.SMS_PROVIDER).toBe('sandbox');
+    expect(env.SMS_PROVIDER).toBe('off');
+    expect(env.SMS_DAILY_CAP).toBe(0);
+  });
+
+  it('a production configuration without SMS settings parses (SMS never stops the worker)', () => {
+    const env = parseEnv({
+      DATABASE_URL: 'postgres://localhost:5432/test',
+      NODE_ENV: 'production',
+      AUDIT_SIGNING_KEY_ID: 'test-only-key',
+      AUDIT_SIGNING_KEY: 'test-audit-signing-key-at-least-32-characters',
+    });
+    expect(env.SMS_PROVIDER).toBe('off');
+    // even a wrong value parses: it disables SMS at startup instead of rejecting the worker
+    expect(
+      parseEnv({
+        DATABASE_URL: 'postgres://localhost:5432/test',
+        NODE_ENV: 'production',
+        AUDIT_SIGNING_KEY_ID: 'test-only-key',
+        AUDIT_SIGNING_KEY: 'test-audit-signing-key-at-least-32-characters',
+        SMS_PROVIDER: 'sandbox',
+      }).SMS_PROVIDER,
+    ).toBe('sandbox');
   });
 
   it('defaults USSD_PROVIDER to sandbox', () => {

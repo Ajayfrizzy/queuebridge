@@ -182,7 +182,7 @@ queuebridge/
 - Every PR that changes user-visible behaviour, a capability, a route or a screen label updates
   the affected Ask Que articles, `packages/assist/knowledge/capabilities.json` and the registry
   screen defaults in the same PR (incremental maintenance rule, design §11.10).
-- CI enforces it through the Group 13.5 consistency checks (rules C0–C5, A1–A3, R1–R3, V1–V2, L1;
+- CI enforces it through the Group 13.5 consistency checks (rules C0–C5, A1–A4, R1–R3, V1–V2, L1;
   `packages/assist/knowledge/README.md`). Do not weaken or bypass them: update the content.
 - Articles describe the implemented behaviour, never a planned one; a non-live capability stays
   gated and is never presented as available.

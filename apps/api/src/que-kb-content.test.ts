@@ -105,6 +105,8 @@ const PERMISSION_CLAIMS: readonly [string, string, PermissionName][] = [
   ['staff.coordinator.manage', '## Who can do this', 'QUEUE_MANAGE'],
   ['staff.conflicts.review', '## Who can do this', 'QUEUE_MANAGE'],
   ['staff.recovery.approve', '## Who can do this', 'QUEUE_MANAGE'],
+  // M6.1: staff opt-out is `WALK_IN` at the queue's facility (routes/sms.ts)
+  ['staff.sms.alerts', '## Who can do this', 'WALK_IN'],
   ['staff.audit.trail', '## Who can open it', 'AUDIT_VIEW'],
   ['staff.recovery.activity', '## Who can open it', 'AUDIT_VIEW'],
 ];
@@ -145,6 +147,7 @@ describe('capability gating against the manifest the server builds', () => {
     visitorJoinOperational: true,
     webPushAvailable: false,
     aiAvailable: 'off',
+    smsAvailable: false,
     ...over,
   });
   const DEFAULT = buildCapabilityManifest(flags(), NOW);
@@ -158,19 +161,28 @@ describe('capability gating against the manifest the server builds', () => {
     }
   });
 
-  it('only SMS and USSD articles depend on a planned capability, and none is shown', () => {
+  it('only the USSD article depends on a planned capability, and it is not shown', () => {
     const planned = ALL.filter((a) =>
       a.requiresCapabilities.some((c) => DEFAULT.capabilities[c]?.status === 'planned'),
     ).map((a) => a.id);
-    expect(planned.sort()).toEqual(['visitor.alerts.sms', 'visitor.ussd']);
-    for (const [q, id] of [
-      ['sms text message', 'visitor.alerts.sms'],
-      ['ussd', 'visitor.ussd'],
-    ] as const) {
-      const out = visitor(q, WITH_PUSH);
-      expect(out.citations).not.toContain(id);
-      expect(out.text).toMatch(/not available yet/);
-    }
+    expect(planned.sort()).toEqual(['visitor.ussd']);
+    const out = visitor('ussd', WITH_PUSH);
+    expect(out.citations).not.toContain('visitor.ussd');
+    expect(out.text).toMatch(/not available yet/);
+  });
+
+  it('SMS help is withheld unless the sandbox is set up, and then it is labelled as a test', () => {
+    const off = visitor('sms text message', WITH_PUSH);
+    expect(off.citations).not.toContain('visitor.alerts.sms');
+    expect(off.text).toContain('SMS turn alerts: not set up here.');
+    const on = buildCapabilityManifest(flags({ smsAvailable: true }), NOW);
+    expect(on.capabilities.sms_turn_alerts).toMatchObject({
+      status: 'sandbox',
+      availability: 'available',
+    });
+    const shown = visitor('sms text message', on);
+    expect(shown.citations).toContain('visitor.alerts.sms');
+    expect(shown.text).toContain('SMS turn alerts: sandbox (test only, no real messages).');
   });
 
   it('no live article is older than the capability it describes', () => {

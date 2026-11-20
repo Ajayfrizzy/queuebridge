@@ -314,6 +314,47 @@ export async function pushRoutes(app: FastifyInstance, deps: RouteDeps): Promise
         }
         byTicket.set(r.ticket_id, entry);
       }
+      // M6.1: the SMS alert for the same call (no number, no text), and whether staff can stop it
+      const ids = [...byTicket.keys()];
+      if (ids.length > 0) {
+        const sms = await db<
+          {
+            ticket_id: string;
+            state: string | null;
+            detail_code: string | null;
+            provider: string | null;
+            updated_at: Date | null;
+            active: boolean;
+          }[]
+        >`
+          SELECT t.id AS ticket_id, n.status AS state, n.detail_code, n.provider, n.updated_at,
+                 (vc.phone_ciphertext IS NOT NULL) AS active
+            FROM tickets t
+            LEFT JOIN visitor_contacts vc ON vc.ticket_id = t.id AND vc.organization_id = t.organization_id
+            LEFT JOIN LATERAL (
+              SELECT n.status, n.detail_code, n.provider, n.updated_at FROM notifications n
+               WHERE n.ticket_id = t.id AND n.channel = 'sms'
+                 AND n.event_sequence = (
+                   SELECT e.sequence FROM ticket_transitions tt JOIN queue_events e ON e.id = tt.queue_event_id
+                    WHERE tt.ticket_id = t.id AND tt.to_state = 'called' ORDER BY e.sequence DESC LIMIT 1)
+               ORDER BY n.created_at DESC LIMIT 1) n ON TRUE
+           WHERE t.id = ANY(${ids}::uuid[]) AND t.organization_id = ${auth.organizationId}`;
+        for (const s of sms) {
+          const entry = byTicket.get(s.ticket_id);
+          if (!entry) continue;
+          entry.sms_active = s.active;
+          entry.sms =
+            s.state && s.updated_at
+              ? {
+                  state: s.state as NonNullable<StaffTicketAlerts['sms']>['state'],
+                  detail_code: s.detail_code,
+                  // pending rows have no provider yet: this build can only send through the sandbox
+                  sandbox: s.provider === null || s.provider === 'sandbox',
+                  updated_at: s.updated_at.toISOString(),
+                }
+              : null;
+        }
+      }
       return reply.send({ alerts: [...byTicket.values()] });
     },
   );

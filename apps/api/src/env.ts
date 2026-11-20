@@ -115,6 +115,23 @@ const EnvSchema = z
     QUE_AI_TIMEOUT_MS: z.coerce.number().int().min(500).max(15_000).default(8_000),
     /** Ask requests per signed-in user per minute (the per-IP limit is five times this). */
     QUE_AI_RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(1_000).default(10),
+    /**
+     * M6.1 SMS turn alerts (design §13; REQ-F11). OFF by default. `sandbox` is the TEST-ONLY
+     * adapter (no network, every message labelled [TEST]) and is refused in production. No live
+     * provider adapter exists until a provider is approved for sponsored or free credentials.
+     * SMS is offered only with CONTACT_ENCRYPTION_KEY (numbers are stored encrypted) and a
+     * positive SMS_DAILY_CAP. The cap is enforced by the worker before every send; set the same
+     * value for the worker (the API reports it).
+     */
+    SMS_PROVIDER: z.enum(['off', 'sandbox']).default('off'),
+    /** Hard deployment-wide cap on SMS handed to the provider per UTC day (0 = sending off). */
+    SMS_DAILY_CAP: z.coerce.number().int().min(0).max(1_000_000).default(0),
+    /** HMAC secret for `POST /webhooks/sms/:provider` (at least 32 characters; none = refuse all). */
+    SMS_WEBHOOK_SECRET: z.string().min(32).optional(),
+    /** Webhook requests per minute per source address. */
+    SMS_WEBHOOK_RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(10_000).default(120),
+    /** Visitor and staff SMS opt-out and settings changes per minute per source address. */
+    SMS_RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(1_000).default(30),
     /** Set true only when running behind a trusted reverse proxy (honours X-Forwarded-For). */
     TRUST_PROXY: z
       .enum(['true', 'false'])
@@ -126,6 +143,13 @@ const EnvSchema = z
   })
   .superRefine(checkAuditSigningPair)
   .superRefine((env, ctx) => {
+    if (env.NODE_ENV === 'production' && env.SMS_PROVIDER === 'sandbox') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['SMS_PROVIDER'],
+        message: 'the sandbox SMS adapter is test-only and cannot run in production',
+      });
+    }
     if (env.NODE_ENV === 'production' && env.QUE_AI_ADAPTER === 'sandbox') {
       ctx.addIssue({
         code: 'custom',

@@ -242,8 +242,8 @@ jobs:
       - name: Production dependency audit (no exceptions)
         run: pnpm audit --prod --audit-level high
       # Complete dependency tree: every high/critical advisory blocks unless it matches an
-      # approved, unexpired, path-exact exception in infra/security/audit-policy.json
-      # (GHSA-fc5q-39xc-vjpf, development tools only, expires 2026-12-15). Malformed output,
-      # command failures and an available upstream fix all fail this step.
+      # approved, unexpired, path-exact exception in infra/security/audit-policy.json (none
+      # active since 2026-11-20: GHSA-fc5q-39xc-vjpf was withdrawn upstream and removed).
+      # Malformed output, command failures and an available upstream fix all fail this step.
       - name: Full dependency audit through the scoped policy
         run: node infra/scripts/audit-gate.js

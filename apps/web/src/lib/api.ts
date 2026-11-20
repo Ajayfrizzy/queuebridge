@@ -50,6 +50,8 @@ import type {
   PushCapability,
   PushSubscribeRequest,
   PushSubscribeResponse,
+  SmsAlertState,
+  SmsJoinOptIn,
   StaffTicketAlerts,
   QueAiSettings,
   QueAiSettingsUpdate,
@@ -355,7 +357,7 @@ export const api = {
     ),
   join: (
     queueId: string,
-    body: { operation_id: string; join_proof: string },
+    body: { operation_id: string; join_proof: string; sms?: SmsJoinOptIn },
   ): Promise<{ ticket: JoinQueueResponse }> => request('POST', `/queues/${queueId}/join`, body),
   ticketStatus: (code: string, token: string): Promise<{ status: TicketStatus }> =>
     request('GET', `/tickets/${encodeURIComponent(code)}/status`, undefined, {
@@ -431,6 +433,15 @@ export const api = {
     ),
   queueAlerts: (queueId: string): Promise<{ alerts: StaffTicketAlerts[] }> =>
     request('GET', `/queues/${queueId}/alerts`),
+  // ---- M6.1: SMS turn alerts (opt-out; the number itself never comes back from the server) ----
+  stopSms: (code: string, token: string): Promise<{ sms_alert: SmsAlertState }> =>
+    request('POST', `/tickets/${encodeURIComponent(code)}/sms/opt-out`, {}, tokenHeader(token)),
+  staffStopSms: (queueId: string, ticketId: string): Promise<{ sms_alert: SmsAlertState }> =>
+    request(
+      'POST',
+      `/queues/${encodeURIComponent(queueId)}/tickets/${encodeURIComponent(ticketId)}/sms/opt-out`,
+      {},
+    ),
 
   // ---- M5.1: staff-assisted recovery (restricted procedure) ----
   recoveryAssist: (

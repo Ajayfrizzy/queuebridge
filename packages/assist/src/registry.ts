@@ -159,6 +159,7 @@ const SPECS: Readonly<Record<RouteId, EntrySpec>> = {
       'visitor.wait.estimate',
       'visitor.recovery.key',
       'visitor.accessibility',
+      'visitor.alerts.sms',
     ],
   },
   // Never linked: the ticket is resolved from the ticket saved on the device (status token)
@@ -178,6 +179,7 @@ const SPECS: Readonly<Record<RouteId, EntrySpec>> = {
       'visitor.ticket.states',
       'visitor.wait.estimate',
       'visitor.alerts.push',
+      'visitor.alerts.sms',
     ],
   },
   // Linked as `/recover` only: the key or grant travels in the URL fragment, never from Que
@@ -260,6 +262,7 @@ const SPECS: Readonly<Record<RouteId, EntrySpec>> = {
       'staff.fairness.priority',
       'staff.transfers',
       'staff.alerts.status',
+      'staff.sms.alerts',
       'staff.coordinator.limits',
       'staff.auto_miss',
       'staff.audit.trail',

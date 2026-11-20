@@ -130,15 +130,18 @@ describe('GET /api/v1/que/capabilities (public, server-authoritative)', () => {
     }
   });
 
-  it('SMS and USSD are planned and unavailable; AI explanations are built but switched off; AI is never usable', async () => {
+  it('USSD is planned; SMS is the TEST-ONLY sandbox, not set up by default; AI is switched off; none is usable', async () => {
     for (const app of [noPush, withPush]) {
       const m = (await manifestOf(app)).body;
-      for (const id of ['sms_turn_alerts', 'ussd'] as const) {
-        expect(m.capabilities[id].status).toBe('planned');
-        expect(m.capabilities[id].availability).toBe('unavailable');
-        expect(m.capabilities[id].unavailableReason).toBe('not_implemented');
-        expect(isCapabilityUsable(m, id)).toBe(false);
-      }
+      expect(m.capabilities.ussd.status).toBe('planned');
+      expect(m.capabilities.ussd.availability).toBe('unavailable');
+      expect(m.capabilities.ussd.unavailableReason).toBe('not_implemented');
+      expect(isCapabilityUsable(m, 'ussd')).toBe(false);
+      // M6.1: built as the sandbox only (never `live`), and off unless SMS_PROVIDER is set up
+      expect(m.capabilities.sms_turn_alerts.status).toBe('sandbox');
+      expect(m.capabilities.sms_turn_alerts.availability).toBe('unavailable');
+      expect(m.capabilities.sms_turn_alerts.unavailableReason).toBe('not_configured');
+      expect(isCapabilityUsable(m, 'sms_turn_alerts')).toBe(false);
       // MQ.4 built the layer; no provider is selected, so it is switched off (D1)
       expect(m.capabilities.ask_que_ai.status).toBe('live');
       expect(m.capabilities.ask_que_ai.availability).toBe('unavailable');
