@@ -20,6 +20,7 @@ import {
   savePrefs,
   type A11yPrefs,
   type Contrast,
+  type Theme,
   type CueSupport,
   type Motion,
   type TextSize,
@@ -139,6 +140,11 @@ export function A11yProvider({ children }: { children: ReactNode }): ReactElemen
   );
 }
 
+const THEME_LABEL: Record<Theme, string> = {
+  system: 'Follow my device setting',
+  light: 'Light',
+  dark: 'Dark',
+};
 const CONTRAST_LABEL: Record<Contrast, string> = {
   system: 'Follow my device setting',
   high: 'High contrast',
@@ -197,7 +203,11 @@ function SettingsDialog({
       className="settings-dialog"
       aria-labelledby="settings-title"
       data-testid="display-settings"
-      onClose={onClose}
+      onClose={(e) => {
+        // A `close` event is queued (fires later); if the dialog has been shown again since (React
+        // StrictMode in development runs this effect's cleanup and setup twice), it is stale.
+        if (!e.currentTarget.open) onClose();
+      }}
       onKeyDown={(e) => {
         // Keep Tab inside the dialog in every browser: wrap from the last control to the first
         // (and back). A native modal already makes the page behind it inert; this stops focus
@@ -240,6 +250,25 @@ function SettingsDialog({
             This browser could not save your settings. They apply until you close this page.
           </p>
         ) : null}
+
+        <div className="field">
+          <label htmlFor="pref-theme">Theme</label>
+          <p id="pref-theme-hint" className="hint">
+            Light or dark colours. High contrast below works with either.
+          </p>
+          <select
+            id="pref-theme"
+            aria-describedby="pref-theme-hint"
+            value={prefs.theme}
+            onChange={(e) => update({ theme: e.target.value as Theme })}
+          >
+            {(Object.keys(THEME_LABEL) as Theme[]).map((k) => (
+              <option key={k} value={k}>
+                {THEME_LABEL[k]}
+              </option>
+            ))}
+          </select>
+        </div>
 
         <div className="field">
           <label htmlFor="pref-contrast">Contrast</label>

@@ -1,0 +1,826 @@
+/* M7.2 landing page (design §14.4, §14.5). Loaded with the landing chunk only. Every colour, size
+   and timing comes from the M7.1 tokens (tokens.css). Motion: opacity and transform only, one
+   short entrance for the hero, a fade between story stages; none under either reduced-motion
+   setting (the global rules in styles.css remove every animation and transition). */
+
+.landing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--qb-space-6);
+}
+@media (min-width: 48rem) {
+  .landing {
+    gap: calc(var(--qb-space-7) + var(--qb-space-4));
+  }
+}
+.landing > * {
+  margin: 0;
+}
+.landing-section > h2 {
+  margin: 0 0 var(--qb-space-2);
+  font-size: clamp(1.375rem, 1.1vw + 1.05rem, 1.875rem);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+  max-width: 30ch;
+}
+/* A short accent rule above each section heading: a landing-page cue, not an admin one */
+.landing-section > h2::before {
+  content: '';
+  display: block;
+  width: 2.5rem;
+  height: 4px;
+  margin-bottom: var(--qb-space-3);
+  border-radius: var(--qb-radius-pill);
+  background: var(--qb-color-accent);
+}
+.landing-intro {
+  max-width: var(--qb-size-readable);
+  color: var(--qb-color-text-muted);
+  font-size: 1.0625rem;
+  margin: 0 0 var(--qb-space-5);
+}
+.landing-tickets ul {
+  margin: 0;
+  padding-left: var(--qb-space-5);
+}
+
+/* ---- Hero: navy brand panel ---------------------------------------------------------------- */
+.hero {
+  display: grid;
+  gap: var(--qb-space-5);
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  padding: var(--qb-space-5) var(--qb-space-4) var(--qb-space-6);
+  border-radius: var(--qb-radius-xl);
+  background: var(--qb-color-brand-navy);
+  color: var(--qb-color-on-brand-navy);
+  overflow: hidden;
+}
+@media (min-width: 48rem) {
+  .hero {
+    padding: var(--qb-space-7) var(--qb-space-6);
+  }
+}
+@media (min-width: 64rem) {
+  .hero {
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  }
+}
+.hero-copy > * {
+  margin: 0;
+}
+.hero-copy > * + * {
+  margin-top: var(--qb-space-4);
+}
+.hero-logo {
+  display: block;
+  width: min(100%, 11rem);
+  height: auto;
+  padding: var(--qb-space-2) var(--qb-space-3);
+  border-radius: var(--qb-radius-lg);
+  /* the supplied artwork has a light ground: on the navy hero it sits on the on-navy colour,
+     white in every theme (asserted in packages/ui/src/tokens.test.ts) */
+  background: var(--qb-color-on-brand-navy);
+}
+.hero-eyebrow {
+  font-size: var(--qb-font-meta);
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--qb-color-on-brand-navy-muted);
+}
+.hero .hero-title {
+  color: var(--qb-color-on-brand-navy);
+  font-size: clamp(1.75rem, 3vw + 1rem, 3rem);
+  font-weight: 700;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  max-width: 18ch;
+  overflow-wrap: break-word;
+}
+.hero-lead {
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  max-width: 38rem;
+  color: var(--qb-color-on-brand-navy-muted);
+}
+@media (min-width: 48rem) {
+  .hero-lead {
+    font-size: 1.125rem;
+  }
+  .hero-logo {
+    width: min(100%, 13rem);
+  }
+}
+/* Phones: the actions stack full width, the text link stays a comfortable target */
+@media (max-width: 40rem) {
+  .hero-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .hero .hero-tertiary {
+    justify-content: center;
+  }
+}
+.hero-actions {
+  padding-top: var(--qb-space-2);
+}
+.hero .hero-secondary {
+  background: transparent;
+  color: var(--qb-color-on-brand-navy);
+  border-color: var(--qb-color-on-brand-navy);
+}
+.hero .hero-secondary:hover {
+  background: rgb(255 255 255 / 0.1);
+}
+.hero .hero-tertiary {
+  color: var(--qb-color-on-brand-navy);
+  min-height: var(--qb-size-control);
+}
+.hero :focus-visible {
+  outline-color: var(--qb-color-on-brand-navy);
+}
+.hero-visual {
+  display: flex;
+  justify-content: center;
+}
+.hero-art {
+  width: min(100%, 26rem);
+  height: auto;
+}
+.ha-stop-a {
+  stop-color: var(--qb-color-primary);
+  stop-opacity: 0.45;
+}
+.ha-stop-b {
+  stop-color: var(--qb-color-accent);
+  stop-opacity: 0.15;
+}
+.ha-cable,
+.ha-deck,
+.ha-tower {
+  fill: none;
+  stroke: var(--qb-color-on-brand-navy-muted);
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+.ha-cable {
+  stroke: var(--qb-color-accent);
+}
+.ha-device {
+  fill: rgb(255 255 255 / 0.08);
+  stroke: var(--qb-color-on-brand-navy-muted);
+  stroke-width: 2;
+}
+.ha-screen {
+  fill: rgb(255 255 255 / 0.14);
+}
+.ha-bar {
+  fill: var(--qb-color-on-brand-navy);
+}
+.ha-bar-muted {
+  fill: var(--qb-color-on-brand-navy-muted);
+}
+.ha-counter {
+  fill: var(--qb-color-on-brand-navy);
+  font-size: 13px;
+  font-weight: 700;
+}
+.ha-ticket-card {
+  fill: var(--qb-color-surface);
+  stroke: var(--qb-color-accent);
+  stroke-width: 3;
+}
+.ha-ticket-label {
+  fill: var(--qb-color-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+.ha-ticket-code {
+  fill: var(--qb-color-text);
+  font-size: 22px;
+  font-weight: 800;
+  font-family: var(--qb-font-family-mono);
+}
+.ha-badge {
+  fill: var(--qb-color-success-bg);
+  stroke: var(--qb-color-success);
+  stroke-width: 2;
+}
+.ha-tick {
+  fill: none;
+  stroke: var(--qb-color-success);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ha-badge-text {
+  fill: var(--qb-color-text);
+  font-size: 12px;
+  font-weight: 700;
+}
+.ha-ticket {
+  animation: qb-hero-cross 900ms var(--qb-easing) 1 both;
+}
+@keyframes qb-hero-cross {
+  from {
+    opacity: 0;
+    transform: translateX(-36px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---- Card grids (audiences, capabilities, channels) ---------------------------------------- */
+.landing-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--qb-space-3);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
+}
+@media (min-width: 48rem) {
+  .landing-cards {
+    gap: var(--qb-space-4);
+  }
+}
+.landing .landing-card {
+  padding: var(--qb-space-4);
+  border-top: 3px solid var(--qb-color-accent);
+}
+@media (min-width: 48rem) {
+  .landing .landing-card {
+    padding: var(--qb-space-5);
+  }
+}
+.landing-card h3 {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 650;
+}
+.landing-card p {
+  margin: var(--qb-space-2) 0 0;
+  color: var(--qb-color-text-muted);
+  line-height: 1.55;
+}
+.channel-card > * {
+  margin: 0;
+}
+.channel-card > * + * {
+  margin-top: var(--qb-space-2);
+}
+.channel-badge {
+  font-size: 0.9375rem;
+}
+.channel-sandbox {
+  border-style: dashed;
+  border-color: var(--qb-color-warning);
+}
+
+/* ---- Continuity story ---------------------------------------------------------------------- */
+.story-layout {
+  display: grid;
+  gap: var(--qb-space-5);
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+@media (min-width: 64rem) {
+  .story-layout {
+    grid-template-columns: minmax(0, 6fr) minmax(0, 5fr);
+  }
+  .story-stage-panel {
+    position: sticky;
+    top: var(--qb-space-4);
+  }
+}
+.story-stage-panel > * {
+  margin: 0;
+}
+.story-stage-panel > * + * {
+  margin-top: var(--qb-space-3);
+}
+.story-scene-frame {
+  border: 1px solid var(--qb-color-border);
+  border-radius: var(--qb-radius-xl);
+  background: var(--qb-color-surface);
+  box-shadow: var(--qb-shadow-md);
+  padding: var(--qb-space-3);
+  overflow: hidden;
+}
+.story-scene {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.story-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--qb-space-2);
+}
+.story-step {
+  font-size: var(--qb-font-meta);
+  font-weight: 650;
+  color: var(--qb-color-text-muted);
+}
+.story-list,
+.story-static {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--qb-space-2);
+}
+.story-item {
+  border: 1px solid var(--qb-color-border);
+  border-left: 4px solid var(--qb-color-border);
+  border-radius: var(--qb-radius-lg);
+  background: var(--qb-color-surface);
+  padding: var(--qb-space-2) var(--qb-space-3) var(--qb-space-3);
+}
+.story-item.is-current {
+  border-left: 8px solid var(--qb-color-accent);
+  background: var(--qb-color-surface-muted);
+}
+.story-item-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--qb-space-3);
+  width: 100%;
+  min-height: var(--qb-size-control);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--qb-color-text);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.story-num {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 2px solid var(--qb-color-border-strong);
+  border-radius: var(--qb-radius-pill);
+  font-variant-numeric: tabular-nums;
+}
+.is-current .story-num {
+  background: var(--qb-color-text);
+  border-color: var(--qb-color-text);
+  color: var(--qb-color-bg);
+}
+.story-caption {
+  margin: var(--qb-space-1) 0 0;
+  padding-left: calc(2rem + var(--qb-space-3));
+  color: var(--qb-color-text-muted);
+  line-height: 1.55;
+}
+@media (max-width: 24rem) {
+  .story-caption {
+    padding-left: 0;
+  }
+}
+/* Every caption stays visible (the text is the content); stages not shown are set smaller */
+.story-item:not(.is-current) .story-caption {
+  font-size: 0.9375rem;
+}
+.story-static {
+  gap: var(--qb-space-4);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
+}
+.story-card {
+  border: 1px solid var(--qb-color-border);
+  border-radius: var(--qb-radius-lg);
+  background: var(--qb-color-surface);
+  padding: var(--qb-space-4);
+}
+.story-card > * {
+  margin: 0;
+}
+.story-card > * + * {
+  margin-top: var(--qb-space-2);
+}
+
+/* ---- Workflow simulation (token colours; opacity/transform transitions only) ------------- */
+.sim {
+  --sim-t: 420ms;
+}
+.sim * {
+  transform-box: fill-box;
+}
+.sim-bridge {
+  fill: none;
+  stroke: var(--qb-color-accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+  opacity: 0.5;
+}
+.sim-server,
+.sim-device {
+  fill: var(--qb-color-surface-muted);
+  stroke: var(--qb-color-border-strong);
+  stroke-width: 2;
+}
+.sim-server-line {
+  fill: var(--qb-color-border-strong);
+}
+.sim-screen {
+  fill: var(--qb-color-surface);
+}
+.sim-label {
+  fill: var(--qb-color-text-muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+.sim-pill {
+  stroke-width: 1.5;
+}
+.sim-pill-ok {
+  fill: var(--qb-color-success-bg);
+  stroke: var(--qb-color-success);
+}
+.sim-pill-off {
+  fill: var(--qb-color-warning-bg);
+  stroke: var(--qb-color-warning);
+  stroke-dasharray: 4 3;
+}
+.sim-pill-sync {
+  fill: var(--qb-color-info-bg);
+  stroke: var(--qb-color-info);
+}
+.sim-pill-text {
+  fill: var(--qb-color-text);
+  font-size: 11px;
+  font-weight: 700;
+}
+.sim-link {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+.sim-link-live {
+  stroke: var(--qb-color-accent);
+}
+.sim-link-down {
+  stroke: var(--qb-color-border-strong);
+  stroke-dasharray: 3 7;
+}
+.sim-ticket-card {
+  fill: var(--qb-color-surface);
+  stroke: var(--qb-color-primary);
+  stroke-width: 2.5;
+}
+.sim-ticket-code {
+  fill: var(--qb-color-text);
+  font-family: var(--qb-font-family-mono);
+  font-size: 22px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.sim-status {
+  fill: var(--qb-color-text);
+  font-size: 12px;
+  font-weight: 700;
+}
+.sim-muted {
+  fill: var(--qb-color-text-muted);
+  font-size: 11px;
+}
+.sim-ok-text {
+  fill: var(--qb-color-success);
+  font-size: 11px;
+  font-weight: 700;
+}
+.sim-warn-text {
+  fill: var(--qb-color-warning);
+  font-size: 11px;
+  font-weight: 700;
+}
+.sim-range {
+  fill: var(--qb-color-divider);
+}
+.sim-range-fill {
+  fill: var(--qb-color-primary);
+}
+.sim-turn {
+  fill: var(--qb-color-called-bg);
+  stroke: var(--qb-color-called-border);
+  stroke-width: 3;
+}
+.sim-turn-title {
+  fill: var(--qb-color-text);
+  font-size: 13px;
+  font-weight: 800;
+}
+.sim-turn-sub {
+  fill: var(--qb-color-text);
+  font-size: 11px;
+  font-weight: 650;
+}
+.sim-row {
+  fill: var(--qb-color-surface-muted);
+  stroke: var(--qb-color-border);
+  stroke-width: 1;
+}
+.sim-row-mine {
+  stroke: var(--qb-color-primary);
+  stroke-width: 1.5;
+}
+.sim-row-local {
+  fill: var(--qb-color-warning-bg);
+  stroke: var(--qb-color-warning);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+.sim-row-review {
+  fill: var(--qb-color-warning-bg);
+  stroke: var(--qb-color-warning);
+  stroke-width: 2;
+}
+.sim-row-code {
+  fill: var(--qb-color-text);
+  font-family: var(--qb-font-family-mono);
+  font-size: 12px;
+  font-weight: 750;
+}
+.sim-row-state {
+  fill: var(--qb-color-text-muted);
+  font-size: 10.5px;
+  font-weight: 650;
+}
+.sim-row-state.sim-ok-text,
+.sim-row-state.sim-warn-text {
+  font-size: 10.5px;
+}
+.sim-packet {
+  fill: var(--qb-color-info);
+}
+.sim-call {
+  fill: var(--qb-color-success);
+}
+
+/* Variant parts: hidden unless their stage shows them; changes crossfade */
+.sim-on,
+.sim-off,
+.sim-sync,
+.sim-link,
+.sim-v,
+.sim-row-local,
+.sim-row-review,
+.sim-row-state,
+.sim-capture {
+  opacity: 0;
+  transition:
+    opacity var(--sim-t) var(--qb-easing),
+    transform var(--sim-t) var(--qb-easing);
+}
+.sim-v {
+  transform: translateY(5px);
+}
+/* connection */
+.sim:is([data-stage='1'], [data-stage='2'], [data-stage='6']) .sim-on,
+.sim:is([data-stage='3'], [data-stage='4']) .sim-off,
+.sim[data-stage='5'] .sim-sync,
+.sim:is([data-stage='1'], [data-stage='2'], [data-stage='5'], [data-stage='6']) .sim-link-live,
+.sim:is([data-stage='3'], [data-stage='4']) .sim-link-down,
+.sim:is([data-stage='3'], [data-stage='4']) .sim-capture {
+  opacity: 1;
+}
+/* visitor page */
+.sim[data-stage='1'] .sim-v-joined,
+.sim[data-stage='2'] .sim-v-waiting,
+.sim:is([data-stage='3'], [data-stage='4']) .sim-v-stale,
+.sim[data-stage='5'] .sim-v-checking,
+.sim[data-stage='6'] .sim-v-turn {
+  opacity: 1;
+  transform: none;
+}
+/* coordinator console */
+.sim:is([data-stage='1'], [data-stage='2'], [data-stage='3']) .sim-r12-serving,
+.sim[data-stage='4'] :is(.sim-r12-local, .sim-r12-done),
+.sim:is([data-stage='5'], [data-stage='6']) :is(.sim-r12-review, .sim-r12-rev),
+.sim:is([data-stage='1'], [data-stage='2'], [data-stage='3']) .sim-r13-wait,
+.sim[data-stage='4'] :is(.sim-r13-local, .sim-r13-local-t),
+.sim:is([data-stage='5'], [data-stage='6']) .sim-r13-synced,
+.sim:not([data-stage='6']) .sim-r14-wait,
+.sim[data-stage='6'] .sim-r14-called {
+  opacity: 1;
+}
+/* the ticket arrives (stage 1) and the turn is announced (stage 6): one short movement each */
+.sim[data-stage='1'] .sim-ticket {
+  transform-origin: center;
+  animation: sim-pop 520ms var(--qb-easing) 1 both;
+}
+.sim[data-stage='6'] .sim-v-turn {
+  transform-origin: center;
+  animation: sim-pop 520ms var(--qb-easing) 260ms 1 both;
+}
+@keyframes sim-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.86);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+/* sync packets (stage 5) and the committed call (stage 6) travel along the links */
+.sim-packet,
+.sim-call {
+  opacity: 0;
+}
+.sim[data-stage='5'] .sim-packet {
+  animation: sim-up 1.6s var(--qb-easing) infinite;
+}
+.sim[data-stage='5'] .sim-packet-2 {
+  animation-delay: 0.8s;
+}
+@keyframes sim-up {
+  0% {
+    opacity: 0;
+    transform: translate(314px, 96px);
+  }
+  15% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(234px, 28px);
+  }
+}
+.sim[data-stage='6'] .sim-call {
+  animation: sim-down 900ms var(--qb-easing) 1 both;
+}
+@keyframes sim-down {
+  0% {
+    opacity: 0;
+    transform: translate(166px, 28px);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(86px, 84px);
+  }
+}
+/* Pause stops everything that repeats: the sync packets and the stage clock. The one-shot
+   entrances (under a second) are left to finish, so a stage chosen by hand is fully drawn. */
+.sim[data-playing='false'] .sim-packet,
+.story-progress[data-running='false'] .story-progress-bar {
+  animation-play-state: paused;
+}
+.story-progress {
+  height: 4px;
+  margin-top: var(--qb-space-3);
+  border-radius: var(--qb-radius-pill);
+  background: var(--qb-color-divider);
+  overflow: hidden;
+}
+.story-progress-bar {
+  display: block;
+  height: 100%;
+  background: var(--qb-color-accent);
+  transform-origin: left center;
+  animation: story-progress 5000ms linear 1 both;
+}
+@keyframes story-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* ---- How visitors join and onboarding ------------------------------------------------------ */
+.join-howto {
+  border: 1px solid var(--qb-color-border);
+  border-radius: var(--qb-radius-xl);
+  background: var(--qb-color-surface);
+  padding: var(--qb-space-5);
+}
+.join-howto:focus {
+  outline: none;
+}
+.join-howto:focus-visible {
+  outline: 3px solid var(--qb-color-focus);
+}
+.join-steps {
+  margin: 0 0 var(--qb-space-3);
+  padding-left: var(--qb-space-5);
+  display: grid;
+  gap: var(--qb-space-2);
+  max-width: var(--qb-size-readable);
+}
+.onboarding-facility {
+  max-width: 24rem;
+  margin-bottom: var(--qb-space-3);
+}
+.onboarding-list {
+  list-style: none;
+  margin: 0 0 var(--qb-space-4);
+  padding: 0;
+  display: grid;
+  gap: var(--qb-space-2);
+}
+.onboarding-step {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--qb-space-2) var(--qb-space-3);
+  align-items: start;
+  border: 1px solid var(--qb-color-border);
+  border-radius: var(--qb-radius-lg);
+  background: var(--qb-color-surface);
+  padding: var(--qb-space-3);
+}
+@media (min-width: 40rem) {
+  .onboarding-step {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+}
+.onboarding-step .badge {
+  grid-column: 2;
+  justify-self: start;
+}
+@media (min-width: 40rem) {
+  .onboarding-step .badge {
+    grid-column: 3;
+  }
+}
+.onboarding-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 2px solid var(--qb-color-border-strong);
+  border-radius: var(--qb-radius-pill);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.onboarding-step.is-done .onboarding-num {
+  border-color: var(--qb-color-success);
+}
+.onboarding-body > * {
+  margin: 0;
+}
+.onboarding-body > * + * {
+  margin-top: var(--qb-space-1);
+}
+.onboarding-body h3 a {
+  display: inline-block;
+  min-height: 1.5rem;
+}
+.badge-icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+/* ---- Footer -------------------------------------------------------------------------------- */
+.landing-footer {
+  border-top: 1px solid var(--qb-color-divider);
+  padding-top: var(--qb-space-5);
+}
+.footer-grid {
+  display: grid;
+  gap: var(--qb-space-5);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+}
+.footer-grid h2 {
+  font-size: var(--qb-font-card);
+  margin: 0 0 var(--qb-space-2);
+}
+.footer-grid p {
+  margin: 0 0 var(--qb-space-2);
+  color: var(--qb-color-text-muted);
+  font-size: 0.9375rem;
+}
+
+/* High contrast: no reliance on tints or shadows */
+html[data-contrast='high'] .hero {
+  border: 2px solid var(--qb-color-on-brand-navy);
+}
+html[data-contrast='high'] .story-item,
+html[data-contrast='high'] .story-card,
+html[data-contrast='high'] .story-scene-frame,
+html[data-contrast='high'] .onboarding-step,
+html[data-contrast='high'] .join-howto {
+  border-width: 2px;
+  border-color: var(--qb-color-border);
+  box-shadow: none;
+}
+html[data-contrast='high'] .story-item.is-current {
+  border-left-width: 8px;
+}

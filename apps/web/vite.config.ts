@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import { PRECACHE_GLOB_PATTERNS, RUNTIME_CACHING } from './src/pwa/swRules.js';
+import { WEB_SECURITY_HEADERS } from './src/pwa/securityHeaders.js';
 
 export default defineConfig({
   plugins: [
@@ -63,6 +64,12 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+  },
+  // M7.2: the built app is served with the production security headers (design §14.7), so the
+  // Playwright suite runs under them; production serving must send the same set
+  // (docs/deployment/web-security-headers.md)
+  preview: {
+    headers: { ...WEB_SECURITY_HEADERS },
   },
   build: {
     target: 'es2022',

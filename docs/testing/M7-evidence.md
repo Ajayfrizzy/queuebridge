@@ -128,3 +128,344 @@ review row in `packages/assist/knowledge/README.md`.
 - No dark/monochrome logo artwork (white tile used); no self-hosted Inter file.
 - Dark theme follows the system only (no in-app switch).
 - Remote CI not run.
+
+## M7.2 — Animated public landing page and onboarding (2026-11-21)
+
+Branch `feature/m7-2-landing-onboarding`, baseline `08aae0b` (M7.1, PR #21). Uses the M7.1
+tokens, components and supplied logo only. No API, database, authorization, queue or provider
+change. GitHub Actions remains unavailable: every result below is **local**.
+
+### Route architecture
+
+- `/` renders `apps/web/src/landing/LandingPage.tsx` through `React.lazy` + `Suspense`
+  (`App.tsx`); `pages/Home.tsx` is removed (its saved-tickets list moved into the landing page
+  unchanged: `data-testid="my-tickets"`, same link text and `ticketPath`). Every other route path is
+  unchanged.
+- Nothing outside `src/landing/` imports it. i18next/react-i18next, the landing CSS, the story,
+  the hero art and the logo PNG are in the landing chunk only. `publicKb` (the capability loader)
+  became a 344-byte shared chunk between Ask Que and the landing page.
+- PWA: the service worker still precaches every built asset (existing behaviour), so a device
+  that installed the worker may fetch the landing chunk in the background; no visitor or staff
+  page requests it (tested with the worker blocked).
+
+### Sections
+
+Hero (headline, supporting line, logo, "Set up your facility" → `/signup`, "Sign in" → `/login`,
+"How visitors join" → `#how-visitors-join`; signed in: "Continue to administration" or "Open the
+staff console"); continuity story; who it serves (six roles); what it does (nine capabilities);
+channels from the manifest; how visitors join; get-started checklist; footer (privacy,
+accessibility statement and feedback path, repository link, MIT licence, footer navigation).
+No metric, customer, logo or testimonial.
+
+### Continuity story
+
+Six stages (join, wait with range, connection drops, one authorized coordinator continues with
+"Local only" actions while other devices only capture tickets, reconnect with "Synced" and "Needs
+review", committed "It's your turn" with best-effort push/SMS). All titles and captions are
+always in the page; the SVG illustrates the current stage only. 5 s per stage (30 s loop) with a
+visible Pause/Play button plus Previous, Next and the stage list (which pause it). Automatic
+changes are never announced; a person's change is announced once in a polite status region.
+Stops while the tab is hidden. Reduced motion (system or the device setting, followed live):
+no autoplay, no transitions, all six stages with their pictures shown together. Motion is
+opacity/transform only; the hero has one sub-second entrance and no loop. No data, request or
+sound is involved.
+
+### Channel status
+
+Rendered from `GET /api/v1/que/capabilities` (`loadCapabilities`, schema-validated, fail closed)
+by `channelView()`: only `live` + `available` is "Live"; `sandbox` is always labelled test-only
+("Not a production service"), or "not set up" when unavailable; `planned`, `not_configured`,
+`switched_off` have their own wording; a missing, failed or malformed manifest shows "Status
+unavailable" for every channel. Baseline deployment: web/QR live, SMS sandbox, USSD sandbox.
+
+### Onboarding
+
+Signed out: seven steps, step 1 links `/signup`, "Already set up? Sign in"; no other link and no
+data request. Signed-in administrator (org admin or any facility admin): `listFacilities` and
+`readiness` (existing authorized endpoints); facility chooser when there are several; states
+Done / To do from readiness (service active; configuration ready), "Check on the screen" where
+readiness has no data (staff, sharing, first visitor); links `/admin`,
+`/admin/facilities/:id/{services,counters,staff}`, `/admin/facilities/:id`,
+`/staff/facilities/:id` (all existing). Other staff: a pointer to the staff console. The list
+enforces nothing.
+
+### Localization
+
+All landing copy, accessible names and story captions are in `src/landing/locales/en.ts`, read
+through an i18next instance created in the landing chunk (`src/landing/i18n.ts`; bundled
+resources, synchronous init, English fallback). This is the first use of the i18next
+dependency; other screens are not yet migrated (out of M7.2 scope). Tests: every key resolves
+(no raw keys or unfilled placeholders), a substituted bundle changes the rendered text and falls
+back to English per key, and the Playwright spec reads its expectations from the bundle.
+
+### Security and privacy
+
+- Single header source `apps/web/src/pwa/securityHeaders.ts`: CSP (`default-src 'self'`, no
+  other origin, no `unsafe-inline`/`unsafe-eval`, `frame-ancestors 'none'`), HSTS, `X-Frame-Options`,
+  `Referrer-Policy: no-referrer`, `Permissions-Policy`, `nosniff`. `vite preview` sends it, so the
+  **whole Playwright suite runs under the production CSP**. Deployment requirement:
+  `docs/deployment/web-security-headers.md` (unit test keeps it equal to the source).
+- Found under the CSP: Zod's JIT probe (`new Function`) reported a `script-src` violation; the app
+  now sets `z.config({ jitless: true })` first (`src/zodConfig.ts`; same validation results).
+- Not verifiable before deployment: the production edge sending the headers, HSTS over real
+  HTTPS, TLS. Recorded for M7.3/M7.5.
+- The landing page makes only same-origin requests (tested: no foreign request, no CSP violation);
+  no analytics, fonts, CDNs or scripts were added; no new dependency.
+
+### Bundle measurements (`gzip -9`, bytes; `pnpm --filter @queuebridge/web bundle:check`)
+
+| Asset                  | Before M7.2 (`08aae0b`) | After M7.2 | Threshold                 |
+| ---------------------- | ----------------------: | ---------: | ------------------------- |
+| Entry JS (every route) |                 195,289 |    195,277 | ≤ 197,241 (baseline + 1%) |
+| Entry CSS              |                   6,919 |      6,926 | ≤ 6,988 (baseline + 1%)   |
+| Landing JS (lazy)      |                       — |     24,225 | ≤ 26,647 (first + 10%)    |
+| Landing CSS (lazy)     |                       — |      2,257 | ≤ 2,482 (first + 10%)     |
+
+The check also fails if the entry contains landing-only code (the headline, i18next) or
+`index.html` preloads the landing chunk. Baseline and tolerances: `apps/web/bundle-baseline.json`.
+CI wiring and Lighthouse are M7.3.
+
+### Accessibility and responsive
+
+`landing.spec.ts`: axe clean and no page overflow at 320, 375, 768, 1280 and 1440 px in light,
+dark, high contrast, high contrast on a dark system and 150 % text; one `h1`, no skipped heading
+level; keyboard reaches every hero action and story control with a visible focus; reduced motion
+static equivalent with no animation or transition anywhere (system and device settings).
+Fixed during M7.2: sidebar link colour transitions passed through low contrast when the shell
+switched after sign-in (an axe race seen once in `design-system.spec.ts`); link colours no longer
+transition (4 repeated passes afterwards).
+
+### Tests
+
+- New: `src/landing/landing.test.tsx` (13: channels, localization, onboarding, story timing,
+  pause, reduced motion), `src/pwa/securityHeaders.test.ts` (4), `e2e/landing.spec.ts` (21),
+  raw-colour check extended to `landing.css`.
+- Adapted, intent unchanged: `admin-journey.spec.ts` starts sign-up from "Set up your facility";
+  `turn-alerts.spec.ts` expects the landing headline as the home `h1` after "Forget this ticket";
+  `accessibility-m52.spec.ts` 11.A6 probe adds its test stylesheet through the CSSOM instead of
+  an inline `<style>` (forbidden by the CSP), with the same assertions.
+
+### Gate results (local, 2026-11-21)
+
+| Gate                                                             | Result                                                                                                      |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build` | pass                                                                                                        |
+| `pnpm test`                                                      | contracts 205, ui 17, channels 66, domain 109, assist 262, continuity 64, api 196, worker 13, web 205: pass |
+| `pnpm test:db`                                                   | api 760, worker 114: pass on the third run; see below                                                       |
+| Playwright (full)                                                | 339 passed, 7 skipped (existing environment-dependent skips), 0 failed                                      |
+| `bundle:check`                                                   | PASS                                                                                                        |
+| Audits                                                           | `pnpm audit --prod --audit-level high`: none; `audit-gate.js`: PASS                                         |
+| Knowledge base                                                   | kbVersion 7 → 8 accepted against `staging`, 47 articles                                                     |
+
+**Intermittent DB tests: investigated and fixed (2026-11-21).** Both were test defects, not
+application defects; no production code changed. Details in "M7.2 database test stability
+investigation" below.
+
+### Limitations
+
+- Manual screen-reader pass of the landing page and real-device checks: final acceptance (Set 2).
+- Production headers verified only on the local preview server.
+- i18next is used by the landing page only; English only.
+- The authenticated checklist shows the first facility by default and cannot report staff
+  invitations, sharing or a first visitor as done (no readiness data for them).
+
+### M7.2 database test stability investigation (2026-11-21)
+
+`pnpm test:db` runs the API and worker DB suites at the same time (`pnpm --filter … test:db`),
+and vitest runs each suite's files in parallel. The API suites share the `queuebridge_test`
+database; the worker SMS suites each create their own throwaway database.
+
+**1. Worker `sms-alerts.db.test.ts` "the facility cap stops one facility…" (observed `sent: 2`,
+expected 3).**
+
+- Not a concurrency problem: the file uses its own database, tests in a file run sequentially,
+  and `beforeEach` closes every pending outbox row and clears `sms_daily_usage`.
+- Cause: the default test phone number was uniformly random
+  (`+234803` + 7 digits). The TEST-ONLY sandbox chooses a simulated outcome from the last three
+  digits (`SANDBOX_SMS_SCENARIOS`: `001` rejected, `002` unavailable/retry, `003` transport error),
+  so 3 in 1,000 random numbers were not ordinary numbers. One run of the file draws 90 random
+  numbers (measured), so about 24 % of runs contain at least one scenario number; a run fails when
+  it lands on a row whose outcome a test asserts.
+- Reproduction: forcing one of that test's numbers to end in `002` gives exactly the observed
+  result, three out of three runs: `{"claimed":5,"sent":2,"capped":2,"retrying":1,…}`.
+- Fix (test only): `ordinaryPhone()` in `sms-alerts.db.test.ts` and `sms-startup.db.test.ts` (the
+  latter's control run "sends" has the same exposure) redraws until the suffix is not a sandbox
+  scenario, derived from `SANDBOX_SMS_SCENARIOS`. Tests that exercise a scenario still choose
+  that number explicitly. No assertion changed.
+
+**2. API `ussd.db.test.ts` "recovery with code and key… after a transfer" (observed a row count
++1/+2).**
+
+- Cause: to prove that "lost code or key" records no recovery attempt, the test compared
+  `SELECT COUNT(*) FROM recovery_throttle` before and after. That table is global (no tenant
+  column) and other API suites running at the same time (`recovery*.db.test.ts`, other USSD tests)
+  write to it, so the count could change for reasons unrelated to this request.
+- Reproduction: the unchanged test failed 1 of 6 runs when run concurrently with the recovery
+  suites (`expected 14023 to be 14022`), and **3 of 3** runs with a background process writing
+  unrelated `recovery_throttle` rows every 10 ms during the test.
+- Fix (test only): the assertion now covers every throttle key the recovery code can derive for
+  this request (`targetKeys`: source, target, target-source, facility, facility-source) for this
+  phone, this facility and both ticket codes of the test, checked unchanged, plus no `source` row
+  at all for the phone that only chose "lost". The derivation is checked against reality (the
+  recovering phone's own `source` row is found with ≥ 1 attempt). Mutation: inserting one
+  throttle write for the facility-source key on the "lost" path makes the test fail.
+- Not an application defect: recovery and its throttles are unchanged and still covered by
+  `recovery.db.test.ts` (including the guess-independent keys and atomic counting).
+
+**Verification (exact commands, local):**
+
+| Command                                                                                                                               | Runs | Failures |
+| ------------------------------------------------------------------------------------------------------------------------------------- | ---: | -------: |
+| `cd apps/worker && npx vitest run --config vitest.db.config.ts src/sms-alerts.db.test.ts` (fixed)                                     |   15 |        0 |
+| same, the forced-`002` reproduction on the old generator                                                                              |    3 |        3 |
+| `cd apps/api && npx vitest run --config vitest.db.config.ts src/ussd.db.test.ts -t "after a transfer"` (fixed, isolated)              |   10 |        0 |
+| `… src/ussd.db.test.ts src/recovery.db.test.ts src/recovery-staff-limit.db.test.ts src/recovery-audit.db.test.ts` (fixed, concurrent) |    8 |        0 |
+| target test with concurrent unrelated `recovery_throttle` writes: old / fixed                                                         |  3/3 |    3 / 0 |
+| `pnpm test:db` (API 760 and worker 114, concurrently)                                                                                 |    5 |        0 |
+| `pnpm --filter @queuebridge/api --filter @queuebridge/worker test`; `pnpm format:check`, `pnpm lint`, `pnpm typecheck`                |    1 |        0 |
+
+Not done: no repeated runs of the old worker test beyond 15 (0 failures there is consistent with
+the low per-test rate); the cause is established by the deterministic reproduction and the
+measured draw count, not by a retry.
+
+### M7.2 final review corrections (2026-11-21)
+
+1. **Story stage 5 caption** (`src/landing/locales/en.ts`): "Most are confirmed" removed (no
+   evidence for a success rate). Now: the server verifies each submitted action; valid actions are
+   confirmed; an action that conflicts with what the server already recorded is flagged "Needs
+   review" for a supervisor and never silently overwrites it. Six stages and the i18n structure
+   unchanged.
+2. **Onboarding readiness scoped to the selected facility** (`src/landing/Onboarding.tsx`): the
+   readiness answer is stored with the facility id it was loaded for and used only while that
+   facility is selected. Before, the previous facility's readiness was still rendered for one
+   pass after a switch (it was cleared in an effect). The existing cancellation of stale requests
+   and the authorized endpoints are unchanged. New `src/landing/onboarding.test.tsx` (3 tests,
+   API replaced by controllable promises): no state from the previous facility before the new
+   answer; a late answer for a facility no longer selected is ignored; switching back waits for
+   that facility's own fresh answer. Mutation: using the stored readiness without the facility
+   check fails 2 of the 3.
+3. **Logo backing token** (`src/landing/landing.css`): `#fff` replaced by
+   `var(--qb-color-on-brand-navy)`, which is `#ffffff` in all four themes; a new assertion in
+   `packages/ui/src/tokens.test.ts` keeps it white. `landing.css` now has no raw colour. Logo
+   files unchanged.
+
+Verification (local): `apps/web` vitest 208 passed (landing, onboarding, tokens and
+copy-truthfulness included); `packages/ui` 18 passed; Playwright `landing.spec.ts`,
+`admin-journey.spec.ts`, `design-system.spec.ts` on desktop-chromium 33 passed; `pnpm
+format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, `bundle:check` (landing JS 24,251 B
+gzip, limit 26,647) pass.
+
+### M7.2 visual acceptance refinements (2026-11-21)
+
+**A. Theme selection.** The existing device preference (`qb.a11y.v1`, M5.2) gains `theme`:
+`system` (default, follows `prefers-color-scheme`), `light`, `dark`; applied as
+`html[data-theme]` before first render like the other preferences; chosen under **Display and
+alerts → Theme** (the existing header control). No new store. The generated token CSS
+(`packages/ui/src/tokens.ts`) now resolves: explicit light/dark beats the OS in both directions;
+high contrast (device or OS) uses the light or dark high-contrast set according to that result;
+`color-scheme` follows. Palette unchanged. Tests: preference parsing/attributes
+(`a11yPrefs.test.ts`), CSS selector coverage (`tokens.test.ts`); Playwright: Light chosen on a
+dark OS stays light after reload and on landing, join, recovery, board and sign-in; Dark chosen on
+a light OS on landing, staff console and facility administration (axe clean); System follows the
+OS and a live OS change; high contrast combines with both themes (white/black grounds, axe clean).
+The M5.2 "stored fields" assertions now list seven fields (`theme` added) in the unit and browser
+tests.
+
+**B. Continuity story as a workflow simulation.** One persistent SVG (`StoryScene.tsx`,
+`data-stage`) of the visitor's ticket page, the server/connection and the coordinator console;
+stages change by 420 ms opacity/transform crossfades; the ticket pops in (stage 1), sync packets
+travel console → server while reconnecting (stage 5), the committed call travels server → ticket
+page before "It's your turn" (stage 6); a progress bar shows time left on the stage. Drawn
+truthfully: offline console rows are dashed "Local only", the ticket page says "Not updating /
+Last confirmed", other devices "capture only"; after reconnection G013 is "Synced" while G012 stays
+"Needs review" through stage 6; "Called"/"It's your turn" only in stage 6 with the server online.
+Pause stops everything that repeats (packets, stage clock); one-shot entrances under a second
+finish so a stage chosen by hand is fully drawn. Reduced motion: the six static cards each show
+the same drawing at its stage, no motion. All labels are localized (`story.sim.*`). New
+Playwright test checks the visible labels at every stage (including the two negative claims) and
+that nothing looping runs while paused.
+
+**C. Responsive refinements (`landing.css`).** Hero title `clamp(1.75rem, 3vw + 1rem, 3rem)`
+(28 px at 320, 48 px at 1440; was up to 56 px), hero lead 17/18 px with 1.6 line height, smaller
+logo on phones, actions stacked full width under 40rem; section headings
+`clamp(1.375rem … 1.875rem)` weight 700 with a short teal rule above (landing cue, not admin);
+section gap 32 px on phones, 64 px from 48rem; cards with a teal top edge, muted body text,
+16/24 px padding; story list lighter weight and captions full width under 24rem. No content
+removed. Screenshots reviewed at 375 and 1280 px and for every simulation stage.
+
+**Bundle budgets re-derived (recorded in `apps/web/bundle-baseline.json` history):** entry CSS
+6,919 → 7,001 B gzip (+82 B, theme selectors app-wide) and landing CSS 2,257 → 3,044 B (+787 B,
+simulation). Entry JS 195,405 B and landing JS 24,723 B stay inside the earlier limits.
+
+**Verification (local):** `pnpm test` all pass (web 208, ui 18); Playwright full suite 342
+passed, 7 skipped (existing environment skips), 0 failed, including `landing.spec.ts` 24 (theme,
+simulation, stages, Pause/Resume, reduced motion, axe and overflow at 320/375/768/1280/1440 in
+light, dark, both high-contrast sets and 150 % text), `design-system.spec.ts`,
+`accessibility*.spec.ts`; `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build`,
+`bundle:check` pass. 200 % browser zoom is covered by the 640-px-equivalent widths (320–768 px
+runs) rather than a zoom emulation; a manual 200 % pass remains for final acceptance.
+
+Ask Que (MQ.6): `visitor.accessibility` v2 names the new **Theme** setting; lock regenerated
+(kbVersion 8 on this branch), `kb-base-check` against `staging` passes, assist 262, web Que 51
+and API KB 42 tests pass.
+
+### M7.2 header interaction defect and floating Ask Que (2026-11-21)
+
+**Observed (manual acceptance):** "Display and alerts" and "Ask Que" appeared to do nothing.
+
+**Reproduction.** Production preview (`vite build && vite preview`, production CSP), Chromium,
+WebKit and an iPhone profile, light and dark: both open correctly (dialog `open`, on top, focus
+inside). Firefox could not be launched on this machine (Playwright profile error), so it is
+untested. Development server (`vite`, React development build): both fail in Chromium and WebKit
+with no console error. Instrumenting `HTMLDialogElement` showed, per click:
+`showModal()` → `close()` → `showModal()` → `close` event → `close()` → dialog removed.
+
+**Root cause.** `SettingsDialog` (M5.2) and `QuePanel` (MQ.3) open their `<dialog>` in an effect
+whose cleanup calls `dialog.close()`, and wire the dialog's `close` event to `onClose`, which
+unmounts it. React StrictMode (enabled in `main.tsx`) runs effect setup → cleanup → setup again
+in development. The cleanup's `close()` queues a `close` event; it is dispatched after the
+second `showModal()`/`show()`, so `onClose` removed the dialog that had just reopened. Production
+builds run effects once, which is why the preview-based suite (and every earlier test) never saw
+it. Not caused by the CSP, the theme work, z-index or lazy chunks (pointer target checks: the
+buttons received the clicks).
+
+**Fix.** Both dialogs ignore a `close` event while the dialog is open again
+(`if (!e.currentTarget.open) onClose()`); a real close (Escape, Close, Done, navigation) still
+closes exactly once and returns focus. No other behaviour changed.
+
+**Ask Que launcher.** Removed from the header (`Layout.tsx`) and rendered after `<main>` as a
+fixed launcher (`.que-launcher`): bottom right with `env(safe-area-inset-*)` margins (at least
+16 px), 48 px high pill, primary blue with a teal ring (navy while open), help icon plus the
+visible name "Ask Que" (`aria-expanded`, `aria-haspopup`), visible focus ring, hidden in print,
+plain border in high contrast. The desktop panel opens directly above it, right-aligned, and the
+launcher stays uncovered and toggles it; phones keep the full-screen modal sheet. The chunk
+"loading" and "could not be opened" messages also sit above it. `.main` has extra bottom
+padding and `scroll-padding-bottom` is 8rem so the last controls and the focused control are
+never under the launcher; on phones the toast sits above it. Same component, permissions, lazy
+chunk, offline warm-up and AI behaviour.
+
+**Regression tests (`e2e/header-controls.spec.ts`).** The `@dev` checks also run in a new
+`dev-strict` Playwright project against the development server (`playwright.config.ts` starts
+`vite` on WEB_PORT + 100), where the defect reproduced. With the fix reverted: the 4 `dev-strict`
+tests fail and the 6 preview tests pass (the original blind spot); with the fix: 25/25 pass
+across desktop, 1440, 320, 375 and dev-strict. They check the element under the pointer is the
+control (no overlay intercepts), the dialog is still open after the event loop turns and is on
+top, focus enters and returns, Escape/Close/Done, theme/text size/contrast apply and persist
+after reload, axe, no page overflow, the launcher's fixed bottom-right position and size, panel
+placement above it, three open/close rounds, use on ticket, recovery, board, staff console and
+facility admin screens with their last control clear of the launcher, and recovery after an
+aborted help chunk. Light and dark both.
+
+**Adapted:** `ui-layout.spec.ts` header checks count six/four header items and expect the
+keyboard order without "Ask Que" (it moved out of the header).
+
+**Bundle:** entry CSS 7,001 → 7,221 B gzip (+220 B, launcher and clearance rules), recorded in
+`bundle-baseline.json` history; entry JS 195,475 B, landing JS 24,726 B within limits.
+
+**Verification (local):** format, lint, typecheck, build, `bundle:check` pass; `pnpm test` pass
+(web 208, ui 18); Playwright full suite **367 passed, 7 skipped** (existing environment skips),
+0 failed, including the new `dev-strict` project.
+
+**Remaining risks:** Firefox not exercised locally; the launcher can still cover content a
+person scrolls underneath mid-page (only the end of each page is guaranteed clear); real-device
+safe-area behaviour on iOS is part of the final device checklist.

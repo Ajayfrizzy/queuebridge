@@ -396,8 +396,9 @@ test.describe('@responsive site header', () => {
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       const vw = page.viewportSize()?.width ?? 0;
       const items = await headerItems(page);
-      // M5.2 adds "Display and alerts"; MQ.3 adds "Ask Que" (same checks apply to both)
-      expect(items.length).toBe(signedIn ? 7 : 5);
+      // M5.2 adds "Display and alerts"; M7.2 moves "Ask Que" out of the header to a floating
+      // launcher (checked below)
+      expect(items.length).toBe(signedIn ? 6 : 4);
 
       for (const it of items) {
         expect(it.x, `${it.name} not clipped left`).toBeGreaterThanOrEqual(0);
@@ -450,11 +451,10 @@ test.describe('@responsive site header', () => {
             'Administration',
             // M7.1: the sidebar's collapse control, shown (and focusable) on desktop only
             ...(vw >= 1024 ? ['Collapse navigation'] : []),
-            'Ask Que',
             'Display and alerts',
             'Sign out',
           ]
-        : ['QueueBridge', 'Sign in', 'Create organization', 'Ask Que', 'Display and alerts'];
+        : ['QueueBridge', 'Sign in', 'Create organization', 'Display and alerts'];
       for (const name of expected) {
         await page.keyboard.press('Tab');
         const focused = await page.evaluate(() =>

@@ -341,19 +341,27 @@ function selectArrow(color: string): string {
   return `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 6l4.5 4.5L12.5 6' fill='none' stroke='${stroke}' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`;
 }
 
-function colorBlock(roles: ColorRoles, indent: string): string {
+function colorBlock(roles: ColorRoles, indent: string, scheme: 'light' | 'dark'): string {
   const lines = (Object.keys(roles) as (keyof ColorRoles)[]).map(
     (k) => `${indent}--qb-color-${kebab(k)}: ${roles[k]};`,
   );
   lines.push(`${indent}--qb-select-arrow: ${selectArrow(roles.text)};`);
+  lines.push(`${indent}color-scheme: ${scheme};`);
   return lines.join('\n');
 }
 
 /**
- * Render every token as CSS custom properties. Theme selection, in order of strength:
- * explicit high contrast (`html[data-contrast='high']`, the existing device preference) >
- * the operating system's `prefers-contrast: more` (while the preference is `system`) >
- * light/dark from `prefers-color-scheme`. Forced-colours mode is left to the browser.
+ * Render every token as CSS custom properties. Theme selection (M7.2 adds the explicit theme):
+ *
+ * - Light or dark: the device preference `html[data-theme='light'|'dark']` wins; with `system`
+ *   (or no attribute) `prefers-color-scheme` decides.
+ * - High contrast: the explicit device preference `html[data-contrast='high']`, or the operating
+ *   system's `prefers-contrast: more` while the preference is `system`; it uses the light or the
+ *   dark high-contrast set according to the theme rule above.
+ * - Forced-colours mode is left to the browser.
+ *
+ * Rules of equal specificity are ordered so that later ones win; more specific combinations
+ * (theme + contrast) carry more attribute selectors.
  */
 export function tokensToCss(): string {
   const scalar: string[] = [];
@@ -371,31 +379,41 @@ export function tokensToCss(): string {
     '   Do not edit by hand: apps/web/src/tokens.test.ts fails if this file drifts. */',
     ':root {',
     ...scalar,
-    colorBlock(THEMES.light, '  '),
-    '  color-scheme: light;',
+    colorBlock(THEMES.light, '  ', 'light'),
     '}',
+    // dark: the system, unless the person chose light; or the person chose dark
     '@media (prefers-color-scheme: dark) {',
-    '  :root {',
-    colorBlock(THEMES.dark, '    '),
-    '    color-scheme: dark;',
+    "  html:not([data-theme='light']) {",
+    colorBlock(THEMES.dark, '    ', 'dark'),
     '  }',
     '}',
+    "html[data-theme='dark'] {",
+    colorBlock(THEMES.dark, '  ', 'dark'),
+    '}',
+    // high contrast from the operating system (device preference left at `system`)
     '@media (prefers-contrast: more) {',
     "  html:not([data-contrast='high']) {",
-    colorBlock(THEMES.highContrast, '    '),
+    colorBlock(THEMES.highContrast, '    ', 'light'),
+    '  }',
+    "  html[data-theme='dark']:not([data-contrast='high']) {",
+    colorBlock(THEMES.highContrastDark, '    ', 'dark'),
     '  }',
     '}',
     '@media (prefers-contrast: more) and (prefers-color-scheme: dark) {',
-    "  html:not([data-contrast='high']) {",
-    colorBlock(THEMES.highContrastDark, '    '),
+    "  html:not([data-theme='light']):not([data-contrast='high']) {",
+    colorBlock(THEMES.highContrastDark, '    ', 'dark'),
     '  }',
     '}',
+    // high contrast chosen on the device
     "html[data-contrast='high'] {",
-    colorBlock(THEMES.highContrast, '  '),
+    colorBlock(THEMES.highContrast, '  ', 'light'),
+    '}',
+    "html[data-contrast='high'][data-theme='dark'] {",
+    colorBlock(THEMES.highContrastDark, '  ', 'dark'),
     '}',
     '@media (prefers-color-scheme: dark) {',
-    "  html[data-contrast='high'] {",
-    colorBlock(THEMES.highContrastDark, '    '),
+    "  html[data-contrast='high']:not([data-theme='light']) {",
+    colorBlock(THEMES.highContrastDark, '    ', 'dark'),
     '  }',
     '}',
     "html[data-text-size='large'] {",

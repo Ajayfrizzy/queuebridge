@@ -19,7 +19,8 @@ test('new organization configures a facility end to end and onboards a staff mem
 
   // --- Organization signup -------------------------------------------------------------
   await page.goto('/');
-  await page.getByRole('link', { name: 'Create an organization' }).click();
+  // M7.2: the landing page's primary call to action starts the same sign-up flow
+  await page.getByRole('link', { name: 'Set up your facility' }).click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Create your organization');
   await page.getByLabel('Organization name').fill(orgName);
   const orgSlug = await page.getByLabel('Organization URL identifier').inputValue();

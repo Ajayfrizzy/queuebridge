@@ -14,6 +14,13 @@ const API_PORT = 3101;
 // and normal runs use 4173. Specs derive expected links from `baseURL` (WEB_BASE_URL = WEB_ORIGIN)
 const WEB_PORT = Number(process.env['E2E_WEB_PORT'] ?? 4173);
 const WEB_ORIGIN = `http://localhost:${WEB_PORT}`;
+/**
+ * M7.2: the development server (`vite`, React development build with StrictMode), where the
+ * "Display and alerts" / "Ask Que" defect reproduced. Only the `@dev` header-control checks run
+ * against it; it serves the same source with no CSP (the preview projects cover the CSP).
+ */
+const DEV_PORT = WEB_PORT + 100;
+const DEV_ORIGIN = `http://localhost:${DEV_PORT}`;
 const DATABASE_URL =
   process.env['TEST_DATABASE_URL'] ??
   'postgres://postgres:password@localhost:55433/queuebridge_test';
@@ -54,6 +61,12 @@ export default defineConfig({
       name: 'mobile-375',
       use: { ...devices['Desktop Chrome'], viewport: { width: 375, height: 667 } },
       grep: /@responsive/,
+    },
+    {
+      name: 'dev-strict',
+      testMatch: /header-controls\.spec\.ts/,
+      grep: /@dev/,
+      use: { ...devices['Desktop Chrome'], baseURL: DEV_ORIGIN },
     },
   ],
   webServer: [
@@ -109,6 +122,13 @@ export default defineConfig({
       command: `pnpm exec vite build && pnpm exec vite preview --port ${WEB_PORT} --strictPort`,
       url: WEB_ORIGIN,
       timeout: 180_000,
+      reuseExistingServer: false,
+      env: { VITE_API_BASE_URL: '', API_PROXY_TARGET: `http://localhost:${API_PORT}` },
+    },
+    {
+      command: `pnpm exec vite --port ${DEV_PORT} --strictPort`,
+      url: DEV_ORIGIN,
+      timeout: 120_000,
       reuseExistingServer: false,
       env: { VITE_API_BASE_URL: '', API_PROXY_TARGET: `http://localhost:${API_PORT}` },
     },

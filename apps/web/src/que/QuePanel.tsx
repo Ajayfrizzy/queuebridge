@@ -231,7 +231,10 @@ export function QuePanel({
       aria-labelledby={titleId}
       data-testid="que-panel"
       data-mode={sheet ? 'sheet' : 'panel'}
-      onClose={onClose}
+      onClose={(e) => {
+        // Ignore a queued `close` from a cleanup that was followed by a re-show (StrictMode)
+        if (!e.currentTarget.open) onClose();
+      }}
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
           // A modal sheet closes natively; the non-modal panel closes here

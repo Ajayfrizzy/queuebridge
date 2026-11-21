@@ -57,6 +57,11 @@ describe('design tokens (M7.1)', () => {
     }
   });
 
+  it('the logo backing on navy (on-brand-navy) stays white in every theme', () => {
+    // The supplied logo artwork has a light ground; the landing hero relies on this token
+    for (const t of Object.values(THEMES)) expect(t.onBrandNavy).toBe('#ffffff');
+  });
+
   it('contrast helper matches known values', () => {
     expect(contrastRatio('#000000', '#ffffff')).toBeCloseTo(21, 5);
     expect(contrastRatio('#ffffff', '#ffffff')).toBeCloseTo(1, 5);
@@ -76,6 +81,10 @@ describe('design tokens (M7.1)', () => {
   it('the CSS output covers every theme, reduced motion and text size, with no network URL', () => {
     const css = tokensToCss();
     expect(css).toContain("html[data-contrast='high']");
+    // M7.2: explicit theme beats the system setting, in both directions
+    expect(css).toContain("html[data-theme='dark'] {");
+    expect(css).toContain("html:not([data-theme='light'])");
+    expect(css).toContain("html[data-contrast='high'][data-theme='dark']");
     expect(css).toContain('prefers-color-scheme: dark');
     expect(css).toContain('prefers-contrast: more');
     expect(css).toContain("html[data-motion='reduce']");

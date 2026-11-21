@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "clean": "rm -rf dist",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "bundle:check": "node scripts/bundle-check.mjs"
   },
   "dependencies": {
     "@queuebridge/assist": "workspace:*",

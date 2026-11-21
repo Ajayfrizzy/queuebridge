@@ -1,0 +1,35 @@
+{
+  "note": "Measured gzip -9 sizes in bytes (vite build, apps/web/dist). The entry is what every visitor, staff and admin route downloads. 'before' = staging 08aae0b (M7.1), before the landing page existed; 'landing' = first M7.2 measurement. Thresholds: the entry may not grow beyond the pre-M7.2 baseline by more than entryTolerance; the landing chunk may not grow beyond its first measurement by more than landingTolerance. Update only with a recorded reason (see history and docs/testing/M7-evidence.md).",
+  "measuredAt": "2026-11-21",
+  "before": {
+    "entryJs": 195289,
+    "entryCss": 7221
+  },
+  "landing": {
+    "js": 24225,
+    "css": 3044
+  },
+  "entryTolerance": 0.01,
+  "landingTolerance": 0.1,
+  "history": [
+    {
+      "at": "2026-11-21",
+      "entryJs": 195289,
+      "entryCss": 6919,
+      "landingJs": 24225,
+      "landingCss": 2257,
+      "reason": "first measurement: before (08aae0b) and first M7.2 landing build"
+    },
+    {
+      "at": "2026-11-21",
+      "entryCss": 7001,
+      "landingCss": 3044,
+      "reason": "M7.2 visual acceptance: explicit Light/Dark/System theme (theme selectors in the app-wide tokens.css, +82 B) and the workflow simulation (landing CSS, +787 B). Approved scope; thresholds re-derived from these measurements"
+    },
+    {
+      "at": "2026-11-21",
+      "entryCss": 7221,
+      "reason": "M7.2 header fix: Ask Que moved to a floating launcher (launcher, panel offset, toast and content clearance styles in the app-wide stylesheet, +220 B). Approved scope; threshold re-derived from this measurement"
+    }
+  ]
+}

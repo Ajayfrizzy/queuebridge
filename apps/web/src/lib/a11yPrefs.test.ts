@@ -21,6 +21,7 @@ describe('device-local accessibility preferences (11.A4)', () => {
 
   it('defaults: follow the system, normal size, sound OFF, vibration on, not quiet', () => {
     expect(loadPrefs()).toEqual({
+      theme: 'system',
       contrast: 'system',
       textSize: 'normal',
       motion: 'system',
@@ -33,6 +34,7 @@ describe('device-local accessibility preferences (11.A4)', () => {
   it('round-trips and applies as data attributes before any rendering', () => {
     savePrefs({
       ...DEFAULT_PREFS,
+      theme: 'light',
       contrast: 'high',
       textSize: 'xlarge',
       motion: 'reduce',
@@ -41,6 +43,7 @@ describe('device-local accessibility preferences (11.A4)', () => {
     const applied = applyStoredPrefs();
     expect(applied.contrast).toBe('high');
     const root = document.documentElement;
+    expect(root.getAttribute('data-theme')).toBe('light');
     expect(root.getAttribute('data-contrast')).toBe('high');
     expect(root.getAttribute('data-text-size')).toBe('xlarge');
     expect(root.getAttribute('data-motion')).toBe('reduce');
@@ -53,15 +56,17 @@ describe('device-local accessibility preferences (11.A4)', () => {
     expect(
       parsePrefs({ contrast: 'neon', textSize: 'large', motion: 7, quiet: 'yes', sound: true }),
     ).toEqual({ ...DEFAULT_PREFS, textSize: 'large', sound: true });
+    expect(parsePrefs({ theme: 'sepia' }).theme).toBe('system');
+    expect(parsePrefs({ theme: 'dark' }).theme).toBe('dark');
     expect(parsePrefs(null)).toEqual(DEFAULT_PREFS);
     expect(parsePrefs('high')).toEqual(DEFAULT_PREFS);
   });
 
-  it('holds no personal data: only the six display and alert fields are stored', () => {
+  it('holds no personal data: only the seven display and alert fields are stored', () => {
     savePrefs({ ...DEFAULT_PREFS, contrast: 'high' });
     const stored = JSON.parse(localStorage.getItem(A11Y_KEY) ?? '{}') as Record<string, unknown>;
     expect(Object.keys(stored).sort()).toEqual(
-      ['contrast', 'motion', 'quiet', 'sound', 'textSize', 'vibration'].sort(),
+      ['contrast', 'motion', 'quiet', 'sound', 'textSize', 'theme', 'vibration'].sort(),
     );
   });
 
@@ -87,7 +92,7 @@ describe('device-local accessibility preferences (11.A4)', () => {
     const el = document.createElement('div');
     applyPrefs({ ...DEFAULT_PREFS, quiet: true }, el);
     expect(el.getAttributeNames().sort()).toEqual(
-      ['data-contrast', 'data-motion', 'data-quiet', 'data-text-size'].sort(),
+      ['data-contrast', 'data-motion', 'data-quiet', 'data-text-size', 'data-theme'].sort(),
     );
   });
 });

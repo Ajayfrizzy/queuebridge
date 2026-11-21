@@ -14,16 +14,19 @@ describe('design tokens in the web app', () => {
     expect(read('./tokens.css')).toBe(tokensToCss());
   });
 
-  it('styles.css contains no raw colour values outside the documented exceptions', () => {
-    const css = read('./styles.css')
-      // comments may mention colours
-      .replace(/\/\*[\s\S]*?\*\//g, '');
-    // Allowed: translucent black/white scrims and overlays (theme-neutral), and #fff for the QR
-    // code and the logo tile, which stay dark-on-white for scanners and the supplied artwork.
-    const raw =
-      css.match(/#[0-9a-fA-F]{3,8}\b|\brgba?\((?!\s*(?:0 0 0|255 255 255) \/)[^)]*\)/g) ?? [];
-    expect(raw.filter((c) => c.toLowerCase() !== '#fff')).toEqual([]);
-  });
+  it.each(['./styles.css', './landing/landing.css'])(
+    '%s contains no raw colour values outside the documented exceptions',
+    (file) => {
+      const css = read(file)
+        // comments may mention colours
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+      // Allowed: translucent black/white scrims and overlays (theme-neutral), and #fff for the QR
+      // code and the logo tile, which stay dark-on-white for scanners and the supplied artwork.
+      const raw =
+        css.match(/#[0-9a-fA-F]{3,8}\b|\brgba?\((?!\s*(?:0 0 0|255 255 255) \/)[^)]*\)/g) ?? [];
+      expect(raw.filter((c) => c.toLowerCase() !== '#fff')).toEqual([]);
+    },
+  );
 
   it('the app loads the tokens before its own styles', () => {
     const main = read('./main.tsx');
