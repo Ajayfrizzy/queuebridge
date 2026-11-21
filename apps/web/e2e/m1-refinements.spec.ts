@@ -395,8 +395,13 @@ test.describe('@responsive desktop layout uses the available width', () => {
     await page.goto('/admin');
     const vw = page.viewportSize()?.width ?? 0;
     const w = (await page.locator('#main').boundingBox())?.width ?? 0;
-    // Container is capped at 1280px; below that it must use (nearly) the whole viewport
-    expect(w).toBeGreaterThan(Math.min(vw, 1280) - 40);
-    if (vw >= 1400) expect(w).toBeGreaterThan(1200);
+    // M7.1: on desktop the staff navigation is a sidebar; the content must fill the rest
+    const nav = await page.getByRole('navigation', { name: 'Primary' }).boundingBox();
+    const sidebar = vw >= 1024 && nav && nav.x < 1 && nav.height > 300 ? nav.width : 0;
+    expect(sidebar, 'sidebar stays narrow').toBeLessThanOrEqual(260);
+    const available = vw - sidebar;
+    // Container is capped at 1280px; below that it must use (nearly) the whole available width
+    expect(w).toBeGreaterThan(Math.min(available, 1280) - 40);
+    if (vw >= 1400) expect(w).toBeGreaterThan(vw * 0.8);
   });
 });

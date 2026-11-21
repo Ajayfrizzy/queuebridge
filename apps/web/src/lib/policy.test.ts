@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ServicePolicy } from '@queuebridge/contracts';
-import { describePolicy, enabledClasses, isSingleQueue } from './policy.js';
+import { describePolicy, enabledClasses, isSingleQueue, transferPlacementNote } from './policy.js';
 
 const p = (priority_order: ServicePolicy['priority_order'], grace = 300): ServicePolicy => ({
   version: 'v1',
@@ -50,5 +50,22 @@ describe('service policy display', () => {
 
   it('includes the grace window', () => {
     expect(describePolicy(p(['normal'], 90))).toContain('Grace window 90s');
+  });
+});
+
+describe('MQ.5 U3: the transfer note states the committed placement', () => {
+  it('follows the placement the transfer recorded, never the policy text', () => {
+    expect(transferPlacementNote('A-001', 'by_original_join_time')).toContain(
+      'original waiting time was kept',
+    );
+    expect(transferPlacementNote('A-001', 'end_of_queue')).toContain('joined the end');
+    expect(transferPlacementNote('A-001', 'end_of_queue')).not.toContain('kept');
+  });
+  it('claims no placement when it is unknown (older saved copy)', () => {
+    for (const p of [null, undefined]) {
+      expect(transferPlacementNote('A-001', p)).toBe(
+        'Your ticket A-001 was moved to this service.',
+      );
+    }
   });
 });

@@ -974,6 +974,7 @@ export function StaffConsole(): ReactElement {
                       }}
                       policy={q.policy}
                       counter={callableCounter}
+                      canCallOutOfOrder={isSupervisor}
                       disabled={onlineOnlyDisabled}
                       run={runOnline}
                       onClose={() => setManaging(null)}
@@ -1006,6 +1007,22 @@ export function StaffConsole(): ReactElement {
                       </span>
                     ) : (
                       <span className="ticket-row-actions">
+                        {/* MQ.5 U5: waiting → paused (counter operators and supervisors) */}
+                        {canCount ? (
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            disabled={onlineOnlyDisabled}
+                            onClick={() =>
+                              void send(
+                                cmd('ticket.pause', { ticket_id: t.id }),
+                                () => `${t.public_code} put on hold.`,
+                              )
+                            }
+                          >
+                            Put on hold<span className="visually-hidden"> {t.public_code}</span>
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           className="btn btn-secondary"

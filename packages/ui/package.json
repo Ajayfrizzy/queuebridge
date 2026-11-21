@@ -17,7 +17,8 @@
     "typecheck": "tsc --noEmit --project tsconfig.json",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "clean": "rm -rf dist tsconfig.tsbuildinfo"
+    "clean": "rm -rf dist tsconfig.tsbuildinfo",
+    "tokens:css": "tsc --project tsconfig.json && node scripts/write-tokens-css.mjs"
   },
   "dependencies": {
     "@queuebridge/contracts": "workspace:*",

@@ -2,6 +2,8 @@ import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth.js';
 import { storedTickets, ticketPath } from '../lib/tickets.js';
+// M7.1: a downscaled copy of the supplied logo (assets/brand/queuebridge-logo.png), for bandwidth
+import logoUrl from '../assets/brand/queuebridge-logo-720.png';
 
 export function Home(): ReactElement {
   const { user } = useAuth();
@@ -24,6 +26,7 @@ export function Home(): ReactElement {
           </ul>
         </section>
       ) : null}
+      <img className="brand-logo" src={logoUrl} alt="" width={720} height={240} />
       <h1>QueueBridge</h1>
       <p className="lead">
         Keep service moving — even when the connection does not. Set up your facility, services and

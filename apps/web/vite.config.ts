@@ -8,13 +8,14 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico'],
+      // M7.1: the product owner's supplied icons (public/); one manifest, generated here
+      includeAssets: ['favicon.ico', 'favicon.png', 'apple-touch-icon.png'],
       manifest: {
         name: 'QueueBridge',
         short_name: 'QueueBridge',
         description: 'Resilient, accessible, accountable queue-coordination platform',
-        theme_color: '#1a56db',
-        background_color: '#ffffff',
+        theme_color: '#102a43',
+        background_color: '#f8fafc',
         display: 'standalone',
         // No `orientation`: the app must work in portrait and landscape (WCAG 1.3.4, REQ-F7.17)
         icons: [
@@ -27,6 +28,12 @@ export default defineConfig({
             src: '/icons/icon-512.png',
             sizes: '512x512',
             type: 'image/png',
+          },
+          {
+            src: '/icons/icon-maskable-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
           },
         ],
       },

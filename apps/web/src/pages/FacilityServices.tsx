@@ -128,7 +128,7 @@ function PolicyFields({
       <Field
         id={`${idPrefix}-grace`}
         label="Grace window (seconds)"
-        hint="How long a called visitor may take to arrive before being marked missed."
+        hint="Counted from when the ticket is marked missed: how long it can still return to the queue."
         error={errors['policy.grace_window_seconds']}
       >
         {(aria) => (

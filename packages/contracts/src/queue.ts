@@ -212,6 +212,12 @@ export const TicketStatusSchema = z.object({
   estimate: WaitEstimateSchema.nullable(),
   /** Present when the visitor's original ticket was transferred */
   transferred_from_code: z.string().nullable(),
+  /**
+   * M7.1 (MQ.5 U3): where the committed transfer that created this ticket placed it, as recorded
+   * in that `ticket.transfer` event (`destination_placement`); never derived from the current
+   * policy. Null when the ticket was not transferred, or the event does not record it.
+   */
+  transfer_placement: z.enum(['by_original_join_time', 'end_of_queue']).nullable(),
   revision: z.number().int().nonnegative(),
   /** M5.1 recovery, rejoin and access information (no secret) */
   recovery: TicketRecoveryInfoSchema,

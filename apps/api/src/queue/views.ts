@@ -329,6 +329,8 @@ export interface ResolvedStatusTicket {
   /** The status token used for this request (row id; never the secret) */
   tokenId: string;
   tokenCreatedAt: Date;
+  /** The ticket transferred INTO the current one (null when not transferred) */
+  previousTicketId?: string | null;
 }
 
 /**
@@ -380,6 +382,7 @@ async function followChain(
   type Row = ResolvedTicket & { facility_id: string };
   const cols = db.unsafe(TICKET_COLS);
   let current: Row = first;
+  let previous: Row | null = null;
   const originalCode = current.public_code;
   const codes = [current.public_code];
   for (let hop = 0; hop < 10 && current.transferred_to_ticket_id; hop++) {
@@ -388,6 +391,7 @@ async function followChain(
        WHERE t.id = ${current.transferred_to_ticket_id} AND t.organization_id = ${current.organization_id}`;
     const nextRow = nextRows[0];
     if (!nextRow) break;
+    previous = current;
     current = nextRow;
     codes.push(current.public_code);
   }
@@ -400,6 +404,7 @@ async function followChain(
     rootTicketId: first.id,
     tokenId,
     tokenCreatedAt,
+    previousTicketId: previous?.id ?? null,
   };
 }
 
@@ -564,12 +569,37 @@ export async function ticketStatusView(
     estimate,
     transferred_from_code:
       resolved.codes.length > 1 ? (resolved.codes[resolved.codes.length - 2] ?? null) : null,
+    transfer_placement: resolved.previousTicketId
+      ? await committedTransferPlacement(db, resolved.previousTicketId, t)
+      : null,
     revision: session.revision,
     recovery: await recoveryInfo(db, resolved, session, opts.recoveryEnabled),
     call_sequence: t.state === TicketState.CALLED ? await currentCallSequence(db, t.id) : null,
   };
 }
 
+/**
+ * M7.1 (MQ.5 U3): the placement recorded by the committed `ticket.transfer` event that created
+ * this ticket (the source ticket's move into `transferred`). Historical: a later change of the
+ * destination's policy never alters it. Organization-scoped like the chain that reached it.
+ */
+async function committedTransferPlacement(
+  db: Db,
+  sourceTicketId: string,
+  t: { id: string; organization_id: string },
+): Promise<'by_original_join_time' | 'end_of_queue' | null> {
+  const [r] = await db<{ placement: string | null }[]>`
+    SELECT e.payload ->> 'destination_placement' AS placement
+      FROM ticket_transitions tt
+      JOIN tickets src ON src.id = tt.ticket_id
+      JOIN queue_events e ON e.id = tt.queue_event_id
+     WHERE tt.ticket_id = ${sourceTicketId} AND tt.to_state = 'transferred'
+       AND src.organization_id = ${t.organization_id} AND src.transferred_to_ticket_id = ${t.id}
+       AND e.payload ->> 'destination_ticket_id' = ${t.id}::text
+     ORDER BY e.sequence DESC LIMIT 1`;
+  const p = r?.placement;
+  return p === 'by_original_join_time' || p === 'end_of_queue' ? p : null;
+}
 /** The committed event sequence of the call a ticket is answering (its latest move INTO called). */
 export async function currentCallSequence(db: Db, ticketId: string): Promise<number | null> {
   const [r] = await db<{ sequence: number }[]>`
