@@ -97,7 +97,14 @@ main:focus {
 }
 .main {
   padding-top: var(--qb-space-5);
-  padding-bottom: var(--qb-space-7);
+  /* room below the last control for the floating Ask Que launcher (M7.2) */
+  padding-bottom: calc(var(--qb-space-7) + var(--qb-launcher-clear));
+}
+:root {
+  /* launcher height + its gap from the bottom edge */
+  --qb-launcher-clear: 4.5rem;
+  --qb-launcher-inset: max(var(--qb-space-4), env(safe-area-inset-right));
+  --qb-launcher-bottom: max(var(--qb-space-4), env(safe-area-inset-bottom));
 }
 
 .skip-link {
@@ -204,6 +211,11 @@ textarea,
 }
 .nav-list a:hover {
   background: var(--qb-color-surface-muted);
+}
+/* Never animate the link colour: when the shell switches to the navy sidebar (after sign-in is
+   known) a colour transition would pass through low-contrast values (found by axe, M7.2) */
+.nav-list a {
+  transition-property: background-color, box-shadow;
 }
 .nav-list a[aria-current='page'] {
   font-weight: 700;
@@ -883,6 +895,12 @@ legend {
 .toast-dismiss:focus-visible {
   outline-color: var(--qb-color-bg);
 }
+/* Phones: the full-width toast sits above the floating Ask Que launcher, never under it */
+@media (max-width: 40rem) {
+  .toast {
+    bottom: calc(var(--qb-launcher-bottom) + 3.75rem);
+  }
+}
 
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -1336,7 +1354,7 @@ legend {
 /* Focus is never hidden under the fixed notification at the bottom of the screen (WCAG 2.4.11) */
 html {
   scroll-padding-top: 1rem;
-  scroll-padding-bottom: 6rem;
+  scroll-padding-bottom: 8rem; /* clear of the toast and the floating Ask Que launcher */
 }
 h1:focus {
   outline: none; /* the focused heading is a landmark for the new page, not a control */
@@ -1464,16 +1482,66 @@ html[data-contrast='high'] .settings-dialog {
   margin: 0 0 var(--qb-space-2);
 }
 
+/* Ask Que launcher (M7.2): floats at the bottom right of every screen, clear of the safe areas */
+.que-launcher {
+  position: fixed;
+  right: var(--qb-launcher-inset);
+  bottom: var(--qb-launcher-bottom);
+  z-index: 45;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--qb-space-2);
+  min-height: 3rem;
+  padding: 0 var(--qb-space-5) 0 var(--qb-space-4);
+  border: 2px solid var(--qb-color-surface);
+  border-radius: var(--qb-radius-pill);
+  background: var(--qb-color-primary);
+  color: var(--qb-color-on-primary);
+  box-shadow:
+    0 0 0 3px var(--qb-color-accent),
+    var(--qb-shadow-lg);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition-property: background-color, box-shadow;
+  transition-duration: var(--qb-duration-fast);
+}
+.que-launcher:hover {
+  background: var(--qb-color-primary-hover);
+}
+.que-launcher[aria-expanded='true'] {
+  background: var(--qb-color-brand-navy);
+  color: var(--qb-color-on-brand-navy);
+}
+.que-launcher:focus-visible {
+  outline: 3px solid var(--qb-color-focus);
+  outline-offset: 5px;
+}
+.que-launcher-icon {
+  flex: none;
+  width: 1.375rem;
+  height: 1.375rem;
+}
+html[data-contrast='high'] .que-launcher {
+  border-color: var(--qb-color-text);
+  box-shadow: none;
+}
+@media print {
+  .que-launcher {
+    display: none !important;
+  }
+}
+
 /* Ask Que (MQ.3): a non-modal panel beside the page on wide screens, a full-height modal sheet
    on phones. No animation; scrolls inside itself at 320 px, 200 % zoom and large text. */
 .que-panel {
-  /* Anchored bottom-right and kept clear of the header, so the page's own controls (including
-     the Ask Que button and Sign out) stay visible and usable beside the non-modal panel */
+  /* M7.2: opens just above the floating launcher (which stays visible and toggles it) and is
+     kept clear of the header, so the page's own controls stay usable beside it */
   position: fixed;
-  inset: auto var(--qb-space-2) var(--qb-space-2) auto;
+  inset: auto var(--qb-launcher-inset) calc(var(--qb-launcher-bottom) + 3.75rem) auto;
   z-index: 40;
-  width: min(26rem, calc(100vw - 1rem));
-  max-height: min(42rem, calc(100dvh - 9rem));
+  width: min(26rem, calc(100vw - 2rem));
+  max-height: min(42rem, calc(100dvh - 11rem));
   margin: 0;
   padding: 0;
   border: 1px solid var(--qb-color-border);
@@ -1586,8 +1654,8 @@ html[data-contrast='high'] .settings-dialog {
 .que-chunk-error,
 .que-loading-chunk {
   position: fixed;
-  right: var(--qb-space-2);
-  bottom: var(--qb-space-2);
+  right: var(--qb-launcher-inset);
+  bottom: calc(var(--qb-launcher-bottom) + 3.75rem);
   z-index: 40;
   max-width: calc(100vw - 1rem);
 }

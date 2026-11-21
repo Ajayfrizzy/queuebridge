@@ -221,7 +221,7 @@ test.describe('11.A4 display preferences (device-local)', () => {
     await expect(html).toHaveAttribute('data-contrast', 'high');
     await expect(html).toHaveAttribute('data-text-size', 'large');
     await expect(html).toHaveAttribute('data-motion', 'reduce');
-    // stored on the device, six fields, nothing personal
+    // stored on the device, seven fields (M7.2 adds the theme), nothing personal
     const stored = JSON.parse(
       (await v.page.evaluate((k) => localStorage.getItem(k), PREFS_KEY)) ?? '{}',
     );
@@ -231,6 +231,7 @@ test.describe('11.A4 display preferences (device-local)', () => {
       'quiet',
       'sound',
       'textSize',
+      'theme', // M7.2
       'vibration',
     ]);
     // no request was made by changing them
@@ -349,9 +350,15 @@ test.describe('11.A5 contrast and reflow', () => {
 
 test.describe('11.A6 reduced motion', () => {
   async function probe(page: Page): Promise<{ transition: string; animation: string }> {
-    await page.addStyleTag({
-      content:
+    // M7.2: added through the CSSOM (a constructed stylesheet), because the production CSP served
+    // by the preview forbids inline <style>; the cascade, including the app's !important
+    // reduced-motion rules, is the same
+    await page.evaluate(() => {
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync(
         '@keyframes qbprobe { from { opacity: 0 } to { opacity: 1 } } #qb-probe { transition: color 1s; animation: qbprobe 1s; }',
+      );
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
     });
     return page.evaluate(() => {
       const el = document.createElement('div');

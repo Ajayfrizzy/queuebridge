@@ -9,15 +9,20 @@
  */
 export const A11Y_KEY = 'qb.a11y.v1';
 
+/** M7.2: colour theme. `system` follows `prefers-color-scheme`; light and dark are explicit. */
+export const THEME = ['system', 'light', 'dark'] as const;
 export const CONTRAST = ['system', 'high'] as const;
 export const TEXT_SIZE = ['normal', 'large', 'xlarge'] as const;
 export const MOTION = ['system', 'reduce'] as const;
 
+export type Theme = (typeof THEME)[number];
 export type Contrast = (typeof CONTRAST)[number];
 export type TextSize = (typeof TEXT_SIZE)[number];
 export type Motion = (typeof MOTION)[number];
 
 export interface A11yPrefs {
+  /** Light or dark palette; combines with `contrast` (high contrast has a light and a dark set) */
+  theme: Theme;
   /** `system` follows `prefers-contrast`; `high` always uses the high-contrast palette */
   contrast: Contrast;
   /** Root text size: 100 % / 125 % / 150 % */
@@ -33,6 +38,7 @@ export interface A11yPrefs {
 }
 
 export const DEFAULT_PREFS: Readonly<A11yPrefs> = Object.freeze({
+  theme: 'system',
   contrast: 'system',
   textSize: 'normal',
   motion: 'system',
@@ -49,6 +55,7 @@ const bool = (v: unknown, fallback: boolean): boolean => (typeof v === 'boolean'
 export function parsePrefs(raw: unknown): A11yPrefs {
   const o = raw !== null && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
   return {
+    theme: pick(THEME, o['theme'], DEFAULT_PREFS.theme),
     contrast: pick(CONTRAST, o['contrast'], DEFAULT_PREFS.contrast),
     textSize: pick(TEXT_SIZE, o['textSize'], DEFAULT_PREFS.textSize),
     motion: pick(MOTION, o['motion'], DEFAULT_PREFS.motion),
@@ -94,6 +101,7 @@ export function clearPrefs(): void {
 
 /** Express the preferences as `data-*` attributes on `<html>` (the CSS reads only these). */
 export function applyPrefs(prefs: A11yPrefs, root: HTMLElement = document.documentElement): void {
+  root.setAttribute('data-theme', prefs.theme);
   root.setAttribute('data-contrast', prefs.contrast);
   root.setAttribute('data-text-size', prefs.textSize);
   root.setAttribute('data-motion', prefs.motion);

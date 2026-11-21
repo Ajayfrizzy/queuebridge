@@ -653,7 +653,11 @@ test.describe('14.13 / 14.14 notification identity', () => {
     const idA = (await saved(v.page)).find((t) => t.pushRef === refA)?.id ?? '';
     await v.page.goto(`/ticket/${code}?k=${idA}`);
     await v.page.getByRole('button', { name: 'Forget this ticket on this device' }).click();
-    await expect(v.page.getByRole('heading', { level: 1 })).toHaveText('QueueBridge');
+    // back on the public home page (M7.2 landing: its headline is the page's h1)
+    await expect(v.page).toHaveURL(/\/$/);
+    await expect(v.page.getByRole('heading', { level: 1 })).toHaveText(
+      "Queues that keep moving when the connection doesn't.",
+    );
     const requests: string[] = [];
     v.page.on('request', (r) => requests.push(r.url()));
     const rp = `/recover/${a.org.slug}/${a.facility.slug}/${code}`;

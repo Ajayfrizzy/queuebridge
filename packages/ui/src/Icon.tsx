@@ -12,6 +12,7 @@ const PATHS = {
   check: 'M5 12.5l4.5 4.5L19 7.5',
   alert: 'M12 4l9 16H3z M12 10v4 M12 17.5v.01',
   info: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M12 11v6 M12 7.5v.01',
+  help: 'M4 5h16v11H10l-5 4v-4H4z M10 9.2a2 2 0 1 1 2.8 1.8c-.6.3-.8.7-.8 1.3 M12 14.3v.01',
 } as const;
 
 export type IconName = keyof typeof PATHS;

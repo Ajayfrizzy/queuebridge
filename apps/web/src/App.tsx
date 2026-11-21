@@ -1,5 +1,5 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
-import type { ReactElement } from 'react';
+import { lazy, Suspense, type ReactElement } from 'react';
 import { AuthProvider } from './auth.js';
 import { OfflineProvider } from './offline/OfflineProvider.js';
 import { AnnouncerProvider } from './components/Announcer.js';
@@ -14,7 +14,6 @@ import { FacilityLayout } from './pages/FacilityLayout.js';
 import { FacilityOverview } from './pages/FacilityOverview.js';
 import { FacilityServices } from './pages/FacilityServices.js';
 import { FacilityStaff } from './pages/FacilityStaff.js';
-import { Home } from './pages/Home.js';
 import { Login } from './pages/Login.js';
 import { Signup } from './pages/Signup.js';
 import { DisplayBoard } from './pages/DisplayBoard.js';
@@ -25,6 +24,19 @@ import { AuditTrail } from './pages/AuditTrail.js';
 import { StaffFacility, StaffHome } from './pages/StaffHome.js';
 import { TicketPage } from './pages/TicketPage.js';
 import { RecoverPage } from './pages/RecoverPage.js';
+import { Loading } from './components/Form.js';
+/**
+ * M7.2: the public landing page is its own lazily loaded chunk (design §14.1, §14.6). No other
+ * route imports `./landing/`, so visitor, staff and admin screens never download it.
+ */
+const LandingPage = lazy(() => import('./landing/LandingPage.js'));
+function Landing(): ReactElement {
+  return (
+    <Suspense fallback={<Loading what="page" />}>
+      <LandingPage />
+    </Suspense>
+  );
+}
 
 /**
  * Root application router.
@@ -40,7 +52,7 @@ export function App(): ReactElement {
             <A11yProvider>
               <Routes>
                 <Route element={<Layout />}>
-                  <Route path="/" element={<Home />} />
+                  <Route path="/" element={<Landing />} />
                   <Route path="/signup" element={<Signup />} />
                   <Route path="/login" element={<Login />} />
                   <Route path="/accept-invite" element={<AcceptInvite />} />

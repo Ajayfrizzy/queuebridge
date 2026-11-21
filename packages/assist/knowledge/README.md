@@ -4,7 +4,7 @@ Source articles for Ask Que (F13), compiled by `scripts/build-kb.mjs` into one v
 bundle per audience (`dist/kb/<audience>.json`). Design: `.kiro/specs/queuebridge/design.md` §11.2,
 §11.5, §11.10 and §11.10a.
 
-**Status (M7.1, knowledge-base version 7):** 47 articles (18 public, 29 restricted) covering the
+**Status (M7.2, knowledge-base version 8):** 47 articles (18 public, 29 restricted) covering the
 M1–M5 behaviour, the M6.1 SMS and M6.2 USSD sandboxes and the M6.3 Channels screen as implemented. The SMS and USSD
 articles are shown only where the TEST-ONLY sandbox is set up and say so. The capability coverage contract is
 `capabilities.json`. Evidence and the coverage matrix: `docs/testing/MQ-evidence.md` (MQ.5,
@@ -113,8 +113,9 @@ remain open (MQ.5 evidence, remaining gaps).
 | 2026-11-20 | 5         | Kiro (M6.2) | USSD moved from `planned` to the TEST-ONLY `sandbox` (MQ.6 rule applied in the same PR): `visitor.ussd` rewritten (v2: facility code, join, status and recovery with code and key, staff path), `capabilities.json` updated (status `sandbox`, default `not_configured`)                                                                                                                                          |
 | 2026-11-20 | 6         | Kiro (M6.3) | New Channels screen (`admin.facility.channels`, registered with defaults `admin.channels.sms`, `admin.channels.ussd` and the ungated `admin.readiness.join_link`); new gated articles `admin.channels.sms` and `admin.channels.ussd`; `visitor.alerts.sms` v3 and `staff.sms.alerts` v2 describe the optional SMS delay and the `alert_seen` outcome; no capability added or changed                              |
 | 2026-11-20 | 7         | Kiro (M7.1) | Redesign review against the M7.1 screens (labels, buttons and routes unchanged; no new screen). MQ.5 U3–U5 wording: `visitor.ticket.states` v2 (the transfer note states the actual placement), `staff.counter.calling` v2 (Put on hold also for a waiting visitor), `staff.auto_miss` v2 (the audit trail shows System (automatic) and the reason); U1 and U2 already matched the articles. No capability change |
+| 2026-11-20 | 8         | Kiro (M7.2) | Landing page at `/` (route `public.home` unchanged): `org.signup` v3 names its **Set up your facility** call to action; the other home-page reference (`visitor.join.status`, saved tickets) still holds. No capability change; `visitor.accessibility` v2 adds the **Theme** setting (light, dark, follow the device)                                                                                            |
 
-## Inventory (knowledge-base version 7)
+## Inventory (knowledge-base version 8)
 
 Audiences: V visitor, R reception, C counter, S supervisor, FA facility admin, A auditor. An
 organization administrator receives every staff audience.
@@ -122,9 +123,9 @@ organization administrator receives every staff audience.
 | Article ID                  | Title                                                  | Audiences         | Capabilities              | Routes                                               | Since | v   |
 | --------------------------- | ------------------------------------------------------ | ----------------- | ------------------------- | ---------------------------------------------------- | ----- | --- |
 | `org.signin`                | Signing in and out                                     | V, R, C, S, FA, A | none                      | `public.login`                                       | M1    | 1   |
-| `org.signup`                | Creating an organization                               | V                 | none                      | `public.signup`                                      | M1    | 2   |
+| `org.signup`                | Creating an organization                               | V                 | none                      | `public.signup`                                      | M1    | 3   |
 | `staff.invite.accept`       | Accepting a staff invitation                           | V, R, C, S, FA, A | none                      | `public.accept_invite`                               | M1    | 1   |
-| `visitor.accessibility`     | Display and alert settings                             | V, R, C, S, FA, A | `accessibility_prefs`     | none                                                 | M5    | 1   |
+| `visitor.accessibility`     | Display and alert settings                             | V, R, C, S, FA, A | `accessibility_prefs`     | none                                                 | M5    | 2   |
 | `visitor.alerts`            | Turn alerts on your ticket page                        | V                 | `turn_alert_in_app`       | `visitor.ticket`                                     | M5    | 1   |
 | `visitor.alerts.push`       | Push alerts for your ticket                            | V                 | `turn_alert_web_push`     | `visitor.ticket`                                     | M5    | 1   |
 | `visitor.alerts.sms`        | Text message alerts                                    | V                 | `sms_turn_alerts`         | `visitor.join`, `visitor.ticket`                     | M6    | 3   |

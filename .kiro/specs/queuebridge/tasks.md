@@ -591,12 +591,12 @@ gates open** (nothing live exists), **real devices untested** (no handset, netwo
 
 ### M7.2 Animated public landing page and onboarding (F15)
 
-- [ ] Route `/` replaced by the landing page as a separately lazy-loaded chunk (design §14.1, §14.6); existing route paths unchanged
-- [ ] Content per design §14.4: hero with clear message and CTAs, CSS/SVG animated continuity story with text captions, audiences, capabilities, honest channel status from the capability manifest, get-started checklist mapped to the F10 flow, privacy and accessibility statements
-- [ ] Motion policy (design §14.5): reduced-motion static equivalent, pause control for loops over 5 s, no flashing, no scroll-jacking
-- [ ] No third-party requests; production CSP/HSTS/frame/referrer/permissions headers verified
-- [ ] Landing copy through the localization framework (English baseline)
-- [ ] Truthfulness review: no conflict-free, guaranteed-delivery or invented-metric claims; SMS/USSD shown as live only if the manifest says so
+- [x] Route `/` replaced by the landing page as a separately lazy-loaded chunk (design §14.1, §14.6); existing route paths unchanged — **M7.2 (2026-11-21):** `docs/testing/M7-evidence.md` (M7.2); `bundle:check` with recorded baseline
+- [x] Content per design §14.4: hero with clear message and CTAs, CSS/SVG animated continuity story with text captions, audiences, capabilities, honest channel status from the capability manifest, get-started checklist mapped to the F10 flow, privacy and accessibility statements
+- [x] Motion policy (design §14.5): reduced-motion static equivalent, pause control for loops over 5 s, no flashing, no scroll-jacking
+- [x] No third-party requests; production CSP/HSTS/frame/referrer/permissions headers verified — on the local preview server (whole suite runs under the CSP); production edge verification open until deployment (`docs/deployment/web-security-headers.md`)
+- [x] Landing copy through the localization framework (English baseline) — i18next, `src/landing/locales/en.ts`
+- [x] Truthfulness review: no conflict-free, guaranteed-delivery or invented-metric claims; SMS/USSD shown as live only if the manifest says so — `channelView()` from the capability manifest, fail closed; tests vary the manifest
 
 ### M7.3 Performance, security and cross-browser verification
 

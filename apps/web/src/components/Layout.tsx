@@ -125,7 +125,6 @@ export function Layout(): ReactElement {
             </button>
           ) : null}
           <div className="header-tools">
-            <AskQueButton />
             <DisplaySettingsButton />
           </div>
           {user ? (
@@ -212,6 +211,8 @@ export function Layout(): ReactElement {
       <main id="main" ref={mainRef} tabIndex={-1} className="container main">
         <Outlet />
       </main>
+      {/* M7.2: Ask Que floats at the bottom right of every screen (after the page in tab order) */}
+      <AskQueButton />
     </div>
   );
 }

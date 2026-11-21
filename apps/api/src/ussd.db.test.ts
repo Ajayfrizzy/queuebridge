@@ -15,6 +15,8 @@ import {
   type TestApp,
 } from './testing/harness.js';
 import { createUssdCrypto } from './ussd/crypto.js';
+import { createRecoveryCrypto } from './recovery/crypto.js';
+import { targetKeys } from './recovery/throttle.js';
 
 /**
  * M6.2 USSD on real PostgreSQL through the real webhook (REQ-F12.1–F12.5; Group 10 USSD
@@ -42,6 +44,8 @@ afterAll(async () => {
 });
 
 const crypto = createUssdCrypto({ CONTACT_ENCRYPTION_KEY: '7e57'.repeat(16) })!;
+/** The same key the test apps use (harness), to derive the throttle keys a request can write */
+const recoveryCrypto = createRecoveryCrypto({ CONTACT_ENCRYPTION_KEY: '7e57'.repeat(16) })!;
 const fresh = (n = 6): string => randomBytes(n).toString('hex');
 const freshMsisdn = (): string =>
   `+234803${String(Math.floor(Math.random() * 9_000_000) + 1_000_000)}`;
@@ -608,18 +612,49 @@ describe('status and recovery: the ticket code AND its recovery key, never a cod
       reason_code: 'needs_other_service',
     });
     expect(tr.status).toBe(200);
-    const r = lastOf(await new Phone().run(q.code, '3', '1', j.code, j.key));
+    const recoverer = new Phone();
+    const r = lastOf(await recoverer.run(q.code, '3', '1', j.code, j.key));
     expect(r.text).toContain(`Moved from ${j.code}.`);
     expect(r.text).toMatch(/Your ticket is [A-Z]+[0-9]+\./);
-    const throttleBefore = (
-      await t.db<{ n: number }[]>`SELECT COUNT(*)::int AS n FROM recovery_throttle`
-    )[0]?.n;
-    const lost = lastOf(await new Phone().run(q.code, '3', '2'));
+    // "Lost code or key" records no recovery attempt. `recovery_throttle` is shared by every
+    // suite running concurrently against the test database, so a global row count is not a
+    // valid measure (M7.2 stability investigation). Instead: every throttle key the recovery
+    // code can derive (`targetKeys`: source, target, target-source, facility, facility-source)
+    // for THIS phone, THIS facility and both ticket codes of this test is checked unchanged.
+    const lostPhone = new Phone();
+    const source = `ussd:${crypto.msisdnHash(lostPhone.msisdn)}`;
+    const keys = [j.code, r.text.match(/Your ticket is ([A-Z]+[0-9]+)\./)?.[1] ?? ''].flatMap(
+      (code) =>
+        Object.values(
+          targetKeys(
+            recoveryCrypto,
+            { orgSlug: q.org.slug, facilitySlug: q.facilitySlug, ticketCode: code },
+            source,
+          ),
+        ),
+    );
+    const throttleRows = async (): Promise<unknown[]> => [
+      ...(await t.db`SELECT scope, key_hash, attempts, failures FROM recovery_throttle
+                      WHERE key_hash IN ${t.db(keys)} ORDER BY scope, key_hash`),
+    ];
+    // the derivation is the one the server uses: the recovering phone's own attempt is found
+    const recovererSource = recoveryCrypto.throttleKey(
+      'source',
+      `ussd:${crypto.msisdnHash(recoverer.msisdn)}`,
+    );
+    const [counted] = await t.db<{ attempts: number }[]>`
+      SELECT attempts FROM recovery_throttle WHERE scope = 'source' AND key_hash = ${recovererSource}`;
+    expect(counted?.attempts).toBeGreaterThanOrEqual(1);
+    const throttleBefore = await throttleRows();
+    const lost = lastOf(await lostPhone.run(q.code, '3', '2'));
     expect(lost.text).toContain('Ask staff at');
     expect(lost.text).toContain('A phone number or a ticket code alone cannot open a ticket.');
+    expect(await throttleRows()).toEqual(throttleBefore);
+    // and this phone, which never submitted a code or key, has no throttle state at all
+    const sourceKey = recoveryCrypto.throttleKey('source', source);
     expect(
-      (await t.db<{ n: number }[]>`SELECT COUNT(*)::int AS n FROM recovery_throttle`)[0]?.n,
-    ).toBe(throttleBefore);
+      await t.db`SELECT 1 FROM recovery_throttle WHERE scope = 'source' AND key_hash = ${sourceKey}`,
+    ).toHaveLength(0);
   });
 
   it('a ticket that has ended cannot be opened (same uniform failure)', async () => {

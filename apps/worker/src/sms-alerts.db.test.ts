@@ -67,6 +67,20 @@ interface Fixture {
   phone: string;
 }
 
+/**
+ * A random Nigerian mobile number that the TEST-ONLY sandbox treats as an ordinary, accepted
+ * number. The sandbox picks a simulated outcome from the last three digits
+ * (`SANDBOX_SMS_SCENARIOS`: rejected, unavailable, transport error); a uniformly random number
+ * hit one of them 3 times in 1,000 and made "sent" assertions fail intermittently (M7.2
+ * investigation). Scenario numbers are only ever chosen explicitly by a test.
+ */
+function ordinaryPhone(): string {
+  const scenarios = new Set<string>(Object.values(SANDBOX_SMS_SCENARIOS));
+  for (;;) {
+    const n = `+234803${String(Math.floor(Math.random() * 9_000_000) + 1_000_000)}`;
+    if (!scenarios.has(n.slice(-3))) return n;
+  }
+}
 /** A called ticket (real committed call event + transition) with a consented SMS contact. */
 async function calledWithContact(
   o: {
@@ -110,7 +124,7 @@ async function calledWithContact(
   await sql`
     INSERT INTO ticket_transitions (ticket_id, from_state, to_state, queue_event_id)
     VALUES (${tk?.id ?? ''}, 'waiting', 'called', ${ev?.id ?? ''})`;
-  const phone = o.phone ?? `+234803${String(Math.floor(Math.random() * 9_000_000) + 1_000_000)}`;
+  const phone = o.phone ?? ordinaryPhone();
   const [vc] = await sql<{ id: string }[]>`
     INSERT INTO visitor_contacts
       (organization_id, facility_id, ticket_id, phone_ciphertext, phone_hash, consent_at, consent_version, retention_until)

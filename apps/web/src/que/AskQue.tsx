@@ -11,10 +11,12 @@ import {
   type ReactNode,
 } from 'react';
 import { api } from '../lib/api.js';
+import { Icon } from '@queuebridge/ui';
 import type { QuePanel as QuePanelType } from './QuePanel.js';
 
 /**
- * The persistent "Ask Que" button in the page shell (MQ.3; design §11.9). It is shown on every
+ * The persistent "Ask Que" button in the page shell (MQ.3; design §11.9; since M7.2 a floating
+ * launcher at the bottom right, after the page in tab order). It is shown on every
  * screen for every role, including anonymous visitors. The panel code is loaded only when first
  * opened (a separate chunk, precached by the service worker for offline use), so visitor pages
  * stay light. If that chunk cannot load, a plain message is shown and the page keeps working.
@@ -82,7 +84,7 @@ export function AskQueButton(): ReactElement {
       <button
         ref={trigger}
         type="button"
-        className="btn btn-secondary que-trigger"
+        className="que-launcher"
         aria-haspopup="dialog"
         aria-expanded={open}
         data-testid="ask-que"
@@ -95,7 +97,8 @@ export function AskQueButton(): ReactElement {
           setOpen(true);
         }}
       >
-        Ask Que
+        <Icon name="help" className="que-launcher-icon" />
+        <span>Ask Que</span>
       </button>
       {open ? (
         <PanelBoundary onClose={close} onFailed={() => setPanel(makePanel)}>
