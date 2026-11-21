@@ -12,3 +12,5 @@
 export * from './SyncStateIndicator.js';
 export * from './TicketCard.js';
 export * from './QueueStatusBanner.js';
+export * from './tokens.js';
+export * from './Icon.js';

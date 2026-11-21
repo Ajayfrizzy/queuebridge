@@ -48,6 +48,22 @@ const STATUS_TEXT: Record<
   },
 };
 
+/**
+ * MQ.5 U4: who acted. Staff are named; an event without a staff actor records its kind in the
+ * hash-chained payload (`actor_kind`, e.g. `system` for the automatic no-show).
+ */
+export function actorLabel(e: Pick<AuditEvent, 'actor_id' | 'actor_name' | 'payload'>): string {
+  if (e.actor_name) return e.actor_name;
+  if (e.actor_id) return 'Staff';
+  const kind = e.payload['actor_kind'];
+  if (kind === 'system') return 'System (automatic)';
+  if (kind === 'visitor') return 'Visitor';
+  return 'Visitor / system';
+}
+/** Plain labels for reasons recorded by the system itself */
+const SYSTEM_REASON: Record<string, string> = {
+  call_window_elapsed: 'call window elapsed (automatic no-show)',
+};
 function detailOf(e: AuditEvent): string {
   const p = e.payload;
   const parts: string[] = [];
@@ -77,6 +93,9 @@ function detailOf(e: AuditEvent): string {
           ? `counter closed (${reasonLabel(r.slice('counter_closed:'.length))})`
           : r,
     );
+  }
+  if (e.event_type === 'ticket.miss' && typeof p['reason_code'] === 'string') {
+    parts.push(`reason: ${SYSTEM_REASON[p['reason_code']] ?? p['reason_code']}`);
   }
   if (e.event_type === 'policy.changed' && typeof p['to_version'] === 'string') {
     parts.push(`now ${p['to_version']}`);
@@ -317,7 +336,7 @@ export function AuditTrail(): ReactElement {
                   <td>{e.sequence}</td>
                   <td>{new Date(e.committed_at).toLocaleTimeString()}</td>
                   <td>{EVENT_LABEL[e.event_type] ?? e.event_type}</td>
-                  <td>{e.actor_name ?? (e.actor_id ? 'Staff' : 'Visitor / system')}</td>
+                  <td>{actorLabel(e)}</td>
                   <td className="wrap">{detailOf(e)}</td>
                   <td>
                     <code className="mono" title={e.event_hash}>

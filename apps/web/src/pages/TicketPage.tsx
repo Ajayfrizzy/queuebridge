@@ -42,6 +42,7 @@ import {
   type StoredTicket,
 } from '../lib/tickets.js';
 import { useLoad } from '../lib/useLoad.js';
+import { transferPlacementNote } from '../lib/policy.js';
 import { Loading } from '../components/Form.js';
 
 /**
@@ -641,8 +642,7 @@ function TicketView(): ReactElement {
           ) : null}
           {s.transferred_from_code ? (
             <p data-testid="transfer-note">
-              Your ticket {s.transferred_from_code} was moved to this service. Your original join
-              time is kept.
+              {transferPlacementNote(s.transferred_from_code, s.transfer_placement)}
             </p>
           ) : null}
           <p className="meta-row">

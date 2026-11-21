@@ -448,6 +448,8 @@ test.describe('@responsive site header', () => {
             'QueueBridge',
             'Staff console',
             'Administration',
+            // M7.1: the sidebar's collapse control, shown (and focusable) on desktop only
+            ...(vw >= 1024 ? ['Collapse navigation'] : []),
             'Ask Que',
             'Display and alerts',
             'Sign out',

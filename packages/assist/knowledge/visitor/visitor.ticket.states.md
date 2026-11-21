@@ -6,8 +6,8 @@ topics: [ticket_status]
 requiresCapabilities: []
 relatedRoutes: [visitor.ticket]
 availableSince: M2
-version: 1
-lastReviewed: 2026-11-18
+version: 2
+lastReviewed: 2026-11-20
 keywords: [status, waiting, called, being served, on hold, missed, completed, cancelled, transferred, private, no access, expired, confirmed]
 ---
 
@@ -20,7 +20,7 @@ keywords: [status, waiting, called, being served, on hold, missed, completed, ca
 - **Missed:** you were called but were not there. See the help on missing your turn.
 - **Completed:** your visit is finished.
 - **Cancelled:** the ticket was cancelled. Speak to staff if this is unexpected.
-- **Transferred:** staff moved you to another service with a new ticket code. The page shows your original join time.
+- **Transferred:** staff moved you to another service with a new ticket code. The page says whether you kept your original waiting time or joined the end of that service's queue.
 
 ## Confirmed by the server
 

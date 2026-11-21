@@ -6,8 +6,8 @@ topics: [staff_operations]
 requiresCapabilities: []
 relatedRoutes: [staff.console]
 availableSince: M2
-version: 1
-lastReviewed: 2026-11-18
+version: 2
+lastReviewed: 2026-11-20
 keywords: [call next, call visitor, serve, start serving, complete, finish, did not come, put on hold, return to queue, open counter, close counter, choose counter, read only console, recall]
 ---
 
@@ -18,7 +18,7 @@ keywords: [call next, call visitor, serve, start serving, complete, finish, did 
 3. When they arrive, press **Start serving**. When you finish, press **Complete**.
 4. If they do not come, press **Did not come (missed)**.
 
-- **Put on hold** pauses a visitor you are serving. **Return to queue** puts a held visitor back in line.
+- **Put on hold** pauses a visitor you are serving, or a waiting visitor from the waiting list. **Return to queue** puts a held visitor back in line.
 - **Return to queue (recall)** moves a called visitor back to waiting.
 
 ## Closing your counter

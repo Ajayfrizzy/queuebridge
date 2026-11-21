@@ -70,6 +70,7 @@ export function TicketOverridePanel({
   ticket,
   policy,
   counter,
+  canCallOutOfOrder,
   disabled,
   run,
   onClose,
@@ -78,6 +79,11 @@ export function TicketOverridePanel({
   policy: StaffQueue['policy'];
   /** This device's counter, when it can take a call right now */
   counter: { id: string; name: string } | null;
+  /**
+   * MQ.5 U2: calling out of order is a supervisor transition (and organization administrators);
+   * facility administrators keep "Change priority". The API enforces it either way.
+   */
+  canCallOutOfOrder: boolean;
   disabled: boolean;
   run: RunOnline;
   onClose: () => void;
@@ -218,71 +224,74 @@ export function TicketOverridePanel({
         <p className="hint">This service has no priority classes, so priority cannot change.</p>
       )}
 
-      <form
-        aria-label={`Call ${ticket.public_code} out of order`}
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!counter) return;
-          const callText_ = callText.trim();
-          const operationId = callIds.current.idFor(
-            JSON.stringify([ticket.id, counter.id, callReason, callText_]),
-          );
-          void run(async () => {
-            await api.callOutOfOrder(ticket.id, {
-              operation_id: operationId,
-              counter_id: counter.id,
-              reason_code: callReason,
-              reason_text: callText_,
+      {canCallOutOfOrder ? (
+        <form
+          aria-label={`Call ${ticket.public_code} out of order`}
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!counter) return;
+            const callText_ = callText.trim();
+            const operationId = callIds.current.idFor(
+              JSON.stringify([ticket.id, counter.id, callReason, callText_]),
+            );
+            void run(async () => {
+              await api.callOutOfOrder(ticket.id, {
+                operation_id: operationId,
+                counter_id: counter.id,
+                reason_code: callReason,
+                reason_text: callText_,
+              });
+              return `Called ${ticket.public_code} to ${counter.name} out of order. Recorded in the audit trail.`;
+            }).then((outcome) => {
+              callIds.current.settle(outcome);
+              if (outcome === 'committed') onClose();
             });
-            return `Called ${ticket.public_code} to ${counter.name} out of order. Recorded in the audit trail.`;
-          }).then((outcome) => {
-            callIds.current.settle(outcome);
-            if (outcome === 'committed') onClose();
-          });
-        }}
-      >
-        <fieldset className="form-grid">
-          <legend>Call out of order</legend>
-          {counter ? null : (
-            <p className="hint" data-testid="call-out-of-order-hint">
-              Choose your counter (open and free) to call this visitor ahead of the published order.
-            </p>
-          )}
-          <div className="field">
-            <label htmlFor={`${uid}-call-reason`}>Reason</label>
-            <select
-              id={`${uid}-call-reason`}
-              value={callReason}
-              onChange={(e) => setCallReason(e.target.value)}
-            >
-              {policy.override_reasons.map((r) => (
-                <option key={r} value={r}>
-                  {reasonLabel(r)}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor={`${uid}-call-text`}>Explanation (kept private)</label>
-            <textarea
-              id={`${uid}-call-text`}
-              rows={2}
-              maxLength={500}
-              value={callText}
-              onChange={(e) => setCallText(e.target.value)}
-            />
-          </div>
-          <div className="form-actions">
-            <button
-              type="submit"
-              className="btn btn-secondary"
-              disabled={disabled || !counter || !callTextOk || !callReason}
-            >
-              Call {ticket.public_code} now{counter ? ` to ${counter.name}` : ''}
-            </button>
-          </div>
-        </fieldset>
-      </form>
+          }}
+        >
+          <fieldset className="form-grid">
+            <legend>Call out of order</legend>
+            {counter ? null : (
+              <p className="hint" data-testid="call-out-of-order-hint">
+                Choose your counter (open and free) to call this visitor ahead of the published
+                order.
+              </p>
+            )}
+            <div className="field">
+              <label htmlFor={`${uid}-call-reason`}>Reason</label>
+              <select
+                id={`${uid}-call-reason`}
+                value={callReason}
+                onChange={(e) => setCallReason(e.target.value)}
+              >
+                {policy.override_reasons.map((r) => (
+                  <option key={r} value={r}>
+                    {reasonLabel(r)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor={`${uid}-call-text`}>Explanation (kept private)</label>
+              <textarea
+                id={`${uid}-call-text`}
+                rows={2}
+                maxLength={500}
+                value={callText}
+                onChange={(e) => setCallText(e.target.value)}
+              />
+            </div>
+            <div className="form-actions">
+              <button
+                type="submit"
+                className="btn btn-secondary"
+                disabled={disabled || !counter || !callTextOk || !callReason}
+              >
+                Call {ticket.public_code} now{counter ? ` to ${counter.name}` : ''}
+              </button>
+            </div>
+          </fieldset>
+        </form>
+      ) : null}
       <div className="btn-row">
         <button type="button" className="btn btn-secondary" onClick={onClose}>
           Close<span className="visually-hidden"> supervisor actions for {ticket.public_code}</span>

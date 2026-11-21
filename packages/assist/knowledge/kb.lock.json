@@ -1,21 +1,21 @@
 {
-  "kbVersion": 6,
+  "kbVersion": 7,
   "articles": {
     "staff.alerts.status": {
       "version": 1,
       "hash": "071453ba6eedc11abb8ad0c7f694d62e66a5b4ed7074cd6bbde3cedd064180d9"
     },
     "staff.auto_miss": {
-      "version": 1,
-      "hash": "7686fcfa95ce1c9ca1f0ef68622b797dc494d9479128ddbcd7ae15b04fda114e"
+      "version": 2,
+      "hash": "ac313f161566e38da986a1ab4f1174f178ad5dece743f79aadb6a20d49ffe50d"
     },
     "staff.coordinator.limits": {
       "version": 1,
       "hash": "59e961047e3873c89cf66c683691571ba6570eb912db70be4c30ba0b81ae237d"
     },
     "staff.counter.calling": {
-      "version": 1,
-      "hash": "5bb88bde9483726af8e8297b59bb839663ac97480e9a473c73ff1c61afdcea63"
+      "version": 2,
+      "hash": "ecfaa76d7f513f7000715f716b2bdc341bd8c573efdff0cc8f3d337d14b1d6fb"
     },
     "staff.missed.rejoin": {
       "version": 1,
@@ -178,8 +178,8 @@
       "hash": "e529f27e626aa63bc171ee0cd1bd3daee6c460668633c417e298616230f60818"
     },
     "visitor.ticket.states": {
-      "version": 1,
-      "hash": "ecfa37234818488883bdd115cbaab257a8ba9a8f398c4cb017290bb46d9f3226"
+      "version": 2,
+      "hash": "486eded6cdba8a5e0c732257c43200245953a7f8305a2a1710166ab47fc9ca7a"
     },
     "visitor.ussd": {
       "version": 2,

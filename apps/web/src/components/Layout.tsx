@@ -9,8 +9,16 @@ import { HealthAlertBanner } from './HealthAlertBanner.js';
 import { PushHandoff } from './PushHandoff.js';
 import { useRouteFocus } from '../lib/routeFocus.js';
 import { AskQueButton } from '../que/AskQue.js';
+import { Icon } from '@queuebridge/ui';
 
-/** Page shell: skip link, banner, navigation, and route-change focus management. */
+/**
+ * Page shell: skip link, banner, navigation, and route-change focus management.
+ *
+ * M7.1: signed-in staff get the navy sidebar on desktop (64rem+), collapsible to an icon rail;
+ * the same single "Primary" navigation is used at every width (CSS places it), so keyboard order,
+ * names and route guards are unchanged. The collapse state is layout only (not a preference) and
+ * is not stored.
+ */
 export function Layout(): ReactElement {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -21,6 +29,7 @@ export function Layout(): ReactElement {
   const [logoutError, setLogoutError] = useState<string | null>(null);
   const offline = useOffline();
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
 
   async function signOut(force = false): Promise<void> {
     // Never silently destroy unsent work: make the person sync it or knowingly discard it
@@ -60,24 +69,33 @@ export function Layout(): ReactElement {
   useRouteFocus(mainRef, location.pathname);
 
   return (
-    <>
+    <div
+      className={`app-shell${user ? ' has-sidebar' : ''}${user && collapsed ? ' is-collapsed' : ''}`}
+    >
       <a className="skip-link" href="#main">
         Skip to main content
       </a>
       <header className="site-header">
         <div className="container header-row">
           <Link to="/" className="brand">
-            QueueBridge
+            <img className="brand-mark" src="/favicon.png" alt="" width={32} height={32} />
+            <span className="brand-name">QueueBridge</span>
           </Link>
-          <nav aria-label="Primary" className="site-nav">
+          <nav id="primary-nav" aria-label="Primary" className="site-nav">
             <ul className="nav-list">
               {user ? (
                 <>
                   <li>
-                    <NavLink to="/staff">Staff console</NavLink>
+                    <NavLink to="/staff">
+                      <Icon name="console" />
+                      <span className="nav-label">Staff console</span>
+                    </NavLink>
                   </li>
                   <li>
-                    <NavLink to="/admin">Administration</NavLink>
+                    <NavLink to="/admin">
+                      <Icon name="admin" />
+                      <span className="nav-label">Administration</span>
+                    </NavLink>
                   </li>
                 </>
               ) : (
@@ -92,6 +110,20 @@ export function Layout(): ReactElement {
               )}
             </ul>
           </nav>
+          {user ? (
+            <button
+              type="button"
+              className="sidebar-toggle"
+              aria-controls="primary-nav"
+              aria-expanded={!collapsed}
+              onClick={() => setCollapsed((c) => !c)}
+            >
+              <Icon name={collapsed ? 'expand' : 'collapse'} />
+              <span className="sidebar-toggle-label">
+                {collapsed ? 'Expand navigation' : 'Collapse navigation'}
+              </span>
+            </button>
+          ) : null}
           <div className="header-tools">
             <AskQueButton />
             <DisplaySettingsButton />
@@ -180,6 +212,6 @@ export function Layout(): ReactElement {
       <main id="main" ref={mainRef} tabIndex={-1} className="container main">
         <Outlet />
       </main>
-    </>
+    </div>
   );
 }

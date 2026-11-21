@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App.js';
+import './tokens.css';
 import './styles.css';
 import { applyStoredPrefs } from './lib/a11yPrefs.js';
 

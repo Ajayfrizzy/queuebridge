@@ -472,6 +472,36 @@ describe('service transfers keep the original join time; placement follows the d
     expect(tk?.wait_since.getTime()).toBe(tk?.joined_at.getTime());
   });
 
+  it.each(['by_original_join_time', 'end_of_queue'] as const)(
+    'M7.1 U3: the visitor status reports the placement the transfer committed (%s), and a later policy change does not rewrite it',
+    async (placement) => {
+      const { a, b } = await twoServices(placement);
+      const [v] = await join(a, 1);
+      await transferFirst(a, b);
+      const status = async (): Promise<Record<string, unknown> | undefined> =>
+        (await ticketStatus(t.app, v?.code ?? '', v?.token)).body.status;
+      const before = await status();
+      expect(before).toMatchObject({
+        transferred_from_code: v?.code,
+        transfer_placement: placement,
+      });
+      // the destination's policy changes afterwards (a live policy.changed in its session)
+      const other = placement === 'end_of_queue' ? 'by_original_join_time' : 'end_of_queue';
+      expect((await setPolicy(b, { transfer_placement: other })).status).toBe(200);
+      const after = await status();
+      expect(String(after?.['policy_summary'])).not.toBe(String(before?.['policy_summary']));
+      expect(after?.['transfer_placement']).toBe(placement);
+      // a ticket that was never transferred reports none
+      const [plain] = await join(b, 1);
+      expect(
+        (await ticketStatus(t.app, plain?.code ?? '', plain?.token)).body.status?.[
+          'transfer_placement'
+        ],
+      ).toBeNull();
+      // still behind the ticket's own credential: no token, no status
+      expect((await ticketStatus(t.app, v?.code ?? '', undefined)).status).toBe(404);
+    },
+  );
   it('end_of_queue: the visitor joins the end, but the original join time is still recorded', async () => {
     const { a, b } = await twoServices('end_of_queue');
     const [a1] = await join(a, 1);
