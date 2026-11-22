@@ -181,6 +181,8 @@ test('@responsive the launcher is usable on visitor, staff and admin screens and
   await expect(vp.getByTestId('ticket-code')).toBeVisible();
   const screens: [Page, string][] = [
     [vp, vp.url()],
+    [vp, s.joinPath],
+    [vp, '/'],
     [vp, '/recover'],
     [vp, s.displayPath],
     [page, `/staff/queues/${s.queueId ?? ''}`],
@@ -190,7 +192,15 @@ test('@responsive the launcher is usable on visitor, staff and admin screens and
     await p.goto(path);
     await expect(p.getByRole('heading', { level: 1 })).toBeVisible();
     // scrolled to the end, the page's last focusable control is not under the launcher
-    await p.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const shell = p.locator('.app-shell');
+    for (const fraction of [0, 0.25, 0.5, 0.75, 1]) {
+      const clearance = await shell.evaluate((el, position) => {
+        el.scrollTop = position * (el.scrollHeight - el.clientHeight);
+        const launcher = el.querySelector('.que-launcher')!.getBoundingClientRect();
+        return launcher.top - el.getBoundingClientRect().bottom;
+      }, fraction);
+      expect(clearance, `${path} at ${fraction}: content clears help`).toBeGreaterThan(0);
+    }
     const clear = await p.evaluate(() => {
       const l = document.querySelector('[data-testid="ask-que"]')!.getBoundingClientRect();
       const controls = [

@@ -97,14 +97,19 @@ main:focus {
 }
 .main {
   padding-top: var(--qb-space-5);
-  /* room below the last control for the floating Ask Que launcher (M7.2) */
-  padding-bottom: calc(var(--qb-space-7) + var(--qb-launcher-clear));
+  padding-bottom: var(--qb-space-7);
 }
 :root {
-  /* launcher height + its gap from the bottom edge */
-  --qb-launcher-clear: 4.5rem;
   --qb-launcher-inset: max(var(--qb-space-4), env(safe-area-inset-right));
   --qb-launcher-bottom: max(var(--qb-space-4), env(safe-area-inset-bottom));
+}
+
+/* Keep the page scrollport above the launcher, even halfway through a long page. */
+@media screen {
+  .app-shell {
+    height: calc(100dvh - var(--qb-launcher-bottom) - 3rem - var(--qb-space-2));
+    overflow: auto;
+  }
 }
 
 .skip-link {
@@ -146,6 +151,11 @@ textarea,
   transition-property: background-color, border-color, color, box-shadow;
   transition-duration: var(--qb-duration-fast);
   transition-timing-function: var(--qb-easing);
+}
+
+/* Switch high-contrast palettes atomically to avoid unreadable intermediate colours. */
+html[data-contrast='high'] {
+  --qb-duration-fast: 0ms;
 }
 
 /* ---- Application shell: top bar, and a collapsible navy sidebar for signed-in staff ---------- */
@@ -1352,9 +1362,10 @@ legend {
    Text size and the contrast palettes live in tokens.css; these are the structural additions. */
 
 /* Focus is never hidden under the fixed notification at the bottom of the screen (WCAG 2.4.11) */
-html {
+html,
+.app-shell {
   scroll-padding-top: 1rem;
-  scroll-padding-bottom: 8rem; /* clear of the toast and the floating Ask Que launcher */
+  scroll-padding-bottom: 8rem; /* clear of the toast */
 }
 h1:focus {
   outline: none; /* the focused heading is a landmark for the new page, not a control */

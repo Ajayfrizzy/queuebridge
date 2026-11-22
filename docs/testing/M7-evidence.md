@@ -469,3 +469,55 @@ keyboard order without "Ask Que" (it moved out of the header).
 **Remaining risks:** Firefox not exercised locally; the launcher can still cover content a
 person scrolls underneath mid-page (only the end of each page is guaranteed clear); real-device
 safe-area behaviour on iOS is part of the final device checklist.
+
+### M7.3-A local baseline — 22 November 2026
+
+At `5d2e5ea`, six PostgreSQL suites passed all 99 cases in 12.61 s on a disposable PostgreSQL 16.15 server. The 1,000-operation commit and full duplicate replay passed in 8.440 s. Channel package tests passed all 66 with local fixture sockets available. Registry-backed audits found zero high or critical advisories. The full tree had one low and three moderate findings. Production had no known vulnerabilities. The policy gate passed.
+
+The fresh web build passed its four existing ceilings. Shared JS/CSS measured 195,504/7,221 gzip bytes and landing JS/CSS measured 24,725/3,044. The visitor initial-JS target remains open. [M7.3-A commands, endpoint inventory, limitations and findings](../reports/M7.3-A-baseline-security-evidence.md).
+
+### M7.3-B2 local implementation evidence
+
+On the uncommitted candidate based on 5d2e5ea, cold join and ticket startup each fell from 195,644 to 159,633 gzip bytes. A further 59,634 B reduction is required. Fresh join installation fetched zero landing JS/CSS assets. Controlled warm join used zero transfer bytes for entry JS and registration, and visited join and landing reopened offline. A B1-to-candidate worker update activated successfully. [Route measurements, regression outcomes and remaining limitations](../reports/M7.3-B2-implementation-evidence.md).
+
+**B2 verification closure.** The final full local Playwright run completed in 8.6 minutes with 368 passes, zero failures, seven skips and zero timeouts. The original offline refusal assertions passed. A high-contrast palette transition detected by axe in the preceding run was corrected. Repository-wide formatting, lint, typecheck, build and existing bundle gates passed. Final join/ticket startup assets total 159,635 gzip bytes, 59,636 B above the permitted maximum. The B2 report records the failure trace, skip breakdown and dependency proposals.
+
+### M7.3-B3 local visitor startup evidence
+
+The shared entry measured 137,417 gzip bytes. Cold join measured 142,331 B and cold ticket 149,240 B, saving 17,304 and 10,395 B respectively against B2. The remaining reductions to reach 99,999 B are 42,332 and 49,241 B. A worker-enabled browser generated the recovery QR offline and reopened the saved ticket after reload. The full local Chromium matrix passed 369 cases with seven skips and zero failures. Unit and database suites passed 1,143 and 874 cases. [B3 measurements, changes and remaining dependency analysis](../reports/M7.3-B3-implementation-evidence.md).
+
+### M7.3-B4 local staff schema experiment
+
+Removing unused construction of the facility-readiness response validator saved 102 gzip bytes in the shared entry. Cold join, ticket and recovery measured 142,224, 149,131 and 141,111 gzip bytes. All three exceed the strict target. The full local suites passed 1,143 unit cases, 874 database cases and 369 Playwright cases with seven browser skips. [Experiment, matched measurements and architectural options](../reports/M7.3-B4-schema-isolation-evidence.md).
+
+### M7.3-C browser and accessibility verification
+
+All 12 smoke cases passed across six local engine/viewport cells. Native macOS regression recorded 377 passes, four Firefox launcher failures and seven skips. Both Firefox 159 projects then passed in the matching Linux browser container. Chromium at actual 200% tab zoom reflowed landing, sign-up and recovery without horizontal overflow. Physical-device acceptance and a recorded human screen-reader pass remain outstanding. [Matrix, commands and human checklist](../reports/M7.3-C-browser-accessibility-evidence.md).
+
+### M7.3-D local integration verification
+
+The candidate passed 1,143 unit tests, 874 PostgreSQL tests and six focused Chromium journeys. Registry audits found zero high/critical findings. An unfiltered Lighthouse join reproduced the load-timeout warning in 52.33 s; a browser-only stream-filter diagnostic completed in 5.82 s without the warning. Both observed LCP near 2.3 s. Keep M7.3 open for the strict visitor budget, public ingress and rate-limit evidence, physical-device and screen-reader acceptance, and hosted CI. [Final hardening evidence and RumptyCloud prerequisites](../reports/M7.3-D-final-hardening-evidence.md).
+
+### Targeted landing and Ask Que corrections
+
+Local Chromium verification measured 8 CSS px between the scrollable content and Ask Que on landing, join, staff and administration at 320, 375, 768, 1280 and 1440 px. Native 200% zoom was checked on landing, sign-up and recovery. The SVG label bounds regression passed. Four focused browser specifications completed with 119 passed, 4 existing capture-only skips and 0 failures in 3.0 minutes. Lint, typecheck, build and formatting passed. Physical-device safe areas remain a manual check. [Changes, paired screenshots and execution details](../reports/M7-landing-ui-acceptance-review.md#owner-approved-corrections)
+
+### M7.3 pre-commit regression corrections
+
+The facility Print button previously called the browser before asynchronous QR generation finished. It now requires a matrix. The join link stays readable, failures show the existing QR error, and a successful matrix enables keyboard printing and SVG download.
+
+The overflow helper previously returned as soon as the document fit. It now compares actual scroll width with client width on both the document and the shell. A deliberately oversized child produced a 1,380 px shell scroll width inside 1,280 available px while the document still fit.
+
+A controlled Chromium abort of the recovery module on the original production build reproduced the continuity risk. The address was scrubbed, the root had no text and refreshing yielded an empty key field. The visitor route now catches module-load failure, focuses an explanatory heading and offers an in-tab retry with a fresh lazy loader. Chromium recovered the synthetic key on keyboard retry with the address still clean. Refresh clears the transient handoff and requires the original link or manual entry. A permanently unavailable asset still requires a working copy to become available. The three visitor routes share this loader. Failure injection specifically exercised recovery in Chromium.
+
+Files changed in this correction were `apps/web/src/pages/FacilityOverview.tsx`, `apps/web/e2e/helpers.ts`, `apps/web/src/App.tsx`, new `apps/web/e2e/precommit-regressions.spec.ts` and this evidence file.
+
+Local verification used a disposable PostgreSQL database, E2E_WEB_PORT=4192 and one stable preview per Playwright run. Execute the following from the repository root with TEST_DATABASE_URL set to a disposable database.
+
+| Command                                                                                                                                                                                      | Result                                                                                                                                                                     |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm --filter @queuebridge/web test:e2e precommit-regressions.spec.ts`                                                                                                                      | 4 passed in 10.9 s. Delayed, successful and failed QR encoding, shell overflow and in-tab recovery retry.                                                                  |
+| `pnpm --filter @queuebridge/web test:e2e landing.spec.ts ui-layout.spec.ts header-controls.spec.ts accessibility-m52.spec.ts precache.spec.ts recovery.spec.ts recovery-url-secrecy.spec.ts` | 140 passed, 4 existing capture-only skips, 0 failed in 3.9 min. Includes offline ticket restoration, staff-assisted recovery, URL secrecy, reflow and StrictMode controls. |
+| `pnpm --filter @queuebridge/web test:e2e turn-alerts.spec.ts --project=desktop-chromium -g 'contradicting k\|ticket this device forgot'`                                                     | 2 passed in 13.8 s. Contradictory and missing ticket references retained their original precedence.                                                                        |
+
+Repository lint, typecheck, formatting, build and the web bundle gate passed. The measured shared entry alone was 137,511 gzip bytes. The strict visitor initial-JavaScript requirement remains open. These runs provide local Chromium evidence.

@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { SyncStatus } from '@queuebridge/contracts';
 import type { OutboxOperation, StatusHandover } from '@queuebridge/continuity';
 import { SyncStateIndicator } from '@queuebridge/ui';
-import { buildQr, qrPath, QUIET_ZONE } from '../lib/qr.js';
+import { useQr } from '../lib/useQr.js';
+import { qrPath, QUIET_ZONE } from '../lib/qrSvg.js';
 import { useAnnounce } from './Announcer.js';
 
 function linkFor(h: StatusHandover): string {
@@ -15,8 +16,8 @@ function linkFor(h: StatusHandover): string {
 
 function HandoverCard({ h, onDone }: { h: StatusHandover; onDone: () => void }): ReactElement {
   const link = linkFor(h);
-  const qr = buildQr(link);
-  const total = qr.size + QUIET_ZONE * 2;
+  const { matrix: qr, feedback } = useQr(link);
+  const total = (qr?.size ?? 0) + QUIET_ZONE * 2;
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => heading.current?.focus(), []);
   return (
@@ -28,16 +29,19 @@ function HandoverCard({ h, onDone }: { h: StatusHandover; onDone: () => void }):
         <SyncStateIndicator status={SyncStatus.COMMITTED} /> The server confirmed this ticket. Give
         the visitor their code. If they have a phone, they can scan this to follow their place.
       </p>
-      <svg
-        role="img"
-        aria-label={`QR code with the status link for ticket ${h.public_code}`}
-        viewBox={`0 0 ${total} ${total}`}
-        className="qr"
-        shapeRendering="crispEdges"
-      >
-        <rect width={total} height={total} fill="#fff" />
-        <path transform={`translate(${QUIET_ZONE} ${QUIET_ZONE})`} fill="#000" d={qrPath(qr)} />
-      </svg>
+      {feedback}
+      {qr && (
+        <svg
+          role="img"
+          aria-label={`QR code with the status link for ticket ${h.public_code}`}
+          viewBox={`0 0 ${total} ${total}`}
+          className="qr"
+          shapeRendering="crispEdges"
+        >
+          <rect width={total} height={total} fill="#fff" />
+          <path transform={`translate(${QUIET_ZONE} ${QUIET_ZONE})`} fill="#000" d={qrPath(qr)} />
+        </svg>
+      )}
       <details>
         <summary>Show status link</summary>
         <code className="mono wrap" data-testid="handover-link">

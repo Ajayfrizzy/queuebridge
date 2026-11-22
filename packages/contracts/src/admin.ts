@@ -347,41 +347,43 @@ export const ReadinessIssueCodeSchema = z.enum([
 ]);
 export type ReadinessIssueCode = z.infer<typeof ReadinessIssueCodeSchema>;
 
-export const FacilityReadinessSchema = z.object({
-  /**
-   * True only when at least one ACTIVE counter is configured to serve at least one ACTIVE
-   * service in an ACTIVE facility. Counting services or counters is not enough.
-   */
-  configuration_ready: z.boolean(),
-  facility_active: z.boolean(),
-  services: z.array(
-    z.object({
-      id: UuidSchema,
-      name: z.string(),
-      status: z.enum(['active', 'inactive']),
-      /** Active service with at least one active counter that serves it. */
+// Construct this staff response validator only in bundles that consume it.
+export const FacilityReadinessSchema = /* @__PURE__ */ (() =>
+  z.object({
+    /**
+     * True only when at least one ACTIVE counter is configured to serve at least one ACTIVE
+     * service in an ACTIVE facility. Counting services or counters is not enough.
+     */
+    configuration_ready: z.boolean(),
+    facility_active: z.boolean(),
+    services: z.array(
+      z.object({
+        id: UuidSchema,
+        name: z.string(),
+        status: z.enum(['active', 'inactive']),
+        /** Active service with at least one active counter that serves it. */
+        operational: z.boolean(),
+        active_counter_count: z.number().int().nonnegative(),
+        /** Includes inactive counters (their assignments are preserved). */
+        configured_counter_count: z.number().int().nonnegative(),
+      }),
+    ),
+    counters: z.array(
+      z.object({
+        id: UuidSchema,
+        name: z.string(),
+        active: z.boolean(),
+        /** Active counter that serves at least one active service. */
+        operational: z.boolean(),
+        active_service_count: z.number().int().nonnegative(),
+        configured_service_count: z.number().int().nonnegative(),
+      }),
+    ),
+    issues: z.array(z.object({ code: ReadinessIssueCodeSchema, message: z.string() })),
+    /** Visitor registration arrives in M2; until then the join link is not operational. */
+    visitor_join: z.object({
       operational: z.boolean(),
-      active_counter_count: z.number().int().nonnegative(),
-      /** Includes inactive counters (their assignments are preserved). */
-      configured_counter_count: z.number().int().nonnegative(),
+      reason: z.string(),
     }),
-  ),
-  counters: z.array(
-    z.object({
-      id: UuidSchema,
-      name: z.string(),
-      active: z.boolean(),
-      /** Active counter that serves at least one active service. */
-      operational: z.boolean(),
-      active_service_count: z.number().int().nonnegative(),
-      configured_service_count: z.number().int().nonnegative(),
-    }),
-  ),
-  issues: z.array(z.object({ code: ReadinessIssueCodeSchema, message: z.string() })),
-  /** Visitor registration arrives in M2; until then the join link is not operational. */
-  visitor_join: z.object({
-    operational: z.boolean(),
-    reason: z.string(),
-  }),
-});
+  }))();
 export type FacilityReadiness = z.infer<typeof FacilityReadinessSchema>;

@@ -724,3 +724,14 @@ test.describe('M7.2 workflow simulation', () => {
     await p.context().close();
   });
 });
+
+test('the hero confirmation label fits inside its badge', async ({ page }) => {
+  await page.goto('/');
+  const label = page.locator('.ha-badge-text');
+  await expect(label).toHaveText('Confirmed');
+  const rightPadding = await label.evaluate((text) => {
+    const badge = text.parentElement!.querySelector('rect')!.getBoundingClientRect();
+    return badge.right - text.getBoundingClientRect().right;
+  });
+  expect(rightPadding).toBeGreaterThan(0);
+});

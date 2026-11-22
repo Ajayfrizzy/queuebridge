@@ -1,4 +1,4 @@
-import { useEffect, type ReactElement } from 'react';
+import { Suspense, useEffect, type ReactElement } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth.js';
 import { Loading } from './Form.js';
@@ -26,5 +26,9 @@ export function RequireAuth(): ReactElement | null {
 
   if (loading) return <Loading what="your session" />;
   if (!user) return null;
-  return <Outlet />;
+  return (
+    <Suspense fallback={<Loading what="page" />}>
+      <Outlet />
+    </Suspense>
+  );
 }

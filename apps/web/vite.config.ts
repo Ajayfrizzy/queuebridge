@@ -41,13 +41,27 @@ export default defineConfig({
       workbox: {
         // MQ.2: includes the built-in public Ask Que bundle (a hashed JSON asset)
         globPatterns: PRECACHE_GLOB_PATTERNS,
+        globIgnores: ['assets/LandingPage-*.{js,css}'],
         // API calls must never be answered with the cached app shell
         navigateFallbackDenylist: [/^\/api\//, /^\/health/],
         // M5.4: turn-alert push and notification-click handlers (public/push-handler.js)
         importScripts: ['push-handler.js'],
         // Public, non-personal API responses only (src/pwa/swRules.ts; MQ.2 corrected the
         // public-facility rule, which never matched the real API path)
-        runtimeCaching: RUNTIME_CACHING,
+        runtimeCaching: [
+          ...RUNTIME_CACHING,
+          {
+            urlPattern: ({ url, sameOrigin }) =>
+              sameOrigin &&
+              /^\/assets\/LandingPage-[\w-]+\.(js|css)$/.test(url.pathname) &&
+              !url.search,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'landing-assets',
+              expiration: { maxEntries: 8, maxAgeSeconds: 2592000 },
+            },
+          },
+        ],
       },
     }),
   ],

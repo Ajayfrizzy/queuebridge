@@ -36,7 +36,6 @@ import {
   loadSnapshot,
   saveSnapshot,
   saveTicket,
-  takeTokenFromHash,
   ticketPath,
   ticketsWithCode,
   type StoredTicket,
@@ -72,13 +71,18 @@ function resolveSaved(
  * Keyed by code + local id: moving between two saved tickets (e.g. from the chooser, or two
  * tickets sharing a code) must re-resolve the token instead of reusing the previous ticket's state.
  */
-export function TicketPage(): ReactElement {
+export function TicketPage({ fragment }: { fragment: string }): ReactElement {
   const { code = '' } = useParams();
   const [search] = useSearchParams();
-  return <TicketView key={`${code}?${search.get('k') ?? ''}&${search.get('ref') ?? ''}`} />;
+  return (
+    <TicketView
+      fragment={fragment}
+      key={`${code}?${search.get('k') ?? ''}&${search.get('ref') ?? ''}`}
+    />
+  );
 }
 
-function TicketView(): ReactElement {
+function TicketView({ fragment }: { fragment: string }): ReactElement {
   const { code = '' } = useParams();
   const [search] = useSearchParams();
   const localId = search.get('k');
@@ -102,10 +106,11 @@ function TicketView(): ReactElement {
       };
     }
     // A staff walk-in link may also carry the recovery key (fragment only; kept in memory)
-    const explicit =
-      takeTokenFromHash((k) => stashRecoveryKey({ code, key: k, path: '' })) ??
-      navState?.token ??
-      null;
+    const params = new URLSearchParams(fragment.slice(1));
+    const token = params.get('t');
+    const key = params.get('k');
+    if (token && key) stashRecoveryKey({ code, key, path: '' });
+    const explicit = token ?? navState?.token ?? null;
     if (explicit) {
       return {
         token: explicit,

@@ -46,7 +46,21 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   projects: [
-    { name: 'desktop-chromium', use: { ...devices['Desktop Chrome'] } },
+    ...(['chromium', 'firefox', 'webkit'] as const).flatMap((browserName) =>
+      [
+        { size: 'desktop', viewport: { width: 1280, height: 800 } },
+        { size: 'mobile', viewport: { width: 375, height: 812 } },
+      ].map(({ size, viewport }) => ({
+        name: `smoke-${browserName}-${size}`,
+        testMatch: /browser-smoke\.spec\.ts/,
+        use: { browserName, viewport },
+      })),
+    ),
+    {
+      name: 'desktop-chromium',
+      testIgnore: /browser-smoke\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'] },
+    },
     {
       name: 'desktop-1440',
       use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },

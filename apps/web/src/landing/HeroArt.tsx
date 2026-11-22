@@ -47,7 +47,7 @@ export function HeroArt(): ReactElement {
           </text>
         </g>
         <g transform="translate(208 80)">
-          <rect width="92" height="26" rx="13" className="ha-badge" />
+          <rect width="120" height="26" rx="13" className="ha-badge" />
           <path d="M12 13 l4 4 l8 -9" className="ha-tick" />
           <text x="30" y="18" className="ha-badge-text">
             {t('hero.artConfirmed')}
