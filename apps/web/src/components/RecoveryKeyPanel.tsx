@@ -1,6 +1,7 @@
 import { useState, type ReactElement } from 'react';
 import { formatRecoveryKey } from '@queuebridge/contracts';
-import { buildQr, qrPath, QUIET_ZONE } from '../lib/qr.js';
+import { useQr } from '../lib/useQr.js';
+import { qrPath, QUIET_ZONE } from '../lib/qrSvg.js';
 import { recoveryKeyText, recoveryLink } from '../lib/recoveryKey.js';
 import { useAnnounce } from './Announcer.js';
 
@@ -31,7 +32,7 @@ export function RecoveryKeyPanel({
   const [showQr, setShowQr] = useState(false);
   const grouped = formatRecoveryKey(recoveryKey);
   const link = recoveryLink(window.location.origin, path, recoveryKey);
-  const qr = showQr ? buildQr(link) : null;
+  const { matrix: qr, feedback } = useQr(showQr ? link : null);
   const total = qr ? qr.size + QUIET_ZONE * 2 : 0;
   const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
 
@@ -113,6 +114,7 @@ export function RecoveryKeyPanel({
           {showQr ? 'Hide QR code' : 'Show QR code'}
         </button>
       </div>
+      {feedback}
       {qr ? (
         <div className="qr-panel" data-testid="recovery-qr">
           <svg

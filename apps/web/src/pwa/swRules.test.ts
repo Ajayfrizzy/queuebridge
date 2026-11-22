@@ -72,7 +72,7 @@ describe('service-worker runtime caching (MQ.2 correction of the public-facility
 
   it('vite.config.ts uses exactly these rules and precache patterns', () => {
     const cfg = readFileSync(join(process.cwd(), 'vite.config.ts'), 'utf8');
-    expect(cfg).toContain('runtimeCaching: RUNTIME_CACHING');
+    expect(cfg).toMatch(/runtimeCaching:\s*\[\s*\.\.\.RUNTIME_CACHING,/);
     expect(cfg).toContain('globPatterns: PRECACHE_GLOB_PATTERNS');
     expect(cfg).not.toMatch(/api\\\/v1\\\/facilities/);
     expect(PRECACHE_GLOB_PATTERNS.join()).toContain('json');

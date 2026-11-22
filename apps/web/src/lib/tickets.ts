@@ -225,16 +225,3 @@ export function finishJoin(queueId: string): void {
     read<PendingJoin>(PENDING_KEY).filter((p) => p.queueId !== queueId),
   );
 }
-
-/**
- * Read and remove a `#t=<token>[&k=<recovery key>]` fragment (staff walk-in links) without it
- * reaching history. A walk-in's recovery key is handed to `onKey` (page memory only).
- */
-export function takeTokenFromHash(onKey?: (key: string) => void): string | null {
-  const params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-  const t = params.get('t');
-  const k = params.get('k');
-  if (t) window.history.replaceState(null, '', window.location.pathname + window.location.search);
-  if (t && k) onKey?.(k);
-  return t;
-}

@@ -74,20 +74,17 @@ export async function expectNoA11yViolations(page: Page): Promise<void> {
 
 /** True when the page needs horizontal scrolling (a layout failure on narrow screens). */
 export async function hasHorizontalOverflow(page: Page): Promise<boolean> {
-  const over = await page.evaluate(() => {
-    const w = document.documentElement.clientWidth;
-    if (document.documentElement.scrollWidth <= w) return null;
-    // Name the widest offenders so a failure is diagnosable
-    return [...document.querySelectorAll('body *')]
-      .filter((e) => e.getBoundingClientRect().right > w + 1)
-      .slice(-5)
-      .map(
-        (e) =>
-          `${e.tagName.toLowerCase()}.${String(e.className)} → ${Math.round(e.getBoundingClientRect().right)}px`,
-      );
-  });
-  if (over) console.warn(`horizontal overflow on ${page.url()}: ${over.join(' | ')}`);
-  return over !== null;
+  const overflow = await page.evaluate(() =>
+    [document.documentElement, ...document.querySelectorAll('.app-shell')]
+      .filter((element) => element.scrollWidth > element.clientWidth)
+      .map((element) => ({
+        container: element.className || element.tagName,
+        available: element.clientWidth,
+        actual: element.scrollWidth,
+      })),
+  );
+  if (overflow.length) console.warn('Horizontal overflow', overflow);
+  return overflow.length > 0;
 }
 
 // ---------------------------------------------------------------------------

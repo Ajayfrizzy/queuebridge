@@ -702,6 +702,7 @@ test.describe('11.A1 / 11.A2 keyboard-only journeys and focus', () => {
 
     // recover: from the join page, by link, with Enter
     await v.page.goto(s.joinPath);
+    await expect(v.page.getByRole('heading', { level: 1 })).toHaveText('Queue Clinic');
     await tabTo(v.page, (el) => /Lost your ticket/.test(el?.textContent ?? ''));
     await v.page.keyboard.press('Enter');
     await expect(v.page.locator('#main h1')).toBeFocused();

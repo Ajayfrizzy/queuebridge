@@ -35,7 +35,7 @@ const MALFORMED =
   'Some of these details are not in the expected form. Check the organization and facility (as ' +
   'in the join link), the ticket code (for example A012) and the 32-character key, then try again.';
 
-export function RecoverPage(): ReactElement {
+export function RecoverPage({ fragment }: { fragment: string }): ReactElement {
   const params = useParams();
   const navigate = useNavigate();
   const announce = useAnnounce();
@@ -101,14 +101,13 @@ export function RecoverPage(): ReactElement {
   useEffect(() => {
     if (autoRan.current) return;
     autoRan.current = true;
-    const hash = window.location.hash;
+    const hash = fragment;
     const k = fragmentParam(hash, 'k');
     const g = fragmentParam(hash, 'g');
     if (!k && !g) {
       heading.current?.focus();
       return;
     }
-    window.history.replaceState(null, '', window.location.pathname + window.location.search);
     if (g) {
       void submit({ grant: g });
     } else if (k && params['orgSlug'] && params['facilitySlug'] && params['code']) {

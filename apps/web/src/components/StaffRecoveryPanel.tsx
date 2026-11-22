@@ -5,7 +5,8 @@ import type {
   RecoveryRequestSummary,
 } from '@queuebridge/contracts';
 import { api, ApiRequestError } from '../lib/api.js';
-import { buildQr, qrPath, QUIET_ZONE } from '../lib/qr.js';
+import { useQr } from '../lib/useQr.js';
+import { qrPath, QUIET_ZONE } from '../lib/qrSvg.js';
 import { formatTime } from '../lib/format.js';
 import { useAnnounce } from './Announcer.js';
 import { Field } from './Form.js';
@@ -210,10 +211,9 @@ export function StaffRecoveryPanel({
     }
   }
 
-  const grantQr =
-    active && active.status === 'approved'
-      ? buildQr(`${window.location.origin}/recover#g=${active.grant}`)
-      : null;
+  const { matrix: grantQr, feedback } = useQr(
+    active?.status === 'approved' ? `${window.location.origin}/recover#g=${active.grant}` : null,
+  );
   const total = grantQr ? grantQr.size + QUIET_ZONE * 2 : 0;
 
   return (
@@ -332,6 +332,7 @@ export function StaffRecoveryPanel({
           ) : null}
           {active.status === 'expired' ? <p>This request expired. Start again if needed.</p> : null}
           {active.status === 'redeemed' ? <p>The visitor has their ticket back.</p> : null}
+          {feedback}
           {grantQr ? (
             <div className="qr-panel" data-testid="staff-recovery-qr">
               <p>

@@ -36,7 +36,8 @@ import {
   QUEUE_MANAGER_ROLES,
   WALK_IN_ROLES,
 } from '../lib/permissions.js';
-import { buildQr, qrPath, QUIET_ZONE } from '../lib/qr.js';
+import { useQr } from '../lib/useQr.js';
+import { qrPath, QUIET_ZONE } from '../lib/qrSvg.js';
 import { StaffRecoveryPanel } from '../components/StaffRecoveryPanel.js';
 import { OwnDeviceWarning } from '../components/OwnDeviceWarning.js';
 import { formatRecoveryKey } from '@queuebridge/contracts';
@@ -135,6 +136,8 @@ export function StaffConsole(): ReactElement {
   const [walkIn, setWalkIn] = useState<{ code: string; link: string; key: string | null } | null>(
     null,
   );
+
+  const { matrix: walkInQr, feedback } = useQr(walkIn?.link ?? null);
   /** Operation id of a walk-in whose outcome is unknown (lost response). */
   const [pendingWalkIn, setPendingWalkIn] = useState<string | null>(null);
   const [transferTarget, setTransferTarget] = useState('');
@@ -537,7 +540,6 @@ export function StaffConsole(): ReactElement {
     }
   }
 
-  const walkInQr = walkIn ? buildQr(walkIn.link) : null;
   const qrTotal = walkInQr ? walkInQr.size + QUIET_ZONE * 2 : 0;
 
   return (
@@ -1121,7 +1123,7 @@ export function StaffConsole(): ReactElement {
                   </div>
                 </div>
               ) : null}
-              {walkIn && walkInQr ? (
+              {walkIn ? (
                 <div className="alert alert-success qr-panel" data-testid="walkin-result">
                   <p className="ticket-code" data-testid="walkin-code">
                     {walkIn.code}
@@ -1130,20 +1132,23 @@ export function StaffConsole(): ReactElement {
                     Tell the visitor their code. If they have a phone, they can scan this to follow
                     their place in line.
                   </p>
-                  <svg
-                    role="img"
-                    aria-label={`QR code with the status link for ticket ${walkIn.code}`}
-                    viewBox={`0 0 ${qrTotal} ${qrTotal}`}
-                    className="qr"
-                    shapeRendering="crispEdges"
-                  >
-                    <rect width={qrTotal} height={qrTotal} fill="#fff" />
-                    <path
-                      transform={`translate(${QUIET_ZONE} ${QUIET_ZONE})`}
-                      fill="#000"
-                      d={qrPath(walkInQr)}
-                    />
-                  </svg>
+                  {feedback}
+                  {walkInQr && (
+                    <svg
+                      role="img"
+                      aria-label={`QR code with the status link for ticket ${walkIn.code}`}
+                      viewBox={`0 0 ${qrTotal} ${qrTotal}`}
+                      className="qr"
+                      shapeRendering="crispEdges"
+                    >
+                      <rect width={qrTotal} height={qrTotal} fill="#fff" />
+                      <path
+                        transform={`translate(${QUIET_ZONE} ${QUIET_ZONE})`}
+                        fill="#000"
+                        d={qrPath(walkInQr)}
+                      />
+                    </svg>
+                  )}
                   {walkIn.key ? (
                     <p>
                       Recovery key, for the visitor to keep (shown once):{' '}

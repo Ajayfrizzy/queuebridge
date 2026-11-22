@@ -414,6 +414,8 @@ test.describe('safe handling of local data', () => {
     });
     await p.goto(`/staff/queues/${s.queueId}`);
     await expect(p.getByTestId('offline-problem')).toContainText('cannot save offline data');
+    // Establish the online console before disconnecting a device with no persistent storage.
+    await expect(p.getByRole('button', { name: 'Issue walk-in ticket' })).toBeEnabled();
     await goOffline(staff.ctx, p);
     await p.getByRole('button', { name: 'Issue walk-in ticket' }).click();
     await expect(p.getByTestId('command-error')).toContainText('not registered for offline use');

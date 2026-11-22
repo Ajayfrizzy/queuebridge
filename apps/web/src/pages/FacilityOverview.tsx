@@ -3,7 +3,8 @@ import { Link, useOutletContext } from 'react-router-dom';
 import { useAnnounce } from '../components/Announcer.js';
 import { Loading, StatusBadge } from '../components/Form.js';
 import { api } from '../lib/api.js';
-import { buildQr, qrPath, qrSvgDocument, QUIET_ZONE } from '../lib/qr.js';
+import { useQr } from '../lib/useQr.js';
+import { qrPath, qrSvgDocument, QUIET_ZONE } from '../lib/qrSvg.js';
 import { useLoad } from '../lib/useLoad.js';
 import { QueAiSettingsSection } from '../que/QueAiSettingsSection.js';
 import type { FacilityContext } from './FacilityLayout.js';
@@ -15,7 +16,7 @@ export function FacilityOverview(): ReactElement {
   const readiness = useLoad(() => api.readiness(facilityId), `ready-${facilityId}`);
 
   const url = link.data?.join_link.url ?? null;
-  const matrix = useMemo(() => (url ? buildQr(url) : null), [url]);
+  const { matrix: matrix, feedback } = useQr(url);
   const downloadHref = useMemo(
     () =>
       matrix && url
@@ -25,7 +26,7 @@ export function FacilityOverview(): ReactElement {
   );
 
   if (link.loading || readiness.loading) return <Loading what="facility overview" />;
-  if (link.error || readiness.error || !url || !matrix || !readiness.data) {
+  if (link.error || readiness.error || !url || !readiness.data) {
     return (
       <p role="alert">
         {link.error?.message ?? readiness.error?.message ?? 'The facility overview is unavailable.'}
@@ -33,7 +34,7 @@ export function FacilityOverview(): ReactElement {
     );
   }
   const r = readiness.data.readiness;
-  const total = matrix.size + QUIET_ZONE * 2;
+  const total = (matrix?.size ?? 0) + QUIET_ZONE * 2;
   const joinOperational = r.visitor_join.operational;
 
   async function copy(): Promise<void> {
@@ -152,25 +153,28 @@ export function FacilityOverview(): ReactElement {
             {url}
           </a>
         </p>
-        <svg
-          role="img"
-          aria-label={
-            joinOperational
-              ? `QR code for the join link ${url}`
-              : `QR code for the join link ${url} (preview only: not live yet)`
-          }
-          viewBox={`0 0 ${total} ${total}`}
-          className="qr"
-          data-testid="join-qr"
-          shapeRendering="crispEdges"
-        >
-          <rect width={total} height={total} fill="#fff" />
-          <path
-            transform={`translate(${QUIET_ZONE} ${QUIET_ZONE})`}
-            fill="#000"
-            d={qrPath(matrix)}
-          />
-        </svg>
+        {feedback}
+        {matrix && (
+          <svg
+            role="img"
+            aria-label={
+              joinOperational
+                ? `QR code for the join link ${url}`
+                : `QR code for the join link ${url} (preview only: not live yet)`
+            }
+            viewBox={`0 0 ${total} ${total}`}
+            className="qr"
+            data-testid="join-qr"
+            shapeRendering="crispEdges"
+          >
+            <rect width={total} height={total} fill="#fff" />
+            <path
+              transform={`translate(${QUIET_ZONE} ${QUIET_ZONE})`}
+              fill="#000"
+              d={qrPath(matrix)}
+            />
+          </svg>
+        )}
         <p className="no-print">
           <a
             href={new URL(url).pathname.replace(/^\/join\//, '/display/')}
@@ -189,7 +193,12 @@ export function FacilityOverview(): ReactElement {
               Download QR (SVG)
             </a>
           ) : null}
-          <button type="button" className="btn btn-secondary" onClick={() => window.print()}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={!matrix}
+            onClick={() => window.print()}
+          >
             Print
           </button>
         </div>
