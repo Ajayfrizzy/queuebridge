@@ -8,6 +8,7 @@ import {
 const EnvSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+    PORT: z.coerce.number().int().min(1).max(65535).optional(),
     DATABASE_URL: z.string().url('DATABASE_URL must be a valid postgres:// URL'),
     WORKER_POLL_INTERVAL_MS: z.coerce.number().int().min(1000).default(5000),
     /**
