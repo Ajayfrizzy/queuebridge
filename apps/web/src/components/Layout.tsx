@@ -31,6 +31,26 @@ export function Layout(): ReactElement {
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
 
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => setMenuOpen(false), [location.key]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const breakpoint = window.matchMedia('(max-width: 40rem)');
+    const close = (): void => setMenuOpen(false);
+    const outside = (event: MouseEvent): void => {
+      if (event.target instanceof Element && !event.target.closest('.public-header, dialog'))
+        close();
+    };
+    breakpoint.addEventListener('change', close);
+    document.addEventListener('click', outside);
+    return () => {
+      breakpoint.removeEventListener('change', close);
+      document.removeEventListener('click', outside);
+    };
+  }, [menuOpen]);
+
   async function signOut(force = false): Promise<void> {
     // Never silently destroy unsent work: make the person sync it or knowingly discard it
     if (!force && offline.summary.unsynced > 0) {
@@ -76,11 +96,32 @@ export function Layout(): ReactElement {
         Skip to main content
       </a>
       <header className="site-header">
-        <div className="container header-row">
+        <div
+          className={`container header-row${user ? '' : ' public-header'}`}
+          data-menu-open={user ? undefined : menuOpen}
+          onKeyDown={(event) => {
+            if (menuOpen && event.key === 'Escape') {
+              setMenuOpen(false);
+              menuButton.current?.focus();
+            }
+          }}
+        >
           <Link to="/" className="brand">
             <img className="brand-mark" src="/favicon.png" alt="" width={32} height={32} />
             <span className="brand-name">QueueBridge</span>
           </Link>
+          {!user && (
+            <button
+              type="button"
+              ref={menuButton}
+              className="btn btn-secondary menu-toggle"
+              aria-expanded={menuOpen}
+              aria-controls="primary-nav header-tools"
+              onClick={() => setMenuOpen(!menuOpen)}
+            >
+              <span aria-hidden="true">☰</span> Menu
+            </button>
+          )}
           <nav id="primary-nav" aria-label="Primary" className="site-nav">
             <ul className="nav-list">
               {user ? (
@@ -124,7 +165,7 @@ export function Layout(): ReactElement {
               </span>
             </button>
           ) : null}
-          <div className="header-tools">
+          <div id="header-tools" className="header-tools">
             <DisplaySettingsButton />
           </div>
           {user ? (

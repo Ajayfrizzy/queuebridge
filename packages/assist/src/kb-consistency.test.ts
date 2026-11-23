@@ -90,7 +90,7 @@ const PRODUCTION = manifest({
   ussd: USSD_NOT_SET_UP,
   ask_que_ai: SWITCHED_OFF,
 });
-const TODAY = '2026-11-20';
+const TODAY = '2026-11-23';
 
 const check = (
   over: {

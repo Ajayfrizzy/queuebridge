@@ -19,7 +19,7 @@ export const en = {
   hero: {
     eyebrow: 'Queue coordination for public services',
     title: "Queues that keep moving when the connection doesn't.",
-    lead: 'Visitors join by QR code, link or at the desk. Staff keep serving through an outage: one authorized coordinator device carries on locally, and anything that needs a second look is flagged for review when the connection returns. Every visitor sees only what the server has confirmed.',
+    lead: 'Give visitors a ticket they can follow. Keep serving offline with one authorized coordinator, then sync for server confirmation.',
     primary: 'Set up your facility',
     secondary: 'Sign in',
     tertiary: 'How visitors join',
@@ -31,6 +31,18 @@ export const en = {
     artTicket: 'Ticket',
     artConfirmed: 'Confirmed',
     artCounter: 'Counter 2',
+  },
+  preview: {
+    visitor: 'Visitor ticket preview',
+    ticketAlt: 'Example ticket G001 is waiting, first in line, with a server-confirmed update.',
+    heading: 'Inside the workspace',
+    counter: 'At the counter',
+    counterDetail: 'Register walk-ins and see the status of your queue while you serve.',
+    counterAlt:
+      'Staff console with the open consultation queue, counter selector and walk-in registration.',
+    facility: 'Across the facility',
+    facilityDetail: 'Manage facilities and open the workspace where your team coordinates service.',
+    facilityAlt: 'Administration workspace showing the facility directory and creation form.',
   },
   story: {
     heading: 'How QueueBridge keeps the line moving',

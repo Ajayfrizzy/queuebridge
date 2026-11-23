@@ -63,7 +63,7 @@ test.describe('M7.2 hero and navigation', () => {
     await landing(page);
     const hero = page.locator('.hero');
     await expect(hero.getByText(en.hero.lead)).toBeVisible();
-    await expect(hero.getByRole('img', { name: 'QueueBridge' })).toBeVisible();
+    await expect(page.getByRole('banner').getByRole('link', { name: 'QueueBridge' })).toBeVisible();
     await hero.getByRole('link', { name: en.hero.primary }).click();
     await expect(page).toHaveURL(/\/signup$/);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Create your organization');
@@ -581,6 +581,8 @@ test.describe('M7.2 theme selection (Light, Dark, System)', () => {
     p: Page,
     label: 'Light' | 'Dark' | 'Follow my device setting',
   ): Promise<void> {
+    const menu = p.getByRole('button', { name: 'Menu', expanded: false });
+    if (await menu.isVisible()) await menu.click();
     await p.getByTestId('open-display-settings').first().click();
     await p.getByLabel('Theme').selectOption({ label });
     await p.getByRole('button', { name: 'Done' }).click();
@@ -615,6 +617,7 @@ test.describe('M7.2 theme selection (Light, Dark, System)', () => {
     // a light OS with Dark chosen, on staff and administration screens too
     await page.emulateMedia({ colorScheme: 'light' });
     await page.goto('/');
+    await expect(page.getByTestId('whoami')).toBeVisible();
     await choose(page, 'Dark');
     for (const path of [
       '/',
@@ -735,3 +738,53 @@ test('the hero confirmation label fits inside its badge', async ({ page }) => {
   });
   expect(rightPadding).toBeGreaterThan(0);
 });
+
+test('phone navigation opens inline and returns focus on Escape', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/');
+  const menu = page.getByRole('button', { name: 'Menu' });
+  await menu.focus();
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Tab');
+  await expect(
+    page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Sign in' }),
+  ).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(menu).toBeFocused();
+  await expect(menu).toHaveAttribute('aria-expanded', 'false');
+  await menu.click();
+  await page
+    .getByRole('navigation', { name: 'Primary' })
+    .getByRole('link', { name: 'Sign in' })
+    .click();
+  await expect(menu).toHaveAttribute('aria-expanded', 'false');
+  await menu.click();
+  await expect(
+    page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Sign in' }),
+  ).toHaveAttribute('aria-current', 'page');
+});
+
+for (const width of [320, 375, 390, 430]) {
+  test(`phone menu clears on outside interaction and breakpoint changes at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 812 });
+    await page.goto('/');
+    const menu = page.getByRole('button', { name: 'Menu' });
+    await menu.click();
+    const nav = page.getByRole('navigation', { name: 'Primary' });
+    await expect(nav.getByRole('link', { name: 'Create organization' })).toBeInViewport();
+    const header = await page.locator('.site-header').boundingBox();
+    const hero = await page.locator('.hero').boundingBox();
+    expect(hero!.y).toBeGreaterThanOrEqual(header!.y + header!.height);
+    await page.locator('.hero h1').click();
+    await expect(nav).toBeHidden();
+    await menu.click();
+    await page.setViewportSize({ width: 1024, height: 812 });
+    await expect(menu).toBeHidden();
+    await expect(nav).toBeVisible();
+    await page.setViewportSize({ width, height: 812 });
+    await expect(menu).toHaveAttribute('aria-expanded', 'false');
+    await expect(nav).toBeHidden();
+  });
+}
