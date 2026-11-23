@@ -395,6 +395,9 @@ test.describe('@responsive site header', () => {
       await page.goto(signedIn ? '/admin' : '/');
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       const vw = page.viewportSize()?.width ?? 0;
+      const menu = page.getByRole('button', { name: 'Menu' });
+      const mobileMenu = await menu.isVisible();
+      if (mobileMenu) await menu.click();
       const items = await headerItems(page);
       // M5.2 adds "Display and alerts"; M7.2 moves "Ask Que" out of the header to a floating
       // launcher (checked below)
@@ -461,6 +464,11 @@ test.describe('@responsive site header', () => {
           (document.activeElement?.textContent ?? '').trim(),
         );
         expect(focused).toBe(name);
+        if (mobileMenu && name === 'QueueBridge') {
+          await page.keyboard.press('Tab');
+          await expect(menu).toBeFocused();
+          await page.keyboard.press('Enter');
+        }
       }
       if (signedIn) {
         await expect(page.getByRole('group', { name: 'Account' })).toContainText('Org Admin');

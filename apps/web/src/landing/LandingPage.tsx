@@ -11,8 +11,9 @@ import { ContinuityStory } from './ContinuityStory.js';
 import { HeroArt } from './HeroArt.js';
 import { LANDING_CHANNELS, channelView } from './channels.js';
 import { createLandingI18n } from './i18n.js';
-// The supplied logo, downscaled for bandwidth (M7.1); imported only by this chunk
-import logoUrl from '../assets/brand/queuebridge-logo-720.png';
+import visitorPreview from './previews/landing-preview-visitor.png';
+import counterPreview from './previews/landing-preview-counter.png';
+import facilityPreview from './previews/landing-preview-facility.png';
 import './landing.css';
 
 /** Project facts shown in the footer (the repository's real location and licence). */
@@ -79,13 +80,6 @@ function Landing(): ReactElement {
 
       <section className="hero" aria-labelledby="landing-title">
         <div className="hero-copy">
-          <img
-            className="hero-logo"
-            src={logoUrl}
-            alt={t('hero.logoAlt')}
-            width={720}
-            height={240}
-          />
           <p className="hero-eyebrow">{t('hero.eyebrow')}</p>
           <h1 id="landing-title" className="hero-title">
             {t('hero.title')}
@@ -112,13 +106,44 @@ function Landing(): ReactElement {
           </div>
         </div>
         <div className="hero-visual">
-          <HeroArt />
+          <figure className="ticket-preview">
+            <figcaption>{t('preview.visitor')}</figcaption>
+            <img src={visitorPreview} width="345" height="367" alt={t('preview.ticketAlt')} />
+          </figure>
         </div>
       </section>
 
-      <ContinuityStory />
-      <Audiences />
+      <section className="landing-section" aria-labelledby="product-heading">
+        <h2 id="product-heading">{t('preview.heading')}</h2>
+        <div className="workspaces">
+          {(
+            [
+              ['counter', counterPreview, 550],
+              ['facility', facilityPreview, 510],
+            ] as const
+          ).map(([key, src, height]) => (
+            <figure key={key}>
+              <figcaption>
+                <h3>{t(`preview.${key}`)}</h3>
+                <p>{t(`preview.${key}Detail`)}</p>
+              </figcaption>
+              <img
+                src={src}
+                width="990"
+                height={height}
+                loading="lazy"
+                alt={t(`preview.${key}Alt`)}
+              />
+            </figure>
+          ))}
+        </div>
+      </section>
+      <div className="continuity-feature">
+        <HeroArt />
+        <ContinuityStory />
+      </div>
       <Capabilities />
+      <Audiences />
       <Channels manifest={manifest} />
       <JoinHowTo />
       <Onboarding user={user} />
