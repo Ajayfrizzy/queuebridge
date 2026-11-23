@@ -2,21 +2,23 @@
 
 Two independent **Web Service/Backend** deployments share one private persistent PostgreSQL 16+ database. The public deployment serves the production PWA and the existing Fastify routes on one HTTPS origin. The worker runs its existing polling loop continuously and serves only status probes. Configure the port in each deployment's Settings. RumptyCloud injects PORT and terminates HTTPS at its edge. [Managed ports and probes](https://docs.rumptycloud.com/deployments/ports/)
 
-| Setting                   | Web + API                                                                                                                                                               | Notification worker                                                                                                            |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Repository and build root | Reviewed SHA, workspace root                                                                                                                                            | Same SHA and root                                                                                                              |
-| Build command             | `pnpm install --frozen-lockfile && VITE_API_BASE_URL='' pnpm build && pnpm --filter @queuebridge/web bundle:check`                                                      | `pnpm install --frozen-lockfile && pnpm --filter @queuebridge/worker... build`                                                 |
-| Start command             | `sh infra/rumptycloud/node-with-db-ca.sh infra/rumptycloud/web.mjs`                                                                                                     | `sh infra/rumptycloud/node-with-db-ca.sh apps/worker/dist/worker.js`                                                           |
-| Runtime                   | Linux Node 24, pnpm 9.15.9, retain built workspace, dependencies, knowledge assets and web securityHeaders.ts                                                           | Same runtime, retain compiled dependencies and workspace links                                                                 |
-| Port and bind             | Platform port (8080 is documented default), 0.0.0.0                                                                                                                     | Platform port, 0.0.0.0                                                                                                         |
-| Probe                     | /health, cheap public liveness. Managed instance omits the DB diagnostics route. Independently check database identity and a DB-backed API flow before opening traffic. | /health/ready, empty 200 after a successful recent pass, otherwise 503. /health reports process liveness only.                 |
-| Replicas                  | Start with one. Assess in-process limits, DB connections and SSE before scaling.                                                                                        | One continuously scheduled replica, no sleep or scaling to zero. Require stop-before-start or a verified zero-overlap rollout. |
+## Dockerfile deployment
 
-Confirm that the selected build environment retains dev build tools during install and provides the runtime versions above. Test the commands from the repository root. Keep the same canonical hostname across releases for cookies, IndexedDB, push and installed workers. Keep prior hashed assets and Workbox scripts available across updates, using a retained static asset set in the new artifact if necessary. Verify a two-version update with an old tab before release.
+Select the reviewed staging revision, **Web Service/Backend**, repository root (`.`) and build method **Dockerfile**. Inspect the preselected method after connecting GitHub. The documented location is `Dockerfile` in the selected root. The guide specifies no additional path field. If the dashboard offers one, enter `Dockerfile`. Clear custom build and start commands on the Web + API deployment so the image supplies its own CMD. Select port 8080 and readiness path `/health`; the listener uses the platform-injected PORT. Keep service secrets in runtime environment settings. [Build methods](https://docs.rumptycloud.com/deployments/create-a-deployment/) · [GitHub deployment settings](https://docs.rumptycloud.com/deployments/github-deploy/)
 
-## Railpack start detection
+Railpack returned `no start command was set` despite receiving the launcher argument. This build uses a Node 24 Linux image, installs pnpm 9.15.9, builds the frozen workspace and checks the PWA bundle. The runtime runs as the node user, starts the TLS launcher as PID 1 and retains the compiled workspace, production dependencies and public CA at /app/apps/certs/queuebridge-ca.crt. Release and migration jobs continue to use the reviewed workspace independently.
 
-RumptyCloud reported `no start command was set` during Railpack detection even though the build log included the Web + API launcher in `--start-cmd`. Use the repository root as the build context. Its package.json declares the same launcher as `scripts.start`, so `pnpm start` starts the managed Web + API with certificate validation. Keep the worker deployment's explicit worker start command.
+Local commands from the repository root (supply runtime variables through a protected file outside the build context):
+
+```sh
+docker build -t queuebridge:managed-local .
+docker run -d --name qb-web -p 127.0.0.1:8080:8080 --env-file "$QB_RUNTIME_ENV" -e PORT=8080 queuebridge:managed-local
+curl -fsS http://127.0.0.1:8080/health
+docker stop qb-web
+docker inspect -f '{{.State.ExitCode}}' qb-web
+```
+
+An independently deployed worker may use this image if the platform supports overriding its command with `sh infra/rumptycloud/node-with-db-ca.sh apps/worker/dist/worker.js`. Give it its own environment, one continuously scheduled replica, and probe /health/ready. Verify the override before activating a worker. The default image command starts only Web + API. Retain prior hashed assets across updates and verify an old tab and installed service worker before release.
 
 ## PostgreSQL certificate delivery
 
