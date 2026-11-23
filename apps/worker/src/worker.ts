@@ -1,3 +1,6 @@
+import { createServer } from 'node:http';
+import { once } from 'node:events';
+import { setTimeout as delay } from 'node:timers/promises';
 import postgres from 'postgres';
 import { assertQueueBridgeDatabase, auditKeyFingerprint, runCheckpointJob } from './checkpoints.js';
 import { parseEnv } from './env.js';
@@ -53,6 +56,25 @@ const sql = postgres(env.DATABASE_URL, {
   connection: { idle_in_transaction_session_timeout: 60_000 },
 });
 let running = true;
+const stopping = new AbortController();
+let lastSuccessfulPass = -Infinity;
+const probe =
+  !ONCE && env.PORT
+    ? createServer((req, res) => {
+        const live = req.url === '/health';
+        const ready = req.url === '/health/ready';
+        const fresh =
+          performance.now() - lastSuccessfulPass <=
+          env.WORKER_POLL_INTERVAL_MS + env.WORKER_ONCE_TIMEOUT_MS;
+        const status =
+          (!live && !ready) || !['GET', 'HEAD'].includes(req.method ?? '')
+            ? 404
+            : running && (live || fresh)
+              ? 200
+              : 503;
+        res.writeHead(status, { 'Cache-Control': 'no-store' }).end();
+      })
+    : undefined;
 
 const log = (
   level: 'info' | 'warn' | 'error',
@@ -172,7 +194,8 @@ const workerConfig = {
 
 let lastHealthEvaluation = 0;
 
-async function runOnce(force = false): Promise<void> {
+async function runOnce(force = false): Promise<boolean> {
+  let healthy = true;
   // Device health first: alerts should not wait behind long housekeeping jobs
   const due = Date.now() - lastHealthEvaluation >= env.HEALTH_EVALUATION_INTERVAL_SECONDS * 1000;
   if (force || due) {
@@ -188,6 +211,7 @@ async function runOnce(force = false): Promise<void> {
       lastHealthEvaluation = Date.now();
       if (r.opened + r.resolved > 0) log('info', 'Device health evaluated', { ...r });
     } catch (err) {
+      healthy = false;
       // The previous alert state stays as it was (one transaction); queues are never affected
       log('error', 'Device health evaluation failed', {
         error: err instanceof Error ? err.message : String(err),
@@ -201,11 +225,13 @@ async function runOnce(force = false): Promise<void> {
     });
     if (r.claimed + r.failed > 0) log('info', 'Turn alerts processed', { ...r });
     if (r.errors > 0) {
+      healthy = false;
       log('error', 'Turn-alert results could not be recorded; retried after the lease', {
         errors: r.errors,
       });
     }
   } catch (err) {
+    healthy = false;
     log('error', 'Turn-alert delivery failed (other jobs continue)', {
       error: err instanceof Error ? err.message : String(err),
     });
@@ -218,11 +244,13 @@ async function runOnce(force = false): Promise<void> {
     });
     if (r.claimed + r.failed > 0) log('info', 'SMS turn alerts processed', { ...r });
     if (r.errors > 0) {
+      healthy = false;
       log('error', 'SMS results could not be recorded; retried after the lease (no resend)', {
         errors: r.errors,
       });
     }
   } catch (err) {
+    healthy = false;
     log('error', 'SMS delivery failed (other jobs continue)', {
       error: err instanceof Error ? err.message : String(err),
     });
@@ -240,6 +268,7 @@ async function runOnce(force = false): Promise<void> {
     )
       log('info', 'SMS data retention', { ...p });
   } catch (err) {
+    healthy = false;
     log('error', 'SMS retention failed (other jobs continue)', {
       error: err instanceof Error ? err.message : String(err),
     });
@@ -248,6 +277,7 @@ async function runOnce(force = false): Promise<void> {
     const u = await purgeUssdSessions(sql);
     if (u.cleared + u.deleted > 0) log('info', 'USSD session retention', { ...u });
   } catch (err) {
+    healthy = false;
     log('error', 'USSD retention failed (other jobs continue)', {
       error: err instanceof Error ? err.message : String(err),
     });
@@ -257,6 +287,7 @@ async function runOnce(force = false): Promise<void> {
     if (p.revoked + p.tombstonesDeleted + p.notificationsDeleted + p.throttleDeleted > 0)
       log('info', 'Turn-alert data retention', { ...p });
   } catch (err) {
+    healthy = false;
     log('error', 'Turn-alert retention failed (other jobs continue)', {
       error: err instanceof Error ? err.message : String(err),
     });
@@ -265,6 +296,7 @@ async function runOnce(force = false): Promise<void> {
     const removed = await runHealthRetention(sql);
     if (removed > 0) log('info', 'Resolved health alerts purged', { count: removed });
   } catch (err) {
+    healthy = false;
     log('error', 'Health alert retention failed', {
       error: err instanceof Error ? err.message : String(err),
     });
@@ -275,6 +307,7 @@ async function runOnce(force = false): Promise<void> {
       log('info', 'Recovery data purged', { ...purged });
     }
   } catch (err) {
+    healthy = false;
     // Retention is housekeeping: a failure never stops the checkpoint job
     log('error', 'Recovery retention failed', {
       error: err instanceof Error ? err.message : String(err),
@@ -296,6 +329,7 @@ async function runOnce(force = false): Promise<void> {
       });
     }
     for (const e of r.errors) {
+      healthy = false;
       log('error', 'Audit checkpoint failed for one session (others continued)', {
         queue_session_id: e.queue_session_id,
         error: e.error,
@@ -304,6 +338,7 @@ async function runOnce(force = false): Promise<void> {
     if (r.checkpointed.length > 0)
       log('info', 'Audit checkpoints written', { count: r.checkpointed.length });
   }
+  return healthy;
 }
 
 async function main(): Promise<void> {
@@ -320,26 +355,32 @@ async function main(): Promise<void> {
       await runOnce(true);
       log('info', 'Worker run complete');
     } catch (err) {
+      lastSuccessfulPass = -Infinity;
       log('error', 'Worker job error', { error: err instanceof Error ? err.message : String(err) });
       process.exitCode = 1;
     }
     await sql.end({ timeout: 5 });
     return;
   }
+  if (probe && running) {
+    probe.listen(env.PORT, '0.0.0.0');
+    await once(probe, 'listening');
+  }
   while (running) {
     try {
-      await runOnce();
+      lastSuccessfulPass = (await runOnce()) ? performance.now() : -Infinity;
     } catch (err) {
+      lastSuccessfulPass = -Infinity;
       log('error', 'Worker job error', { error: err instanceof Error ? err.message : String(err) });
     }
-    await sleep(env.WORKER_POLL_INTERVAL_MS);
+    await delay(env.WORKER_POLL_INTERVAL_MS, undefined, { signal: stopping.signal }).catch(
+      (err) => {
+        if (!stopping.signal.aborted) throw err;
+      },
+    );
   }
   await sql.end({ timeout: 5 });
   log('info', 'Worker stopped');
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -351,6 +392,8 @@ function sleep(ms: number): Promise<void> {
 function stop(signal: string): void {
   if (!ONCE) {
     running = false;
+    probe?.close();
+    stopping.abort();
     return;
   }
   log('error', 'Worker --once stopped by signal', { signal });
@@ -370,6 +413,7 @@ if (ONCE) {
 try {
   await main();
 } catch (err) {
+  probe?.close();
   log('error', 'Worker stopped: startup check failed', {
     error: err instanceof Error ? err.message : String(err),
   });

@@ -59,7 +59,7 @@ const GENERIC_TITLES: Record<number, string> = {
  */
 export async function buildApp(
   env: Env,
-  options: { db?: Db; logStream?: NodeJS.WritableStream } = {},
+  options: { db?: Db; logStream?: NodeJS.WritableStream; exposeDbReadiness?: boolean } = {},
 ): Promise<FastifyInstance> {
   const app = Fastify({
     logger: {
@@ -164,20 +164,21 @@ export async function buildApp(
     await reply.send({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
-  app.get('/health/ready', async (req, reply) => {
-    let databaseOk = false;
-    try {
-      await db`SELECT 1`;
-      databaseOk = true;
-    } catch (err) {
-      req.log.error({ err }, 'Readiness check: database unreachable');
-    }
-    await reply.status(databaseOk ? 200 : 503).send({
-      status: databaseOk ? 'ok' : 'unavailable',
-      timestamp: new Date().toISOString(),
-      checks: { database: databaseOk ? 'ok' : 'unavailable' },
+  if (options.exposeDbReadiness !== false)
+    app.get('/health/ready', async (req, reply) => {
+      let databaseOk = false;
+      try {
+        await db`SELECT 1`;
+        databaseOk = true;
+      } catch (err) {
+        req.log.error({ err }, 'Readiness check: database unreachable');
+      }
+      await reply.status(databaseOk ? 200 : 503).send({
+        status: databaseOk ? 'ok' : 'unavailable',
+        timestamp: new Date().toISOString(),
+        checks: { database: databaseOk ? 'ok' : 'unavailable' },
+      });
     });
-  });
 
   // ---------------------------------------------------------------------------
   // Global error handler — RFC 9457 problem detail responses
