@@ -1,0 +1,1027 @@
+{
+  "entry": "assets/index-B4-xgY5i.js",
+  "chunks": [
+    {
+      "file": "assets/index-B4-xgY5i.js",
+      "imports": [],
+      "dynamic": [
+        "assets/QuePanel-BKqZtJOD.js",
+        "assets/AdminDashboard-CmT1UvPS.js",
+        "assets/FacilityChannels-CLdptWci.js",
+        "assets/FacilityCounters-CkwaewvX.js",
+        "assets/FacilityLayout-DjbCwo2G.js",
+        "assets/FacilityOverview-BZBeuDzt.js",
+        "assets/FacilityServices-HFUvkrJ-.js",
+        "assets/FacilityStaff-4VdgI7uW.js",
+        "assets/Connectivity-C43PQCCe.js",
+        "assets/StaffConsole-jaeESvc3.js",
+        "assets/AuditTrail-Bqr-SZuR.js",
+        "assets/StaffHome-DKD_RNEM.js",
+        "assets/StaffHome-DKD_RNEM.js",
+        "assets/JoinPage-PPehviuH.js",
+        "assets/TicketPage-JMOClH2_.js",
+        "assets/RecoverPage-CgicnNNy.js",
+        "assets/LandingPage-DN7eRSFI.js"
+      ]
+    },
+    {
+      "file": "assets/AdminDashboard-CmT1UvPS.js",
+      "imports": [
+        "assets/index-B4-xgY5i.js"
+      ],
+      "dynamic": []
+    },
+    {
+      "file": "assets/FacilityChannels-CLdptWci.js",
+      "imports": [
+        "assets/index-B4-xgY5i.js",
+        "assets/permissions-CKKMmhMF.js"
+      ],
+      "dynamic": []
+    },
+    {
+      "file": "assets/FacilityCounters-CkwaewvX.js",
+      "imports": [
+        "assets/index-B4-xgY5i.js"
+      ],
+      "dynamic": []
+    },
+    {
+      "file": "assets/FacilityLayout-DjbCwo2G.js",
+      "imports": [
+        "assets/index-B4-xgY5i.js"
+      ],
+      "dynamic": []
+    },
+    {
+      "file": "assets/FacilityOverview-BZBeuDzt.js",
+      "imports": [
+        "assets/index-B4-xgY5i.js",
+        "assets/qrSvg-CeR_WJxS.js"
+      ],
+      "dynamic": []
+    },
+    {
+      "file": "assets/FacilityServices-HFUvkrJ-.js",
+      "imports": [
+        "assets/index-B4-xgY5i.js",
+        "assets/policy-D14kA2sr.js",
+        "assets/FairnessControls-BrREL-NF.js",
+        "assets/format-DSdtfUmA.js"
+      ],
+      "dynamic": []
+    },
+    {
+      "file": "assets/FacilityStaff-4VdgI7uW.js",
+      "imports": [
+        "assets/index-B4-xgY5i.js"
+      ],
+      "dynamic": []
+    },
+    {
+      "file": "assets/Connectivity-C43PQCCe.js",
+      "imports": [
+        "assets/index-B4-xgY5i.js",
+        "assets/format-DSdtfUmA.js",
+        "assets/healthText-DIYDHW22.js"
+      ],
+      "dynamic": []
+    },
+    {
+      "file": "assets/StaffConsole-jaeESvc3.js",
+      "imports": [
+        "assets/index-B4-xgY5i.js",
+        "assets/format-DSdtfUmA.js",
+        "assets/qrSvg-CeR_WJxS.js",
+        "assets/healthText-DIYDHW22.js",
+        "assets/FairnessControls-BrREL-NF.js",
+        "assets/useCachedLoad-6kdV9JkB.js",
+        "assets/screenHint-BGL583-G.js",
+        "assets/policy-D14kA2sr.js"
+      ],
+      "dynamic": []
+    },
+    {
+      "file": "assets/healthText-DIYDHW22.js",
+      "imports": [],
+      "dynamic": []
+    },
+    {
+      "file": "assets/AuditTrail-Bqr-SZuR.js",
+      "imports": [
+        "assets/index-B4-xgY5i.js",
+        "assets/FairnessControls-BrREL-NF.js",
+        "assets/policy-D14kA2sr.js"
+      ],
+      "dynamic": []
+    },
+    {
+      "file": "assets/FairnessControls-BrREL-NF.js",
+      "imports": [
+        "assets/index-B4-xgY5i.js",
+        "assets/policy-D14kA2sr.js"
+      ],
+      "dynamic": []
+    },
+    {
+      "file": "assets/StaffHome-DKD_RNEM.js",
+      "imports": [
+        "assets/index-B4-xgY5i.js",
+        "assets/format-DSdtfUmA.js",
+        "assets/useCachedLoad-6kdV9JkB.js"
+      ],
+      "dynamic": []
+    },
+    {
+      "file": "assets/useCachedLoad-6kdV9JkB.js",
+      "imports": [
+        "assets/index-B4-xgY5i.js"
+      ],
+      "dynamic": []
+    },
+    {
+      "file": "assets/JoinPage-PPehviuH.js",
+      "imports": [
+        "assets/index-B4-xgY5i.js",
+        "assets/format-DSdtfUmA.js",
+        "assets/recoveryKey-5QHYIWij.js",
+        "assets/tickets-C0Kpjuhc.js"
+      ],
+      "dynamic": []
+    },
+    {
+      "file": "assets/TicketPage-JMOClH2_.js",
+      "imports": [
+        "assets/index-B4-xgY5i.js",
+        "assets/qrSvg-CeR_WJxS.js",
+        "assets/recoveryKey-5QHYIWij.js",
+        "assets/tickets-C0Kpjuhc.js",
+        "assets/format-DSdtfUmA.js",
+        "assets/policy-D14kA2sr.js"
+      ],
+      "dynamic": []
+    },
+    {
+      "file": "assets/qrSvg-CeR_WJxS.js",
+      "imports": [
+        "assets/index-B4-xgY5i.js"
+      ],
+      "dynamic": [
+        "assets/qr-Cv43_BmM.js"
+      ]
+    },
+    {
+      "file": "assets/policy-D14kA2sr.js",
+      "imports": [
+        "assets/index-B4-xgY5i.js"
+      ],
+      "dynamic": []
+    },
+    {
+      "file": "assets/format-DSdtfUmA.js",
+      "imports": [],
+      "dynamic": []
+    },
+    {
+      "file": "assets/RecoverPage-CgicnNNy.js",
+      "imports": [
+        "assets/index-B4-xgY5i.js",
+        "assets/recoveryKey-5QHYIWij.js",
+        "assets/tickets-C0Kpjuhc.js"
+      ],
+      "dynamic": []
+    },
+    {
+      "file": "assets/recoveryKey-5QHYIWij.js",
+      "imports": [
+        "assets/index-B4-xgY5i.js"
+      ],
+      "dynamic": []
+    },
+    {
+      "file": "assets/LandingPage-DN7eRSFI.js",
+      "imports": [
+        "assets/index-B4-xgY5i.js",
+        "assets/tickets-C0Kpjuhc.js",
+        "assets/publicKb-DUTyl-Oz.js"
+      ],
+      "dynamic": []
+    },
+    {
+      "file": "assets/tickets-C0Kpjuhc.js",
+      "imports": [
+        "assets/index-B4-xgY5i.js"
+      ],
+      "dynamic": []
+    },
+    {
+      "file": "assets/QuePanel-BKqZtJOD.js",
+      "imports": [
+        "assets/index-B4-xgY5i.js",
+        "assets/permissions-CKKMmhMF.js",
+        "assets/screenHint-BGL583-G.js",
+        "assets/publicKb-DUTyl-Oz.js"
+      ],
+      "dynamic": []
+    },
+    {
+      "file": "assets/permissions-CKKMmhMF.js",
+      "imports": [
+        "assets/index-B4-xgY5i.js"
+      ],
+      "dynamic": []
+    },
+    {
+      "file": "assets/screenHint-BGL583-G.js",
+      "imports": [
+        "assets/index-B4-xgY5i.js"
+      ],
+      "dynamic": []
+    },
+    {
+      "file": "assets/publicKb-DUTyl-Oz.js",
+      "imports": [
+        "assets/index-B4-xgY5i.js"
+      ],
+      "dynamic": []
+    },
+    {
+      "file": "assets/qr-Cv43_BmM.js",
+      "imports": [
+        "assets/index-B4-xgY5i.js",
+        "assets/qrSvg-CeR_WJxS.js"
+      ],
+      "dynamic": []
+    }
+  ],
+  "modules": [
+    {
+      "id": "vite/modulepreload-polyfill.js",
+      "imports": []
+    },
+    {
+      "id": "commonjsHelpers.js",
+      "imports": []
+    },
+    {
+      "id": "node_modules/.pnpm/react@19.0.0/node_modules/react/jsx-runtime.js?commonjs-module",
+      "imports": []
+    },
+    {
+      "id": "node_modules/.pnpm/react@19.0.0/node_modules/react/cjs/react-jsx-runtime.production.js?commonjs-exports",
+      "imports": []
+    },
+    {
+      "id": "node_modules/.pnpm/react@19.0.0/node_modules/react/cjs/react-jsx-runtime.production.js",
+      "imports": [
+        "commonjsHelpers.js",
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/cjs/react-jsx-runtime.production.js?commonjs-exports"
+      ]
+    },
+    {
+      "id": "node_modules/.pnpm/react@19.0.0/node_modules/react/jsx-runtime.js",
+      "imports": [
+        "commonjsHelpers.js",
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/jsx-runtime.js?commonjs-module",
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/cjs/react-jsx-runtime.production.js"
+      ]
+    },
+    {
+      "id": "node_modules/.pnpm/react@19.0.0/node_modules/react/jsx-runtime.js?commonjs-es-import",
+      "imports": [
+        "commonjsHelpers.js",
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/jsx-runtime.js"
+      ]
+    },
+    {
+      "id": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/util.js",
+      "imports": [
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/core.js"
+      ]
+    },
+    {
+      "id": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/core.js",
+      "imports": [
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/util.js"
+      ]
+    },
+    {
+      "id": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/errors.js",
+      "imports": [
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/core.js",
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/util.js"
+      ]
+    },
+    {
+      "id": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/parse.js",
+      "imports": [
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/core.js",
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/errors.js",
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/util.js"
+      ]
+    },
+    {
+      "id": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/regexes.js",
+      "imports": [
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/util.js"
+      ]
+    },
+    {
+      "id": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/checks.js",
+      "imports": [
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/core.js",
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/regexes.js",
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/util.js"
+      ]
+    },
+    {
+      "id": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/doc.js",
+      "imports": []
+    },
+    {
+      "id": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/versions.js",
+      "imports": []
+    },
+    {
+      "id": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/schemas.js",
+      "imports": [
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/checks.js",
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/core.js",
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/doc.js",
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/parse.js",
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/regexes.js",
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/util.js",
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/versions.js"
+      ]
+    },
+    {
+      "id": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/memoizer.js",
+      "imports": [
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/util.js"
+      ]
+    },
+    {
+      "id": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/en.js",
+      "imports": [
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/util.js"
+      ]
+    },
+    {
+      "id": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/registries.js",
+      "imports": []
+    },
+    {
+      "id": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/api.js",
+      "imports": [
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/checks.js",
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/registries.js",
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/schemas.js",
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/util.js"
+      ]
+    },
+    {
+      "id": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/to-json-schema.js",
+      "imports": [
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/registries.js",
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/util.js"
+      ]
+    },
+    {
+      "id": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/json-schema-processors.js",
+      "imports": [
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/regexes.js",
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/schemas.js",
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/to-json-schema.js",
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/util.js"
+      ]
+    },
+    {
+      "id": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/classic/errors.js",
+      "imports": [
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/index.js",
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/util.js"
+      ]
+    },
+    {
+      "id": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/classic/parse.js",
+      "imports": [
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/index.js",
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/classic/errors.js"
+      ]
+    },
+    {
+      "id": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/classic/schemas.js",
+      "imports": [
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/index.js",
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/json-schema-processors.js",
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/regexes.js",
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/to-json-schema.js",
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/locales/en.js",
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/classic/checks.js",
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/classic/parse.js"
+      ]
+    },
+    {
+      "id": "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/classic/coerce.js",
+      "imports": [
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/core/index.js",
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/v4/classic/schemas.js"
+      ]
+    },
+    {
+      "id": "apps/web/src/zodConfig.ts",
+      "imports": [
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/index.js"
+      ]
+    },
+    {
+      "id": "node_modules/.pnpm/react@19.0.0/node_modules/react/index.js?commonjs-module",
+      "imports": []
+    },
+    {
+      "id": "node_modules/.pnpm/react@19.0.0/node_modules/react/cjs/react.production.js?commonjs-exports",
+      "imports": []
+    },
+    {
+      "id": "node_modules/.pnpm/react@19.0.0/node_modules/react/cjs/react.production.js",
+      "imports": [
+        "commonjsHelpers.js",
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/cjs/react.production.js?commonjs-exports"
+      ]
+    },
+    {
+      "id": "node_modules/.pnpm/react@19.0.0/node_modules/react/index.js",
+      "imports": [
+        "commonjsHelpers.js",
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/index.js?commonjs-module",
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/cjs/react.production.js"
+      ]
+    },
+    {
+      "id": "node_modules/.pnpm/react@19.0.0/node_modules/react/index.js?commonjs-es-import",
+      "imports": [
+        "commonjsHelpers.js",
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/index.js"
+      ]
+    },
+    {
+      "id": "node_modules/.pnpm/react-dom@19.0.0_react@19.0.0/node_modules/react-dom/client.js?commonjs-module",
+      "imports": []
+    },
+    {
+      "id": "node_modules/.pnpm/react-dom@19.0.0_react@19.0.0/node_modules/react-dom/cjs/react-dom-client.production.js?commonjs-exports",
+      "imports": []
+    },
+    {
+      "id": "node_modules/.pnpm/scheduler@0.25.0/node_modules/scheduler/index.js?commonjs-module",
+      "imports": []
+    },
+    {
+      "id": "node_modules/.pnpm/scheduler@0.25.0/node_modules/scheduler/cjs/scheduler.production.js?commonjs-exports",
+      "imports": []
+    },
+    {
+      "id": "node_modules/.pnpm/scheduler@0.25.0/node_modules/scheduler/cjs/scheduler.production.js",
+      "imports": [
+        "commonjsHelpers.js",
+        "node_modules/.pnpm/scheduler@0.25.0/node_modules/scheduler/cjs/scheduler.production.js?commonjs-exports"
+      ]
+    },
+    {
+      "id": "node_modules/.pnpm/scheduler@0.25.0/node_modules/scheduler/index.js",
+      "imports": [
+        "commonjsHelpers.js",
+        "node_modules/.pnpm/scheduler@0.25.0/node_modules/scheduler/index.js?commonjs-module",
+        "node_modules/.pnpm/scheduler@0.25.0/node_modules/scheduler/cjs/scheduler.production.js"
+      ]
+    },
+    {
+      "id": "node_modules/.pnpm/react-dom@19.0.0_react@19.0.0/node_modules/react-dom/index.js?commonjs-module",
+      "imports": []
+    },
+    {
+      "id": "node_modules/.pnpm/react-dom@19.0.0_react@19.0.0/node_modules/react-dom/cjs/react-dom.production.js?commonjs-exports",
+      "imports": []
+    },
+    {
+      "id": "node_modules/.pnpm/react-dom@19.0.0_react@19.0.0/node_modules/react-dom/cjs/react-dom.production.js",
+      "imports": [
+        "commonjsHelpers.js",
+        "node_modules/.pnpm/react-dom@19.0.0_react@19.0.0/node_modules/react-dom/cjs/react-dom.production.js?commonjs-exports",
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/index.js"
+      ]
+    },
+    {
+      "id": "node_modules/.pnpm/react-dom@19.0.0_react@19.0.0/node_modules/react-dom/index.js",
+      "imports": [
+        "commonjsHelpers.js",
+        "node_modules/.pnpm/react-dom@19.0.0_react@19.0.0/node_modules/react-dom/index.js?commonjs-module",
+        "node_modules/.pnpm/react-dom@19.0.0_react@19.0.0/node_modules/react-dom/cjs/react-dom.production.js"
+      ]
+    },
+    {
+      "id": "node_modules/.pnpm/react-dom@19.0.0_react@19.0.0/node_modules/react-dom/cjs/react-dom-client.production.js",
+      "imports": [
+        "commonjsHelpers.js",
+        "node_modules/.pnpm/react-dom@19.0.0_react@19.0.0/node_modules/react-dom/cjs/react-dom-client.production.js?commonjs-exports",
+        "node_modules/.pnpm/scheduler@0.25.0/node_modules/scheduler/index.js",
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/index.js",
+        "node_modules/.pnpm/react-dom@19.0.0_react@19.0.0/node_modules/react-dom/index.js"
+      ]
+    },
+    {
+      "id": "node_modules/.pnpm/react-dom@19.0.0_react@19.0.0/node_modules/react-dom/client.js",
+      "imports": [
+        "commonjsHelpers.js",
+        "node_modules/.pnpm/react-dom@19.0.0_react@19.0.0/node_modules/react-dom/client.js?commonjs-module",
+        "node_modules/.pnpm/react-dom@19.0.0_react@19.0.0/node_modules/react-dom/cjs/react-dom-client.production.js"
+      ]
+    },
+    {
+      "id": "node_modules/.pnpm/react-dom@19.0.0_react@19.0.0/node_modules/react-dom/client.js?commonjs-es-import",
+      "imports": [
+        "commonjsHelpers.js",
+        "node_modules/.pnpm/react-dom@19.0.0_react@19.0.0/node_modules/react-dom/client.js"
+      ]
+    },
+    {
+      "id": "vite/preload-helper.js",
+      "imports": []
+    },
+    {
+      "id": "node_modules/.pnpm/react-router@7.18.5_react-dom@19.0.0_react@19.0.0__react@19.0.0/node_modules/react-router/dist/development/chunk-6KYCQHYJ.mjs",
+      "imports": [
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/index.js?commonjs-es-import"
+      ]
+    },
+    {
+      "id": "apps/web/src/lib/api.ts",
+      "imports": []
+    },
+    {
+      "id": "apps/web/src/offline/idb.ts",
+      "imports": []
+    },
+    {
+      "id": "apps/web/src/offline/identity.ts",
+      "imports": [
+        "apps/web/src/offline/idb.ts"
+      ]
+    },
+    {
+      "id": "packages/contracts/dist/enums.js",
+      "imports": []
+    },
+    {
+      "id": "packages/contracts/dist/schemas.js",
+      "imports": [
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/index.js",
+        "packages/contracts/dist/enums.js"
+      ]
+    },
+    {
+      "id": "packages/contracts/dist/admin.js",
+      "imports": [
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/index.js",
+        "packages/contracts/dist/enums.js",
+        "packages/contracts/dist/schemas.js"
+      ]
+    },
+    {
+      "id": "packages/contracts/dist/sms.js",
+      "imports": [
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/index.js",
+        "packages/contracts/dist/schemas.js"
+      ]
+    },
+    {
+      "id": "packages/contracts/dist/queue.js",
+      "imports": [
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/index.js",
+        "packages/contracts/dist/enums.js",
+        "packages/contracts/dist/schemas.js",
+        "packages/contracts/dist/sms.js"
+      ]
+    },
+    {
+      "id": "packages/contracts/dist/ids.js",
+      "imports": []
+    },
+    {
+      "id": "packages/contracts/dist/health.js",
+      "imports": [
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/index.js",
+        "packages/contracts/dist/schemas.js"
+      ]
+    },
+    {
+      "id": "packages/contracts/dist/push.js",
+      "imports": [
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/index.js",
+        "packages/contracts/dist/schemas.js",
+        "packages/contracts/dist/sms.js"
+      ]
+    },
+    {
+      "id": "packages/contracts/dist/sync.js",
+      "imports": [
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/index.js",
+        "packages/contracts/dist/enums.js",
+        "packages/contracts/dist/health.js",
+        "packages/contracts/dist/push.js",
+        "packages/contracts/dist/queue.js",
+        "packages/contracts/dist/schemas.js"
+      ]
+    },
+    {
+      "id": "packages/contracts/dist/fairness.js",
+      "imports": [
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/index.js",
+        "packages/contracts/dist/admin.js",
+        "packages/contracts/dist/enums.js",
+        "packages/contracts/dist/schemas.js"
+      ]
+    },
+    {
+      "id": "packages/contracts/dist/audit-key.js",
+      "imports": [
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/index.js"
+      ]
+    },
+    {
+      "id": "packages/contracts/dist/recovery.js",
+      "imports": [
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/index.js",
+        "packages/contracts/dist/admin.js",
+        "packages/contracts/dist/queue.js",
+        "packages/contracts/dist/schemas.js"
+      ]
+    },
+    {
+      "id": "packages/contracts/dist/ussd.js",
+      "imports": [
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/index.js"
+      ]
+    },
+    {
+      "id": "packages/contracts/dist/que.js",
+      "imports": [
+        "node_modules/.pnpm/zod@4.6.7/node_modules/zod/index.js",
+        "packages/contracts/dist/schemas.js"
+      ]
+    },
+    {
+      "id": "apps/web/src/que/offlineHelp.ts",
+      "imports": []
+    },
+    {
+      "id": "apps/web/src/que/helpClient.ts",
+      "imports": [
+        "packages/contracts/dist/index.js",
+        "apps/web/src/que/offlineHelp.ts"
+      ]
+    },
+    {
+      "id": "apps/web/src/que/store.ts",
+      "imports": []
+    },
+    {
+      "id": "apps/web/src/que/index.ts",
+      "imports": [
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/que/helpClient.ts",
+        "apps/web/src/que/store.ts",
+        "apps/web/src/que/publicKb.ts"
+      ]
+    },
+    {
+      "id": "apps/web/src/auth.tsx",
+      "imports": [
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/jsx-runtime.js?commonjs-es-import",
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/index.js?commonjs-es-import",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/offline/idb.ts",
+        "apps/web/src/offline/identity.ts",
+        "apps/web/src/que/index.ts"
+      ]
+    },
+    {
+      "id": "packages/continuity/dist/authority.js",
+      "imports": [
+        "packages/contracts/dist/index.js"
+      ]
+    },
+    {
+      "id": "packages/continuity/dist/outbox.js",
+      "imports": [
+        "packages/contracts/dist/index.js"
+      ]
+    },
+    {
+      "id": "packages/continuity/dist/reconcile.js",
+      "imports": [
+        "packages/contracts/dist/index.js",
+        "packages/continuity/dist/outbox.js"
+      ]
+    },
+    {
+      "id": "packages/domain/dist/state-machine.js",
+      "imports": [
+        "packages/contracts/dist/index.js"
+      ]
+    },
+    {
+      "id": "packages/domain/dist/queue.js",
+      "imports": [
+        "packages/contracts/dist/index.js",
+        "packages/domain/dist/state-machine.js"
+      ]
+    },
+    {
+      "id": "packages/domain/dist/device-health.js",
+      "imports": [
+        "packages/contracts/dist/index.js"
+      ]
+    },
+    {
+      "id": "packages/continuity/dist/projection.js",
+      "imports": [
+        "packages/contracts/dist/index.js",
+        "packages/domain/dist/index.js",
+        "packages/continuity/dist/outbox.js"
+      ]
+    },
+    {
+      "id": "apps/web/src/offline/clock.ts",
+      "imports": []
+    },
+    {
+      "id": "apps/web/src/offline/OfflineProvider.tsx",
+      "imports": [
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/jsx-runtime.js?commonjs-es-import",
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/index.js?commonjs-es-import",
+        "packages/continuity/dist/index.js",
+        "apps/web/src/auth.tsx",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/offline/clock.ts",
+        "apps/web/src/offline/idb.ts"
+      ]
+    },
+    {
+      "id": "apps/web/src/lib/announcePolicy.ts",
+      "imports": []
+    },
+    {
+      "id": "apps/web/src/components/Announcer.tsx",
+      "imports": [
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/jsx-runtime.js?commonjs-es-import",
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/index.js?commonjs-es-import",
+        "apps/web/src/lib/announcePolicy.ts"
+      ]
+    },
+    {
+      "id": "apps/web/src/lib/a11yPrefs.ts",
+      "imports": []
+    },
+    {
+      "id": "apps/web/src/lib/alertCues.ts",
+      "imports": [
+        "apps/web/src/lib/a11yPrefs.ts"
+      ]
+    },
+    {
+      "id": "apps/web/src/components/DisplaySettings.tsx",
+      "imports": [
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/jsx-runtime.js?commonjs-es-import",
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/index.js?commonjs-es-import",
+        "apps/web/src/lib/a11yPrefs.ts",
+        "apps/web/src/lib/alertCues.ts"
+      ]
+    },
+    {
+      "id": "packages/ui/dist/SyncStateIndicator.js",
+      "imports": [
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/jsx-runtime.js?commonjs-es-import",
+        "packages/contracts/dist/index.js"
+      ]
+    },
+    {
+      "id": "packages/ui/dist/TicketCard.js",
+      "imports": [
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/jsx-runtime.js?commonjs-es-import",
+        "packages/contracts/dist/index.js",
+        "packages/ui/dist/SyncStateIndicator.js"
+      ]
+    },
+    {
+      "id": "packages/ui/dist/Icon.js",
+      "imports": [
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/jsx-runtime.js?commonjs-es-import"
+      ]
+    },
+    {
+      "id": "apps/web/src/components/ConnectivityBar.tsx",
+      "imports": [
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/jsx-runtime.js?commonjs-es-import",
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/index.js?commonjs-es-import",
+        "packages/contracts/dist/index.js",
+        "packages/ui/dist/index.js",
+        "apps/web/src/auth.tsx",
+        "apps/web/src/components/Announcer.tsx",
+        "apps/web/src/offline/OfflineProvider.tsx",
+        "apps/web/src/components/DisplaySettings.tsx"
+      ]
+    },
+    {
+      "id": "apps/web/src/components/HealthAlertBanner.tsx",
+      "imports": [
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/jsx-runtime.js?commonjs-es-import",
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/index.js?commonjs-es-import",
+        "node_modules/.pnpm/react-router-dom@7.18.5_react-dom@19.0.0_react@19.0.0__react@19.0.0/node_modules/react-router-dom/dist/index.mjs",
+        "apps/web/src/auth.tsx",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/offline/OfflineProvider.tsx",
+        "apps/web/src/components/Announcer.tsx"
+      ]
+    },
+    {
+      "id": "apps/web/src/lib/turnAlert.ts",
+      "imports": []
+    },
+    {
+      "id": "apps/web/src/components/PushHandoff.tsx",
+      "imports": [
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/jsx-runtime.js?commonjs-es-import",
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/index.js?commonjs-es-import",
+        "node_modules/.pnpm/react-router-dom@7.18.5_react-dom@19.0.0_react@19.0.0__react@19.0.0/node_modules/react-router-dom/dist/index.mjs",
+        "packages/contracts/dist/index.js",
+        "apps/web/src/lib/turnAlert.ts"
+      ]
+    },
+    {
+      "id": "apps/web/src/lib/routeFocus.ts",
+      "imports": [
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/index.js?commonjs-es-import"
+      ]
+    },
+    {
+      "id": "apps/web/src/que/AskQue.tsx",
+      "imports": [
+        "vite/preload-helper.js",
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/jsx-runtime.js?commonjs-es-import",
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/index.js?commonjs-es-import",
+        "apps/web/src/lib/api.ts",
+        "packages/ui/dist/index.js"
+      ]
+    },
+    {
+      "id": "apps/web/src/components/Layout.tsx",
+      "imports": [
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/jsx-runtime.js?commonjs-es-import",
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/index.js?commonjs-es-import",
+        "node_modules/.pnpm/react-router-dom@7.18.5_react-dom@19.0.0_react@19.0.0__react@19.0.0/node_modules/react-router-dom/dist/index.mjs",
+        "apps/web/src/auth.tsx",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/offline/OfflineProvider.tsx",
+        "apps/web/src/components/ConnectivityBar.tsx",
+        "apps/web/src/components/DisplaySettings.tsx",
+        "apps/web/src/components/HealthAlertBanner.tsx",
+        "apps/web/src/components/PushHandoff.tsx",
+        "apps/web/src/lib/routeFocus.ts",
+        "apps/web/src/que/AskQue.tsx",
+        "packages/ui/dist/index.js"
+      ]
+    },
+    {
+      "id": "apps/web/src/components/Form.tsx",
+      "imports": [
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/jsx-runtime.js?commonjs-es-import",
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/index.js?commonjs-es-import"
+      ]
+    },
+    {
+      "id": "apps/web/src/components/RequireAuth.tsx",
+      "imports": [
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/jsx-runtime.js?commonjs-es-import",
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/index.js?commonjs-es-import",
+        "node_modules/.pnpm/react-router-dom@7.18.5_react-dom@19.0.0_react@19.0.0__react@19.0.0/node_modules/react-router-dom/dist/index.mjs",
+        "apps/web/src/auth.tsx",
+        "apps/web/src/components/Form.tsx"
+      ]
+    },
+    {
+      "id": "apps/web/src/lib/permissions.ts",
+      "imports": [
+        "packages/contracts/dist/index.js"
+      ]
+    },
+    {
+      "id": "apps/web/src/pages/AcceptInvite.tsx",
+      "imports": [
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/jsx-runtime.js?commonjs-es-import",
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/index.js?commonjs-es-import",
+        "node_modules/.pnpm/react-router-dom@7.18.5_react-dom@19.0.0_react@19.0.0__react@19.0.0/node_modules/react-router-dom/dist/index.mjs",
+        "apps/web/src/auth.tsx",
+        "apps/web/src/components/Form.tsx",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/permissions.ts"
+      ]
+    },
+    {
+      "id": "apps/web/src/pages/Login.tsx",
+      "imports": [
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/jsx-runtime.js?commonjs-es-import",
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/index.js?commonjs-es-import",
+        "node_modules/.pnpm/react-router-dom@7.18.5_react-dom@19.0.0_react@19.0.0__react@19.0.0/node_modules/react-router-dom/dist/index.mjs",
+        "apps/web/src/auth.tsx",
+        "apps/web/src/components/Form.tsx",
+        "apps/web/src/lib/api.ts"
+      ]
+    },
+    {
+      "id": "apps/web/src/pages/Signup.tsx",
+      "imports": [
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/jsx-runtime.js?commonjs-es-import",
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/index.js?commonjs-es-import",
+        "node_modules/.pnpm/react-router-dom@7.18.5_react-dom@19.0.0_react@19.0.0__react@19.0.0/node_modules/react-router-dom/dist/index.mjs",
+        "apps/web/src/auth.tsx",
+        "apps/web/src/components/Form.tsx",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/permissions.ts"
+      ]
+    },
+    {
+      "id": "apps/web/src/lib/live.ts",
+      "imports": [
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/index.js?commonjs-es-import"
+      ]
+    },
+    {
+      "id": "apps/web/src/lib/useLoad.ts",
+      "imports": [
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/index.js?commonjs-es-import",
+        "apps/web/src/lib/api.ts"
+      ]
+    },
+    {
+      "id": "apps/web/src/pages/DisplayBoard.tsx",
+      "imports": [
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/jsx-runtime.js?commonjs-es-import",
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/index.js?commonjs-es-import",
+        "node_modules/.pnpm/react-router-dom@7.18.5_react-dom@19.0.0_react@19.0.0__react@19.0.0/node_modules/react-router-dom/dist/index.mjs",
+        "apps/web/src/components/Form.tsx",
+        "apps/web/src/lib/api.ts",
+        "apps/web/src/lib/live.ts",
+        "apps/web/src/lib/useLoad.ts"
+      ]
+    },
+    {
+      "id": "apps/web/src/App.tsx",
+      "imports": [
+        "vite/preload-helper.js",
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/jsx-runtime.js?commonjs-es-import",
+        "node_modules/.pnpm/react-router-dom@7.18.5_react-dom@19.0.0_react@19.0.0__react@19.0.0/node_modules/react-router-dom/dist/index.mjs",
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/index.js?commonjs-es-import",
+        "apps/web/src/auth.tsx",
+        "apps/web/src/offline/OfflineProvider.tsx",
+        "apps/web/src/components/Announcer.tsx",
+        "apps/web/src/components/DisplaySettings.tsx",
+        "apps/web/src/components/Layout.tsx",
+        "apps/web/src/components/RequireAuth.tsx",
+        "apps/web/src/pages/AcceptInvite.tsx",
+        "apps/web/src/pages/Login.tsx",
+        "apps/web/src/pages/Signup.tsx",
+        "apps/web/src/pages/DisplayBoard.tsx",
+        "apps/web/src/components/Form.tsx"
+      ]
+    },
+    {
+      "id": "apps/web/src/tokens.css",
+      "imports": []
+    },
+    {
+      "id": "apps/web/src/styles.css",
+      "imports": []
+    },
+    {
+      "id": "apps/web/src/main.tsx",
+      "imports": [
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/jsx-runtime.js?commonjs-es-import",
+        "apps/web/src/zodConfig.ts",
+        "node_modules/.pnpm/react@19.0.0/node_modules/react/index.js?commonjs-es-import",
+        "node_modules/.pnpm/react-dom@19.0.0_react@19.0.0/node_modules/react-dom/client.js?commonjs-es-import",
+        "apps/web/src/App.tsx",
+        "apps/web/src/tokens.css",
+        "apps/web/src/styles.css",
+        "apps/web/src/lib/a11yPrefs.ts"
+      ]
+    },
+    {
+      "id": "apps/web/index.html",
+      "imports": [
+        "vite/modulepreload-polyfill.js",
+        "apps/web/src/main.tsx"
+      ]
+    }
+  ]
+}
