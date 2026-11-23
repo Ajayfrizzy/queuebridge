@@ -4,21 +4,23 @@ Two independent **Web Service/Backend** deployments share one private persistent
 
 ## Dockerfile deployment
 
-Select the reviewed staging revision, **Web Service/Backend**, repository root (`.`) and build method **Dockerfile**. Inspect the preselected method after connecting GitHub. The documented location is `Dockerfile` in the selected root. The guide specifies no additional path field. If the dashboard offers one, enter `Dockerfile`. Clear custom build and start commands on the Web + API deployment so the image supplies its own CMD. Select port 8080 and readiness path `/health`; the listener uses the platform-injected PORT. Keep service secrets in runtime environment settings. [Build methods](https://docs.rumptycloud.com/deployments/create-a-deployment/) · [GitHub deployment settings](https://docs.rumptycloud.com/deployments/github-deploy/)
+Select the reviewed staging revision, **Web Service/Backend**, repository root (`.`) and build method **Dockerfile**. Inspect the preselected method after connecting GitHub. The documented location is `Dockerfile` in the selected root. The guide specifies no additional path field. If the dashboard offers one, enter `Dockerfile`. Clear custom build and start commands on both deployments so the image supplies its own CMD. Select port 8080 and readiness path `/health`; the listener uses the platform-injected PORT. Keep service secrets in runtime environment settings. [Build methods](https://docs.rumptycloud.com/deployments/create-a-deployment/) · [GitHub deployment settings](https://docs.rumptycloud.com/deployments/github-deploy/)
 
-Railpack returned `no start command was set` despite receiving the launcher argument. This build uses a Node 24 Linux image, installs pnpm 9.15.9, builds the frozen workspace and checks the PWA bundle. The runtime runs as the node user, starts the TLS launcher as PID 1 and retains the compiled workspace, production dependencies and public CA at /app/apps/certs/queuebridge-ca.crt. Release and migration jobs continue to use the reviewed workspace independently.
+Railpack returned `no start command was set` despite receiving the launcher argument. This build uses a Node 24 Linux image, installs pnpm 9.15.9, builds the frozen workspace and checks the PWA bundle. The runtime runs as the node user, uses exec through the dispatcher and TLS launcher so Node receives signals as PID 1 and retains the compiled workspace, production dependencies and public CA at /app/apps/certs/queuebridge-ca.crt. Release and migration jobs continue to use the reviewed workspace independently.
 
 Local commands from the repository root (supply runtime variables through a protected file outside the build context):
 
 ```sh
 docker build -t queuebridge:managed-local .
-docker run -d --name qb-web -p 127.0.0.1:8080:8080 --env-file "$QB_RUNTIME_ENV" -e PORT=8080 queuebridge:managed-local
+docker run -d --name qb-web -p 127.0.0.1:8080:8080 --env-file "$QB_RUNTIME_ENV" -e PORT=8080 -e QUEUEBRIDGE_SERVICE=web queuebridge:managed-local
 curl -fsS http://127.0.0.1:8080/health
 docker stop qb-web
 docker inspect -f '{{.State.ExitCode}}' qb-web
 ```
 
-An independently deployed worker may use this image if the platform supports overriding its command with `sh infra/rumptycloud/node-with-db-ca.sh apps/worker/dist/worker.js`. Give it its own environment, one continuously scheduled replica, and probe /health/ready. Verify the override before activating a worker. The default image command starts only Web + API. Retain prior hashed assets across updates and verify an old tab and installed service worker before release.
+Use the same reviewed Git SHA and root Dockerfile for both services. Before releasing the dispatcher to the existing web service, set its runtime variable `QUEUEBRIDGE_SERVICE=web`. Set `QUEUEBRIDGE_SERVICE=worker` only on the separate worker deployment, with its own DB credential and worker variables listed below. Use /health for web and /health/ready for worker. Missing, empty or unrecognized roles exit before application startup. Configure exactly one continuously running worker replica, disable scale-to-zero and use stop-before-start releases. Confirm in staging that Docker services receive these runtime settings: check API routing on web, worker readiness and absence of web routes on worker, background outbox progress without HTTP traffic, and clean SIGTERM before replacement. Hold activation until runtime injection, grace period and zero overlap are evidenced. Roll back to the recorded compatible service pair as described below; an older web-only Docker CMD must never be activated as the worker.
+
+Retain prior hashed assets across updates and verify an old tab and installed service worker before release.
 
 ## PostgreSQL certificate delivery
 
