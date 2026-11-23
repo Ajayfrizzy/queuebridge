@@ -14,6 +14,10 @@ Two independent **Web Service/Backend** deployments share one private persistent
 
 Confirm that the selected build environment retains dev build tools during install and provides the runtime versions above. Test the commands from the repository root. Keep the same canonical hostname across releases for cookies, IndexedDB, push and installed workers. Keep prior hashed assets and Workbox scripts available across updates, using a retained static asset set in the new artifact if necessary. Verify a two-version update with an old tab before release.
 
+## Railpack start detection
+
+RumptyCloud reported `no start command was set` during Railpack detection even though the build log included the Web + API launcher in `--start-cmd`. Use the repository root as the build context. Its package.json declares the same launcher as `scripts.start`, so `pnpm start` starts the managed Web + API with certificate validation. Keep the worker deployment's explicit worker start command.
+
 ## PostgreSQL certificate delivery
 
 Include the tracked public PEM file `apps/certs/queuebridge-ca.crt` and `infra/rumptycloud/node-with-db-ca.sh` in both workspace artifacts and in the controlled migration runner. The start commands above resolve the physical release root and export `NODE_EXTRA_CA_CERTS=<absolute release root>/apps/certs/queuebridge-ca.crt` before Node starts. A literal dashboard path or shell expression in the dashboard is unnecessary. On certificate rotation, verify the replacement against the Database Connection download, rebuild both artifacts and restart both processes.

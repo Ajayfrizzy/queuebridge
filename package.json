@@ -9,6 +9,7 @@
     "pnpm": ">=9.0.0"
   },
   "scripts": {
+    "start": "sh infra/rumptycloud/node-with-db-ca.sh infra/rumptycloud/web.mjs",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint . --max-warnings 0",
