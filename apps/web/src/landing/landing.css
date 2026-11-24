@@ -810,10 +810,11 @@ html[data-contrast='high'] .join-howto {
 
 @media screen {
   .app-shell:has(.landing) {
-    height: 100dvh;
+    height: auto;
+    overflow: visible;
   }
 }
-.landing-footer {
+.main:has(> .landing) {
   padding-bottom: calc(var(--qb-launcher-bottom) + 3rem);
 }
 .landing summary {
