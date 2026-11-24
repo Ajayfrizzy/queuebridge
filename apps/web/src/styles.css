@@ -1727,16 +1727,3 @@ html[data-contrast='high'] .que-badge {
   margin: var(--qb-space-2) 0;
   max-width: 100%;
 }
-
-/* M7.1 brand logo on the entry screens (the supplied artwork has a light ground: shown on a
-   white tile in every theme) */
-.brand-logo {
-  display: block;
-  width: min(100%, 18rem);
-  height: auto;
-  padding: var(--qb-space-2) var(--qb-space-3);
-  border-radius: var(--qb-radius-lg);
-  background: #fff;
-  box-shadow: 0 0 0 1px var(--qb-color-border);
-  margin: 0 0 var(--qb-space-4);
-}
