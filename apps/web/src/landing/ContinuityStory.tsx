@@ -146,24 +146,34 @@ export function ContinuityStory(): ReactElement {
             {t('story.stageOf', { n: index + 1, total })}
           </p>
         </div>
-        <ol className="story-list" data-testid="story-stages" data-mode="animated">
-          {stages.map((s, i) => (
-            <li
-              key={s.title}
-              className={`story-item${i === index ? ' is-current' : ''}`}
-              data-testid="story-stage"
-              aria-current={i === index ? 'step' : undefined}
-            >
-              <button type="button" className="story-item-btn" onClick={() => go(i)}>
-                <span className="story-num" aria-hidden="true">
-                  {i + 1}
-                </span>
-                <span className="story-item-title">{s.title}</span>
+        <div className="story-list" data-testid="story-stages" data-mode="animated">
+          <div className="story-copy">
+            {stages.map((stage, i) => (
+              <div
+                key={stage.title}
+                data-testid="story-stage"
+                aria-current={index === i ? 'step' : undefined}
+              >
+                <h3 className="story-item-title">{stage.title}</h3>
+                <p className="story-caption">{stage.caption}</p>
+              </div>
+            ))}
+          </div>
+          <div className="story-controls">
+            {stages.map((stage, i) => (
+              <button
+                key={stage.title}
+                className="btn btn-secondary"
+                type="button"
+                aria-label={`${i + 1}. ${stage.title}`}
+                aria-pressed={i === index}
+                onClick={() => go(i)}
+              >
+                {i + 1}
               </button>
-              <p className="story-caption">{s.caption}</p>
-            </li>
-          ))}
-        </ol>
+            ))}
+          </div>
+        </div>
       </div>
       <p role="status" className="visually-hidden" data-testid="story-announce">
         {said}

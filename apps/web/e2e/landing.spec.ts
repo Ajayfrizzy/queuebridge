@@ -68,7 +68,7 @@ test.describe('M7.2 hero and navigation', () => {
     await expect(page).toHaveURL(/\/signup$/);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Create your organization');
     await landing(page);
-    await page.locator('.hero').getByRole('link', { name: en.hero.secondary }).click();
+    await page.getByRole('banner').getByRole('link', { name: en.hero.secondary }).click();
     await expect(page).toHaveURL(/\/login$/);
     await landing(page);
     await page.locator('.hero').getByRole('link', { name: en.hero.tertiary }).click();
@@ -144,6 +144,7 @@ test.describe('M7.2 continuity story', () => {
     }
     const current = list.locator('[aria-current="step"]');
     for (let i = 0; i < 6; i++) {
+      await expect(list.getByTestId('story-stage').filter({ visible: true })).toHaveCount(1);
       await expect(current).toContainText(story[i]!.title);
       await expect(p.getByTestId('story-position')).toHaveText(`Stage ${i + 1} of 6`);
       await expect(
@@ -217,11 +218,8 @@ test.describe('M7.2 sections and truthfulness', () => {
         page.getByTestId('audiences').getByRole('heading', { name: a.title }),
       ).toBeVisible();
     }
-    for (const c of en.capabilities.items) {
-      await expect(
-        page.getByTestId('capabilities').getByRole('heading', { name: c.title }),
-      ).toBeVisible();
-    }
+    await expect(page.getByRole('heading', { name: 'What it does' })).toHaveCount(0);
+    await expect(page.locator('.workspaces')).toContainText(en.preview.facilityDetail);
     const footer = page.getByTestId('landing-footer');
     await expect(footer).toContainText(en.footer.privacy);
     await expect(footer).toContainText(en.footer.accessibility);
@@ -338,6 +336,8 @@ test.describe('M7.2 get-started checklist (F10)', () => {
     page,
   }) => {
     await landing(page);
+    await expect(page.getByTestId('onboarding-steps')).toBeHidden();
+    await page.getByText(en.onboarding.viewSteps, { exact: true }).click();
     const steps = page.getByTestId('onboarding-step');
     await expect(steps).toHaveCount(7);
     for (const [i, s] of en.onboarding.steps.entries())
@@ -345,7 +345,7 @@ test.describe('M7.2 get-started checklist (F10)', () => {
     await expect(
       steps.nth(0).getByRole('link', { name: en.onboarding.steps[0]!.title }),
     ).toHaveAttribute('href', '/signup');
-    await expect(page.getByTestId('onboarding').getByRole('link')).toHaveCount(2); // sign up + sign in
+    await expect(page.getByTestId('onboarding').getByRole('link')).toHaveCount(3); // CTA, first step and sign in
     await expect(page.getByTestId('onboarding-state')).toHaveCount(0);
   });
 
@@ -557,13 +557,7 @@ test.describe('M7.2 accessibility and responsive layout', () => {
       expect(info.outline, `focus visible on "${info.name}"`).toBe(true);
       reached.add(info.name);
     }
-    for (const name of [
-      en.hero.primary,
-      en.hero.secondary,
-      en.hero.tertiary,
-      en.story.pause,
-      en.story.next,
-    ]) {
+    for (const name of [en.hero.primary, en.hero.tertiary, en.story.pause, en.story.next]) {
       expect(
         [...reached].some((r) => r.includes(name)),
         name,

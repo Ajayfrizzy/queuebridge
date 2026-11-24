@@ -41,13 +41,13 @@ export const en = {
     counterAlt:
       'Staff console with the open consultation queue, counter selector and walk-in registration.',
     facility: 'Across the facility',
-    facilityDetail: 'Manage facilities and open the workspace where your team coordinates service.',
+    facilityDetail:
+      'Review live queues and published service order. Priority changes require a reason and appear in the audit history.',
     facilityAlt: 'Administration workspace showing the facility directory and creation form.',
   },
   story: {
     heading: 'How QueueBridge keeps the line moving',
-    intro:
-      'A short story in six stages. Every stage is written out below; the picture only illustrates it.',
+    intro: 'Follow one ticket from joining the queue through an outage and back online.',
     stageOf: 'Stage {{n}} of {{total}}',
     pause: 'Pause the story',
     resume: 'Play the story',
@@ -149,51 +149,8 @@ export const en = {
       },
     ],
   },
-  capabilities: {
-    heading: 'What it does',
-    items: [
-      {
-        title: 'Account-free joining',
-        body: 'Join by web link or QR code. Nothing to install, no sign-up.',
-      },
-      {
-        title: 'Staff-assisted tickets',
-        body: 'Reception issues a short ticket code for anyone without a smartphone. No printer needed.',
-      },
-      {
-        title: 'Offline-safe coordination',
-        body: 'One designated coordinator per queue keeps working through an outage. Every action shows its state: Local only, Pending sync, Synced or Needs review.',
-      },
-      {
-        title: 'Published rules, fairness and audit',
-        body: 'Each service publishes its order. Priority changes need a reason, and every event is kept in a hash-chained history that makes changes detectable.',
-      },
-      {
-        title: 'Ticket recovery',
-        body: 'A private recovery key, never the public ticket code, gets a ticket back on another device.',
-      },
-      {
-        title: 'Accessibility controls',
-        body: 'Larger text, high contrast and reduced motion, kept on the device; keyboard and screen-reader support throughout.',
-      },
-      {
-        title: 'Wait estimates as ranges',
-        body: 'Estimates explain what they are based on and say when there is not enough data.',
-      },
-      {
-        title: 'Best-effort turn alerts',
-        body: 'The ticket page alerts the visitor when called. Push and text messages are optional extras and may arrive late or not at all.',
-      },
-      {
-        title: 'Ask Que help',
-        body: 'Built-in help that knows the screen you are on and your role, and still works offline.',
-      },
-    ],
-  },
   channels: {
-    heading: 'Ways to join and be alerted, honestly',
-    intro:
-      'These statuses are read from this deployment’s capability manifest when the page loads, not written into the page.',
+    heading: 'Channel availability',
     loading: 'Checking this deployment…',
     unavailableAll:
       'This deployment’s channel status could not be checked, so no channel is shown as available.',
@@ -229,14 +186,14 @@ export const en = {
       'Scan the QR code at the facility, or open the join link it shares.',
       'Choose the service and press Get a ticket. No account is needed.',
       'Keep the ticket page open, or save it. It shows your place and tells you when it is your turn.',
-      'Save your recovery key. With it you can get the ticket back on another phone.',
+      'Use your private recovery key to restore the ticket on another phone. The public ticket code alone cannot restore it.',
     ],
     noPhone: 'No smartphone? Ask the reception desk for a walk-in ticket.',
   },
   onboarding: {
     heading: 'Get started',
-    intro:
-      'The setup steps, in order. The facility screens check readiness themselves; this list only guides you there.',
+    intro: 'Create an organization, prepare your counters and share your join link.',
+    viewSteps: 'View setup steps',
     anonymousStart: 'Start by creating your organization.',
     afterSignup: 'Available after you create an organization and sign in.',
     already: 'Already set up?',

@@ -64,7 +64,7 @@
 }
 @media (min-width: 64rem) {
   .hero {
-    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 .hero-copy > * {
@@ -113,14 +113,6 @@
 .hero-actions {
   padding-top: var(--qb-space-2);
 }
-.hero .hero-secondary {
-  background: transparent;
-  color: var(--qb-color-on-brand-navy);
-  border-color: var(--qb-color-on-brand-navy);
-}
-.hero .hero-secondary:hover {
-  background: rgb(255 255 255 / 0.1);
-}
 .hero .hero-tertiary {
   color: var(--qb-color-on-brand-navy);
   min-height: var(--qb-size-control);
@@ -130,7 +122,8 @@
 }
 .hero-visual {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
 }
 .hero-art {
   width: min(100%, 26rem);
@@ -226,14 +219,6 @@
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  gap: var(--qb-space-3);
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
-}
-@media (min-width: 48rem) {
-  .landing-cards {
-    gap: var(--qb-space-4);
-  }
 }
 .landing .landing-card {
   padding: var(--qb-space-4);
@@ -257,15 +242,8 @@
 .channel-card > * {
   margin: 0;
 }
-.channel-card > * + * {
-  margin-top: var(--qb-space-2);
-}
 .channel-badge {
   font-size: 0.9375rem;
-}
-.channel-sandbox {
-  border-style: dashed;
-  border-color: var(--qb-color-warning);
 }
 
 /* ---- Continuity story ---------------------------------------------------------------------- */
@@ -278,10 +256,6 @@
 @media (min-width: 64rem) {
   .story-layout {
     grid-template-columns: minmax(0, 6fr) minmax(0, 5fr);
-  }
-  .story-stage-panel {
-    position: sticky;
-    top: var(--qb-space-4);
   }
 }
 .story-stage-panel > * {
@@ -321,62 +295,22 @@
   display: grid;
   gap: var(--qb-space-2);
 }
-.story-item {
-  border: 1px solid var(--qb-color-border);
-  border-left: 4px solid var(--qb-color-border);
-  border-radius: var(--qb-radius-lg);
-  background: var(--qb-color-surface);
-  padding: var(--qb-space-2) var(--qb-space-3) var(--qb-space-3);
+.story-copy {
+  display: grid;
 }
-.story-item.is-current {
-  border-left: 8px solid var(--qb-color-accent);
-  background: var(--qb-color-surface-muted);
+.story-copy > div {
+  grid-area: 1 / 1;
+  visibility: hidden;
 }
-.story-item-btn {
-  display: flex;
-  align-items: center;
-  gap: var(--qb-space-3);
-  width: 100%;
-  min-height: var(--qb-size-control);
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--qb-color-text);
-  font: inherit;
-  font-weight: 600;
-  text-align: left;
-  cursor: pointer;
+.story-copy > [aria-current] {
+  visibility: visible;
 }
-.story-num {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2rem;
-  height: 2rem;
-  border: 2px solid var(--qb-color-border-strong);
-  border-radius: var(--qb-radius-pill);
-  font-variant-numeric: tabular-nums;
+.story-list {
+  align-self: center;
 }
-.is-current .story-num {
-  background: var(--qb-color-text);
-  border-color: var(--qb-color-text);
-  color: var(--qb-color-bg);
-}
-.story-caption {
-  margin: var(--qb-space-1) 0 0;
-  padding-left: calc(2rem + var(--qb-space-3));
-  color: var(--qb-color-text-muted);
-  line-height: 1.55;
-}
-@media (max-width: 24rem) {
-  .story-caption {
-    padding-left: 0;
-  }
-}
-/* Every caption stays visible (the text is the content); stages not shown are set smaller */
-.story-item:not(.is-current) .story-caption {
-  font-size: 0.9375rem;
+.story-list button[aria-pressed='true'] {
+  border-color: var(--qb-color-primary);
+  font-weight: 700;
 }
 .story-static {
   gap: var(--qb-space-4);
@@ -799,7 +733,6 @@
 html[data-contrast='high'] .hero {
   border: 2px solid var(--qb-color-on-brand-navy);
 }
-html[data-contrast='high'] .story-item,
 html[data-contrast='high'] .story-card,
 html[data-contrast='high'] .story-scene-frame,
 html[data-contrast='high'] .onboarding-step,
@@ -807,9 +740,6 @@ html[data-contrast='high'] .join-howto {
   border-width: 2px;
   border-color: var(--qb-color-border);
   box-shadow: none;
-}
-html[data-contrast='high'] .story-item.is-current {
-  border-left-width: 8px;
 }
 
 .hero {
@@ -876,4 +806,45 @@ html[data-contrast='high'] .story-item.is-current {
   border-bottom: 1px solid var(--qb-color-divider);
   border-radius: 0;
   box-shadow: none;
+}
+
+@media screen {
+  .app-shell:has(.landing) {
+    height: 100dvh;
+  }
+}
+.landing-footer {
+  padding-bottom: calc(var(--qb-launcher-bottom) + 3rem);
+}
+.landing summary {
+  cursor: pointer;
+  padding-block: var(--qb-space-3);
+  font-weight: 650;
+}
+.channel-list {
+  display: block;
+}
+.channel-list .channel-card {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--qb-space-3);
+  border: 0;
+  border-bottom: 1px solid var(--qb-color-divider);
+  border-radius: 0;
+  box-shadow: none;
+}
+.channel-list .channel-card > * {
+  margin: 0;
+}
+@media (max-width: 40rem) {
+  .workspaces img {
+    aspect-ratio: 1.15;
+    object-fit: cover;
+    object-position: left top;
+  }
+  .app-shell:has(.landing) .que-launcher:not(:focus-visible) {
+    box-shadow: none;
+    border-color: var(--qb-color-border-strong);
+  }
 }

@@ -121,7 +121,11 @@ export function Onboarding({ user }: { user: SessionUser | null }): ReactElement
     <section aria-labelledby={`${id}-h`} className="landing-section" data-testid="onboarding">
       <h2 id={`${id}-h`}>{t('onboarding.heading')}</h2>
       <p className="landing-intro">{t('onboarding.intro')}</p>
-      {!user ? <p data-testid="onboarding-start">{t('onboarding.anonymousStart')}</p> : null}
+      {!user ? (
+        <Link data-testid="onboarding-start" className="btn btn-primary" to="/signup">
+          {t('hero.primary')}
+        </Link>
+      ) : null}
       {user && !admin ? (
         <p className="alert alert-info" data-testid="onboarding-not-admin">
           {t('onboarding.notAdmin')} <Link to="/staff">{t('hero.staffConsole')}</Link>
@@ -154,37 +158,40 @@ export function Onboarding({ user }: { user: SessionUser | null }): ReactElement
           {t('onboarding.signedInFor', { facility: facility.name })}
         </p>
       ) : null}
-      <ol className="onboarding-list" data-testid="onboarding-steps">
-        {steps.map((s, i) => {
-          const v = views[i] ?? { state: null, to: null };
-          return (
-            <li
-              key={s.title}
-              className={`onboarding-step${v.state === 'done' ? ' is-done' : ''}`}
-              data-testid="onboarding-step"
-              data-state={v.state ?? 'none'}
-            >
-              <span className="onboarding-num" aria-hidden="true">
-                {i + 1}
-              </span>
-              <div className="onboarding-body">
-                <h3>{v.to ? <Link to={v.to}>{s.title}</Link> : s.title}</h3>
-                <p>{s.body}</p>
-                {!user && i > 0 ? <p className="muted">{t('onboarding.afterSignup')}</p> : null}
-              </div>
-              {v.state ? (
-                <span
-                  className={`badge ${v.state === 'done' ? 'badge-ok' : 'badge-off'}`}
-                  data-testid="onboarding-state"
-                >
-                  <Icon name={STATE_ICON[v.state]} className="badge-icon" />
-                  {t(`onboarding.state.${v.state}`)}
+      <details open={admin || undefined}>
+        <summary>{t('onboarding.viewSteps')}</summary>
+        <ol className="onboarding-list" data-testid="onboarding-steps">
+          {steps.map((s, i) => {
+            const v = views[i] ?? { state: null, to: null };
+            return (
+              <li
+                key={s.title}
+                className={`onboarding-step${v.state === 'done' ? ' is-done' : ''}`}
+                data-testid="onboarding-step"
+                data-state={v.state ?? 'none'}
+              >
+                <span className="onboarding-num" aria-hidden="true">
+                  {i + 1}
                 </span>
-              ) : null}
-            </li>
-          );
-        })}
-      </ol>
+                <div className="onboarding-body">
+                  <h3>{v.to ? <Link to={v.to}>{s.title}</Link> : s.title}</h3>
+                  <p>{s.body}</p>
+                  {!user && i > 0 ? <p className="muted">{t('onboarding.afterSignup')}</p> : null}
+                </div>
+                {v.state ? (
+                  <span
+                    className={`badge ${v.state === 'done' ? 'badge-ok' : 'badge-off'}`}
+                    data-testid="onboarding-state"
+                  >
+                    <Icon name={STATE_ICON[v.state]} className="badge-icon" />
+                    {t(`onboarding.state.${v.state}`)}
+                  </span>
+                ) : null}
+              </li>
+            );
+          })}
+        </ol>
+      </details>
       {!user ? (
         <p>
           {t('onboarding.already')} <Link to="/login">{t('hero.secondary')}</Link>

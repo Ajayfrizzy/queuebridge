@@ -91,18 +91,10 @@ function Landing(): ReactElement {
                 {admin ? t('hero.continue') : t('hero.staffConsole')}
               </Link>
             ) : (
-              <>
-                <Link className="btn btn-primary btn-large" to="/signup">
-                  {t('hero.primary')}
-                </Link>
-                <Link className="btn btn-secondary btn-large hero-secondary" to="/login">
-                  {t('hero.secondary')}
-                </Link>
-              </>
+              <Link className="btn btn-primary btn-large" to="/signup">
+                {t('hero.primary')}
+              </Link>
             )}
-            <a className="btn btn-tertiary hero-tertiary" href={`#${JOIN_SECTION_ID}`}>
-              {t('hero.tertiary')}
-            </a>
           </div>
         </div>
         <div className="hero-visual">
@@ -110,6 +102,9 @@ function Landing(): ReactElement {
             <figcaption>{t('preview.visitor')}</figcaption>
             <img src={visitorPreview} width="345" height="367" alt={t('preview.ticketAlt')} />
           </figure>
+          <a className="btn btn-tertiary hero-tertiary" href={`#${JOIN_SECTION_ID}`}>
+            {t('hero.tertiary')}
+          </a>
         </div>
       </section>
 
@@ -142,7 +137,6 @@ function Landing(): ReactElement {
         <HeroArt />
         <ContinuityStory />
       </div>
-      <Capabilities />
       <Audiences />
       <Channels manifest={manifest} />
       <JoinHowTo />
@@ -152,19 +146,13 @@ function Landing(): ReactElement {
   );
 }
 
-function CardGrid({
-  section,
-  testid,
-}: {
-  section: 'audiences' | 'capabilities';
-  testid: string;
-}): ReactElement {
+function Audiences(): ReactElement {
   const { t } = useTranslation();
   const id = useId();
-  const items = t(`${section}.items`, { returnObjects: true }) as { title: string; body: string }[];
+  const items = t('audiences.items', { returnObjects: true }) as { title: string; body: string }[];
   return (
-    <section aria-labelledby={`${id}-h`} className="landing-section" data-testid={testid}>
-      <h2 id={`${id}-h`}>{t(`${section}.heading`)}</h2>
+    <section aria-labelledby={`${id}-h`} className="landing-section" data-testid="audiences">
+      <h2 id={`${id}-h`}>{t('audiences.heading')}</h2>
       <ul className="landing-cards">
         {items.map((it) => (
           <li key={it.title} className="card landing-card">
@@ -176,9 +164,6 @@ function CardGrid({
     </section>
   );
 }
-const Audiences = (): ReactElement => <CardGrid section="audiences" testid="audiences" />;
-const Capabilities = (): ReactElement => <CardGrid section="capabilities" testid="capabilities" />;
-
 const STATUS_SYMBOL: Record<string, string> = {
   live: '✓',
   sandbox: '⚠',
@@ -195,7 +180,6 @@ function Channels({ manifest }: { manifest: CapabilityManifest | null | undefine
   return (
     <section aria-labelledby={`${id}-h`} className="landing-section" data-testid="channels">
       <h2 id={`${id}-h`}>{t('channels.heading')}</h2>
-      <p className="landing-intro">{t('channels.intro')}</p>
       {manifest === undefined ? (
         <p role="status" className="muted" data-testid="channels-loading">
           {t('channels.loading')}
