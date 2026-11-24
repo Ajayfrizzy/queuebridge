@@ -9,6 +9,7 @@ FROM node:24-bookworm-slim
 WORKDIR /app
 COPY --from=build /app /app
 ENV NODE_ENV=production
+COPY infra/rumptycloud/start.sh infra/rumptycloud/start.sh
 USER node
 EXPOSE 8080
-CMD ["sh", "infra/rumptycloud/node-with-db-ca.sh", "infra/rumptycloud/web.mjs"]
+CMD ["sh", "infra/rumptycloud/start.sh"]

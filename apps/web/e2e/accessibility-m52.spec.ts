@@ -173,6 +173,8 @@ function ratio(a: string, b: string): number {
 }
 
 async function openSettings(page: Page): Promise<void> {
+  const menu = page.getByRole('button', { name: 'Menu', expanded: false });
+  if (await menu.isVisible()) await menu.click();
   await page.getByTestId('open-display-settings').first().click();
   await expect(page.getByTestId('display-settings')).toBeVisible();
 }

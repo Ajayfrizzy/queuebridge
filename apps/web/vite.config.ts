@@ -41,7 +41,7 @@ export default defineConfig({
       workbox: {
         // MQ.2: includes the built-in public Ask Que bundle (a hashed JSON asset)
         globPatterns: PRECACHE_GLOB_PATTERNS,
-        globIgnores: ['assets/LandingPage-*.{js,css}'],
+        globIgnores: ['assets/LandingPage-*.{js,css}', 'assets/landing-preview-*.png'],
         // API calls must never be answered with the cached app shell
         navigateFallbackDenylist: [/^\/api\//, /^\/health/],
         // M5.4: turn-alert push and notification-click handlers (public/push-handler.js)
@@ -53,7 +53,9 @@ export default defineConfig({
           {
             urlPattern: ({ url, sameOrigin }) =>
               sameOrigin &&
-              /^\/assets\/LandingPage-[\w-]+\.(js|css)$/.test(url.pathname) &&
+              /^\/assets\/(?:LandingPage-[\w-]+\.(?:js|css)|landing-preview-[\w-]+\.png)$/.test(
+                url.pathname,
+              ) &&
               !url.search,
             handler: 'CacheFirst',
             options: {

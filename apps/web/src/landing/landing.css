@@ -73,16 +73,6 @@
 .hero-copy > * + * {
   margin-top: var(--qb-space-4);
 }
-.hero-logo {
-  display: block;
-  width: min(100%, 11rem);
-  height: auto;
-  padding: var(--qb-space-2) var(--qb-space-3);
-  border-radius: var(--qb-radius-lg);
-  /* the supplied artwork has a light ground: on the navy hero it sits on the on-navy colour,
-     white in every theme (asserted in packages/ui/src/tokens.test.ts) */
-  background: var(--qb-color-on-brand-navy);
-}
 .hero-eyebrow {
   font-size: var(--qb-font-meta);
   font-weight: 650;
@@ -108,9 +98,6 @@
 @media (min-width: 48rem) {
   .hero-lead {
     font-size: 1.125rem;
-  }
-  .hero-logo {
-    width: min(100%, 13rem);
   }
 }
 /* Phones: the actions stack full width, the text link stays a comfortable target */
@@ -823,4 +810,70 @@ html[data-contrast='high'] .join-howto {
 }
 html[data-contrast='high'] .story-item.is-current {
   border-left-width: 8px;
+}
+
+.hero {
+  background-image: radial-gradient(
+    ellipse at 90% 100%,
+    color-mix(in srgb, var(--qb-color-accent) 32%, transparent),
+    transparent 64%
+  );
+}
+.hero .hero-title {
+  font-size: clamp(2.2rem, 4.8vw, 4.6rem);
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+  text-wrap: balance;
+}
+.ticket-preview {
+  width: min(100%, 20rem);
+  margin: 0;
+  padding: var(--qb-space-4);
+  border-radius: var(--qb-radius-xl);
+  background: var(--qb-color-surface);
+  color: var(--qb-color-text);
+  box-shadow: var(--qb-shadow-lg);
+}
+.ticket-preview figcaption {
+  margin-bottom: var(--qb-space-3);
+  font-weight: 650;
+}
+.ticket-preview img,
+.workspaces img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--qb-radius-lg);
+}
+.workspaces {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: var(--qb-space-4);
+}
+.workspaces figure,
+.continuity-feature {
+  margin: 0;
+  padding: var(--qb-space-4);
+  background: var(--qb-color-surface-muted);
+  border-radius: var(--qb-radius-xl);
+  border: 1px solid var(--qb-color-divider);
+}
+.workspaces figcaption {
+  max-width: 40ch;
+}
+.continuity-feature > svg {
+  float: right;
+  width: min(28%, 10rem);
+}
+[data-testid='audiences'] .landing-cards {
+  display: block;
+}
+[data-testid='audiences'] .landing-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: var(--qb-space-3);
+  border: 0;
+  border-bottom: 1px solid var(--qb-color-divider);
+  border-radius: 0;
+  box-shadow: none;
 }

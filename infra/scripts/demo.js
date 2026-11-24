@@ -1,3 +1,5 @@
+import { client } from './demo-client.js';
+import { profiles, prepareProfile, readCredentials } from './demo-profiles.js';
 // Run from the release root after building the API. No network listener is opened.
 import postgres from 'postgres';
 import { fileURLToPath } from 'node:url';
@@ -9,23 +11,6 @@ import { uuidv7 } from '../../packages/contracts/dist/index.js';
 const slug = 'willow-crossing-demo';
 const adminEmail = 'admin@example.invalid';
 const staffEmail = 'counter@example.invalid';
-
-function client(app) {
-  let cookie = '';
-  return async (path, payload) => {
-    const response = await app.inject({
-      method: 'POST',
-      url: '/api/v1' + path,
-      headers: { cookie, 'x-qb-csrf': '1' },
-      payload,
-    });
-    if (response.statusCode >= 400)
-      throw new Error(`Demo request ${path} returned ${response.statusCode}`);
-    const session = response.cookies.find((c) => c.name === 'qb_session');
-    if (session) cookie = 'qb_session=' + session.value;
-    return response.statusCode === 204 ? null : response.json();
-  };
-}
 
 async function prepare(tx, env, mode, expected) {
   await tx`select pg_advisory_xact_lock(hashtext('queuebridge:willow-crossing-demo'))`;
@@ -126,7 +111,9 @@ async function prepare(tx, env, mode, expected) {
 }
 
 async function main() {
-  const [mode, expected, ...extra] = process.argv.slice(2);
+  const args = process.argv.slice(2);
+  const profile = Object.hasOwn(profiles, args[0]) ? args.shift() : null;
+  const [mode, expected, ...extra] = args;
   if (!['seed', 'reset'].includes(mode) || extra.length || (mode === 'seed' && expected))
     throw new Error('Use seed or reset CURRENT_DEMO_FACILITY_ID');
   const env = parseEnv({ ...process.env, LOG_LEVEL: 'silent', AUTO_MISS_SWEEP_SECONDS: '0' });
@@ -140,10 +127,16 @@ async function main() {
     );
     if (info.database !== process.env.DEMO_DATABASE_NAME)
       throw new Error('Target database mismatch');
-    const facility = await db.begin((tx) => prepare(tx, env, mode, expected));
+    const credentials = profile ? readCredentials(profile) : null;
+    const facility = await db.begin((tx) =>
+      profile
+        ? prepareProfile(tx, env, profile, credentials, mode, expected)
+        : prepare(tx, env, mode, expected),
+    );
+    const selectedSlug = profile ?? slug;
     const [row] =
-      await db`select f.slug from facilities f join organizations o on o.id=f.organization_id where f.id=${facility} and o.slug=${slug}`;
-    console.log('Join path', '/join/' + slug + '/' + row.slug);
+      await db`select f.slug from facilities f join organizations o on o.id=f.organization_id where f.id=${facility} and o.slug=${selectedSlug}`;
+    console.log('Join path', '/join/' + selectedSlug + '/' + row.slug);
     console.log('Current demo facility', facility);
   } finally {
     await db.end();

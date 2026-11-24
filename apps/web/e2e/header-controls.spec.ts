@@ -67,6 +67,8 @@ for (const scheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme: scheme });
     await page.goto('/');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    const menu = page.getByRole('button', { name: 'Menu', expanded: false });
+    if (await menu.isVisible()) await menu.click();
     await clickVisible(page, 'open-display-settings');
     await settingsDialogVisible(page);
     await expect(page.getByRole('heading', { name: 'Display and alerts', level: 2 })).toBeFocused();
@@ -91,7 +93,11 @@ for (const scheme of ['light', 'dark'] as const) {
       'data-theme',
       scheme === 'dark' ? 'light' : 'dark',
     );
-    // keyboard opening, then the Close button
+    // Keyboard opening after reload starts with the mobile navigation collapsed.
+    if (await menu.isVisible()) {
+      await menu.focus();
+      await page.keyboard.press('Enter');
+    }
     await page.getByTestId('open-display-settings').first().focus();
     await page.keyboard.press('Enter');
     await settingsDialogVisible(page);

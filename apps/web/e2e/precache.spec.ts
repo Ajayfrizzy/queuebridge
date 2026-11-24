@@ -11,7 +11,7 @@ test('a fresh join install keeps landing assets on demand and restores visited s
   const queue = await apiQueueSetup(request);
   const landingRequests: string[] = [];
   context.on('request', (request) => {
-    if (request.serviceWorker() && /\/assets\/LandingPage-/.test(request.url())) {
+    if (request.serviceWorker() && /\/assets\/(LandingPage|landing-preview)-/.test(request.url())) {
       landingRequests.push(request.url());
     }
   });
@@ -27,15 +27,26 @@ test('a fresh join install keeps landing assets on demand and restores visited s
   });
   expect(precached.some((url) => url.includes('/assets/StaffConsole-'))).toBe(true);
   expect(precached.some((url) => url.includes('/assets/LandingPage-'))).toBe(false);
+  expect(precached.some((url) => url.includes('/assets/landing-preview-'))).toBe(false);
   await page.reload();
   await expect(page.getByRole('button', { name: /Get a ticket/ })).toBeVisible();
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Queues');
+  await page.locator('.workspaces').scrollIntoViewIfNeeded();
   await expect
     .poll(() =>
-      page.evaluate(async () => (await (await caches.open('landing-assets')).keys()).length),
+      page.evaluate(async () => {
+        const urls = (await (await caches.open('landing-assets')).keys()).map(
+          (r) => new URL(r.url).pathname,
+        );
+        return [
+          'LandingPage-.*\\.js',
+          'LandingPage-.*\\.css',
+          ...['visitor', 'counter', 'facility'].map((key) => 'landing-preview-' + key + '-'),
+        ].every((pattern) => urls.some((url) => new RegExp(pattern).test(url)));
+      }),
     )
-    .toBe(2);
+    .toBe(true);
   await context.setOffline(true);
   await page.reload();
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Queues');

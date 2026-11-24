@@ -6,10 +6,14 @@ test('landing, theme, keyboard help and sign-up entry', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   const settings = page.getByTestId('open-display-settings').first();
+  const menu = page.getByRole('button', { name: 'Menu', expanded: false });
+  if (await menu.isVisible()) await menu.click();
   await settings.click();
   await page.getByLabel('Theme').selectOption({ label: 'Dark' });
   await page.getByRole('button', { name: 'Done' }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect(page.getByTestId('display-settings')).toHaveCount(0);
+  await expect(settings).toBeFocused();
   const launcher = page.getByRole('button', { name: 'Ask Que', exact: true });
   await launcher.focus();
   await page.keyboard.press('Enter');

@@ -27,3 +27,4 @@
 **/*.pem
 
 !infra/scripts/db-identity.d.ts
+!infra/rumptycloud/start.sh
