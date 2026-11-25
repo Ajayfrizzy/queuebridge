@@ -202,6 +202,20 @@ test.describe('M6.3 Channels screen (facility administrator)', () => {
       'Waiting for the delay (not sent yet)',
     );
     await expect(page.getByTestId('ussd-monitor-counts')).toBeVisible();
+    const layout = await page.getByTestId('channels-page').evaluate((screen) => {
+      window.scrollTo(0, document.documentElement.scrollHeight);
+      const cards = Array.from(screen.querySelectorAll(':scope > section'), (card) =>
+        card.getBoundingClientRect(),
+      );
+      return {
+        gaps: cards.slice(1).map((card, index) => card.top - cards[index]!.bottom),
+        bottomClearance: window.innerHeight - cards[cards.length - 1]!.bottom,
+      };
+    });
+    expect(layout.gaps).toHaveLength(3);
+    for (const gap of layout.gaps) expect(gap).toBeGreaterThan(0);
+    expect(layout.bottomClearance).toBeGreaterThanOrEqual(0);
+    expect(layout.bottomClearance).toBeLessThan(100);
     expect(await hasHorizontalOverflow(page)).toBe(false);
     await expectNoA11yViolations(page);
   });

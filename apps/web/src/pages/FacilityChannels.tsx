@@ -23,6 +23,7 @@ import { useAnnounce } from '../components/Announcer.js';
 import { ErrorSummary, Field, Loading } from '../components/Form.js';
 import { api, ApiRequestError } from '../lib/api.js';
 import { hasFacilityRole } from '../lib/permissions.js';
+import './facility-channels.css';
 import type { FacilityContext } from './FacilityLayout.js';
 
 /**
@@ -41,7 +42,7 @@ export function FacilityChannels(): ReactElement {
   const { user } = useAuth();
   const canMonitor = user ? hasFacilityRole(user, facilityId, Permission.OPERATIONS_VIEW) : false;
   return (
-    <div data-testid="channels-page">
+    <div className="facility-channels stack" data-testid="channels-page">
       <h2>Channels</h2>
       <p>
         Text message (SMS) turn alerts and the USSD phone menu for this facility. The ticket page,
