@@ -247,24 +247,28 @@ test('the public board is distance-readable: navy ground, large identifiers, cod
 });
 
 test.describe('MQ.5 U2 and U5 in the redesigned console', () => {
-  test('U2: a facility administrator can change priority but is not offered "Call out of order"; a supervisor is', async ({
+  test('Facility administrators and supervisors see only the priority form in the ticket editor', async ({
     page,
     browser,
   }) => {
     const s = await apiQueueSetup(page.request);
+    const configured = await page.request.patch(
+      `/api/v1/facilities/${s.facility.id}/services/${s.serviceId}`,
+      {
+        headers: CSRF,
+        data: { policy: { priority_order: ['priority', 'normal'] } },
+      },
+    );
+    expect(configured.status()).toBe(200);
     await walkIns(page, s, 1);
-    for (const [role, offered] of [
-      ['facility_admin', false],
-      ['supervisor', true],
-    ] as const) {
+    for (const role of ['facility_admin', 'supervisor'] as const) {
       const p = await makeStaff(browser, page.request, s.facility.id, role);
       await p.page.goto(`/staff/queues/${s.queueId ?? ''}`);
       await p.page.getByRole('button', { name: /^Supervisor actions/ }).click();
       const panel = p.page.getByTestId('override-panel');
       await expect(panel).toBeVisible();
-      await expect(panel.getByRole('group', { name: 'Call out of order' })).toHaveCount(
-        offered ? 1 : 0,
-      );
+      await expect(panel.getByRole('group', { name: 'Change priority' })).toBeVisible();
+      await expect(panel.getByRole('group', { name: 'Call out of order' })).toHaveCount(0);
       await p.ctx.close();
     }
   });

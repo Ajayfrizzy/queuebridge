@@ -1,5 +1,5 @@
 {
-  "kbVersion": 10,
+  "kbVersion": 11,
   "articles": {
     "staff.alerts.status": {
       "version": 1,
@@ -74,8 +74,8 @@
       "hash": "6bbcd7241c7a882a70635be8cd8364d20c61bc0ba8c339d66f43141e21fbe81c"
     },
     "staff.fairness.priority": {
-      "version": 2,
-      "hash": "5b358d3e1c57eb9143efa80c287913c28c13f44ad72d581097e5cae6eb7a642f"
+      "version": 3,
+      "hash": "8450a5221b00e6c7a446e218fc164b55a9226dc55975b04ac66ec3feab30bf30"
     },
     "staff.queue.open": {
       "version": 1,

@@ -301,11 +301,6 @@ export function StaffConsole(): ReactElement {
   const counterInService = counter !== undefined && counter.active && counterOpen;
   /** Overrides are online-only and need the live (M4-shaped) queue, never a saved copy */
   const overridesAvailable = reachable && !viaOutbox && !queue.fromCache;
-  /** This device's counter, when it could take a call right now (for "call out of order") */
-  const callableCounter =
-    counter && counter.active && counterOpen && !counter.busy_with && q.state === 'open'
-      ? { id: counter.id, name: counter.name }
-      : null;
   const transferCounters = (projected?.counters ?? [])
     .filter((c) => c.id !== counterId && c.active && c.availability === 'open' && !c.busy_with)
     .map((c) => ({ id: c.id, name: c.name }));
@@ -976,8 +971,6 @@ export function StaffConsole(): ReactElement {
                         priority_class: t.priority_class,
                       }}
                       policy={q.policy}
-                      counter={callableCounter}
-                      canCallOutOfOrder={isSupervisor}
                       disabled={onlineOnlyDisabled}
                       run={runOnline}
                       onClose={() => {
