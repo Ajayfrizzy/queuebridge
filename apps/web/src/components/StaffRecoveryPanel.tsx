@@ -368,7 +368,7 @@ export function StaffRecoveryPanel({
         <div data-testid="staff-recovery-approvals">
           <h3>Requests waiting for approval</h3>
           {pending.length === 0 ? <p className="muted">None right now.</p> : null}
-          <ul className="ticket-list">
+          <ul className="ticket-list recovery-approvals">
             {pending.map((r) => (
               <li key={r.request_id} className="ticket-row">
                 <span className="ticket-row-code">{r.public_code}</span>

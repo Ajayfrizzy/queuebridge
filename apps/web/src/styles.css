@@ -1111,6 +1111,19 @@ legend {
   white-space: normal;
 }
 
+.recovery-approvals {
+  container-type: inline-size;
+}
+@container (max-width: 40rem) {
+  .recovery-approvals .ticket-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .recovery-approvals .ticket-row-actions {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
 /* QR hand-off panel (walk-in status link) */
 .qr-panel {
   text-align: center;
