@@ -105,7 +105,7 @@ main:focus {
 
 /* Keep the page scrollport above the launcher, even halfway through a long page. */
 @media screen {
-  .app-shell {
+  .app-shell:not([data-page-flow]) {
     height: calc(100dvh - var(--qb-launcher-bottom) - 3rem - var(--qb-space-2));
     overflow: auto;
   }
@@ -261,20 +261,15 @@ html[data-contrast='high'] {
   .btn.menu-toggle {
     display: flex;
   }
-  .public-header :is(nav, #header-tools) {
+  .header-row :is(nav, #header-tools, .account) {
     width: 100%;
   }
-  [data-menu-open='false'] :is(nav, .header-tools) {
+  [data-menu-open='false'] :is(nav, .header-tools, .account) {
     display: none;
   }
 
   .header-row {
-    flex-direction: column;
-    align-items: stretch;
     gap: var(--qb-space-1);
-  }
-  .public-header {
-    flex-direction: row;
   }
   .site-nav {
     margin-left: 0;

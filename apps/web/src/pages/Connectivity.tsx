@@ -117,7 +117,7 @@ export function Connectivity(): ReactElement {
   const past = list.filter((c) => c.status !== 'needs_review');
 
   return (
-    <>
+    <div className="stack">
       <p>
         <Link to={`/staff/facilities/${fid}`}>← Today&apos;s queues</Link>
       </p>
@@ -363,7 +363,7 @@ export function Connectivity(): ReactElement {
           </details>
         ) : null}
       </section>
-    </>
+    </div>
   );
 }
 

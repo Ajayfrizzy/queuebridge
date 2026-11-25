@@ -8,3 +8,10 @@
     padding-bottom: calc(var(--qb-launcher-bottom) + 3rem);
   }
 }
+
+.facility-channels .card > :is(.readiness, .stat-row, form) {
+  margin-block-start: var(--qb-space-4);
+}
+.facility-channels .badge {
+  white-space: normal;
+}

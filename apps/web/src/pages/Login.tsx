@@ -1,3 +1,4 @@
+import { PasswordInput } from '../components/PasswordInput.js';
 import { useState, type FormEvent, type ReactElement } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth.js';
@@ -73,13 +74,7 @@ export function Login(): ReactElement {
         </Field>
         <Field id="password" label="Password" error={fe['password']}>
           {(aria) => (
-            <input
-              {...aria}
-              name="password"
-              type="password"
-              required
-              autoComplete="current-password"
-            />
+            <PasswordInput {...aria} name="password" required autoComplete="current-password" />
           )}
         </Field>
         <button type="submit" className="btn btn-primary" disabled={busy}>

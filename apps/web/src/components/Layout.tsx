@@ -40,8 +40,7 @@ export function Layout(): ReactElement {
     const breakpoint = window.matchMedia('(max-width: 40rem)');
     const close = (): void => setMenuOpen(false);
     const outside = (event: MouseEvent): void => {
-      if (event.target instanceof Element && !event.target.closest('.public-header, dialog'))
-        close();
+      if (event.target instanceof Element && !event.target.closest('.header-row, dialog')) close();
     };
     breakpoint.addEventListener('change', close);
     document.addEventListener('click', outside);
@@ -90,6 +89,9 @@ export function Layout(): ReactElement {
 
   return (
     <div
+      data-page-flow={
+        /^\/(staff|supervisor|join|ticket|recover)(\/|$)/.test(location.pathname) || undefined
+      }
       className={`app-shell${user ? ' has-sidebar' : ''}${user && collapsed ? ' is-collapsed' : ''}`}
     >
       <a className="skip-link" href="#main">
@@ -97,8 +99,8 @@ export function Layout(): ReactElement {
       </a>
       <header className="site-header">
         <div
-          className={`container header-row${user ? '' : ' public-header'}`}
-          data-menu-open={user ? undefined : menuOpen}
+          className="container header-row"
+          data-menu-open={menuOpen}
           onKeyDown={(event) => {
             if (menuOpen && event.key === 'Escape') {
               setMenuOpen(false);
@@ -110,18 +112,18 @@ export function Layout(): ReactElement {
             <img className="brand-mark" src="/favicon.png" alt="" width={32} height={32} />
             <span className="brand-name">QueueBridge</span>
           </Link>
-          {!user && (
-            <button
-              type="button"
-              ref={menuButton}
-              className="btn btn-secondary menu-toggle"
-              aria-expanded={menuOpen}
-              aria-controls="primary-nav header-tools"
-              onClick={() => setMenuOpen(!menuOpen)}
-            >
-              <span aria-hidden="true">☰</span> Menu
-            </button>
-          )}
+          <button
+            type="button"
+            ref={menuButton}
+            className="btn btn-secondary menu-toggle"
+            aria-expanded={menuOpen}
+            aria-controls={
+              user ? 'primary-nav header-tools header-account' : 'primary-nav header-tools'
+            }
+            onClick={() => setMenuOpen(!menuOpen)}
+          >
+            <span aria-hidden="true">☰</span> Menu
+          </button>
           <nav id="primary-nav" aria-label="Primary" className="site-nav">
             <ul className="nav-list">
               {user ? (
@@ -169,7 +171,7 @@ export function Layout(): ReactElement {
             <DisplaySettingsButton />
           </div>
           {user ? (
-            <div className="account" role="group" aria-label="Account">
+            <div id="header-account" className="account" role="group" aria-label="Account">
               <span className="who" data-testid="whoami">
                 <span className="visually-hidden">Signed in as </span>
                 {user.display_name}

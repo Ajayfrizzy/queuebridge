@@ -1,3 +1,4 @@
+import { PasswordInput } from '../components/PasswordInput.js';
 import { useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAnnounce } from '../components/Announcer.js';
@@ -220,9 +221,9 @@ export function RecoverPage({ fragment }: { fragment: string }): ReactElement {
           hint="32 letters and numbers, usually shown in groups of four. Spaces, hyphens and capitals do not matter."
         >
           {(aria) => (
-            <input
+            <PasswordInput
               {...aria}
-              type="password"
+              label="recovery key"
               value={key}
               onChange={(e) => setKey(e.target.value)}
               autoComplete="off"

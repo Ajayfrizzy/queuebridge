@@ -1,3 +1,4 @@
+import { PasswordInput } from '../components/PasswordInput.js';
 import { useState, type FormEvent, type ReactElement } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth.js';
@@ -106,13 +107,7 @@ export function Signup(): ReactElement {
           error={fe['admin_password']}
         >
           {(aria) => (
-            <input
-              {...aria}
-              name="admin_password"
-              type="password"
-              required
-              autoComplete="new-password"
-            />
+            <PasswordInput {...aria} name="admin_password" required autoComplete="new-password" />
           )}
         </Field>
         <button type="submit" className="btn btn-primary" disabled={busy}>
