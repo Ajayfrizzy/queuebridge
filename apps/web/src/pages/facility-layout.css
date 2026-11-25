@@ -1,10 +1,10 @@
 @media screen {
-  .app-shell:has(.facility-channels) {
+  .app-shell:has(.facility-sections) {
     height: auto;
     overflow: visible;
   }
 
-  .main:has(.facility-channels) {
+  .main:has(.facility-sections) {
     padding-bottom: calc(var(--qb-launcher-bottom) + 3rem);
   }
 }

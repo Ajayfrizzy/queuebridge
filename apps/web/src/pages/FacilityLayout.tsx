@@ -5,6 +5,7 @@ import { Loading } from '../components/Form.js';
 import { api } from '../lib/api.js';
 import { isFacilityAdmin } from '../lib/permissions.js';
 import { useLoad } from '../lib/useLoad.js';
+import './facility-layout.css';
 
 export interface FacilityContext {
   facilityId: string;
@@ -43,7 +44,7 @@ export function FacilityLayout(): ReactElement {
           You have read-only access to this facility.
         </p>
       ) : null}
-      <nav aria-label="Facility sections" className="subnav">
+      <nav aria-label="Facility sections" className="subnav facility-sections">
         <ul className="nav-list">
           <li>
             <NavLink to="" end>

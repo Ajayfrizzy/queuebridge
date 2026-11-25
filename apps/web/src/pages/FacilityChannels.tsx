@@ -23,7 +23,6 @@ import { useAnnounce } from '../components/Announcer.js';
 import { ErrorSummary, Field, Loading } from '../components/Form.js';
 import { api, ApiRequestError } from '../lib/api.js';
 import { hasFacilityRole } from '../lib/permissions.js';
-import './facility-channels.css';
 import type { FacilityContext } from './FacilityLayout.js';
 
 /**
