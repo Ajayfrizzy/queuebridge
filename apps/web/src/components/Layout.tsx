@@ -90,7 +90,8 @@ export function Layout(): ReactElement {
   return (
     <div
       data-page-flow={
-        /^\/(staff|supervisor|join|ticket|recover)(\/|$)/.test(location.pathname) || undefined
+        /^\/(staff|supervisor|join|ticket|recover|login|signup)(\/|$)/.test(location.pathname) ||
+        undefined
       }
       className={`app-shell${user ? ' has-sidebar' : ''}${user && collapsed ? ' is-collapsed' : ''}`}
     >
