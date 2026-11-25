@@ -63,10 +63,15 @@ function routerPaths(src: string): string[] {
 }
 
 const APP = read('../App.tsx');
-const PATHS = routerPaths(APP);
+// The root wildcard delegates to OtherRoutes. Check its concrete paths in its place.
+const PATHS = [
+  ...routerPaths(APP).filter((path) => path !== '/*'),
+  ...routerPaths(read('../OtherRoutes.tsx')),
+];
 
 describe('D3 check 2: Que registry ⇔ web router', () => {
   it('parses the router (sanity)', () => {
+    expect(APP).toMatch(/path="\*"\s+element=\{\s*<Suspense[^>]*>[\s\S]*?<OtherRoutes \/>/);
     expect(PATHS).toContain('/');
     expect(PATHS).toContain('/admin/facilities/:id/staff');
     expect(PATHS).toContain('/staff/queues/:queueId/audit');

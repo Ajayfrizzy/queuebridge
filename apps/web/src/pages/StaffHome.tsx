@@ -2,21 +2,36 @@ import type { ReactElement } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../auth.js';
 import { useAnnounce } from '../components/Announcer.js';
-import { Loading, StatusBadge } from '../components/Form.js';
+import { StatusBadge } from '../components/Form.js';
 import { api, ApiRequestError } from '../lib/api.js';
 import { STATE_LABEL } from '../lib/format.js';
 import { hasFacilityRole, QUEUE_MANAGER_ROLES } from '../lib/permissions.js';
 import { useCachedLoad } from '../offline/useCachedLoad.js';
 
+import {
+  FacilityLoading,
+  useFacilityPreview,
+  useFacilitySessionKey,
+} from '../components/FacilityLoading.js';
+
 /** /staff — choose a facility. */
 export function StaffHome(): ReactElement {
+  return <StaffHomeContent key={useFacilitySessionKey()} />;
+}
+
+function StaffHomeContent(): ReactElement {
   const facilities = useCachedLoad(() => api.listFacilities(), 'staff-facilities');
-  if (facilities.loading) return <Loading what="facilities" />;
-  const list = facilities.data?.facilities ?? [];
+  const visible = useFacilityPreview(facilities, facilities.fromCache);
+  const list = visible?.facilities ?? [];
   return (
     <>
       <h1>Staff console</h1>
-      {list.length === 0 ? <p>You do not have access to any facility yet.</p> : null}
+      {facilities.loading && <FacilityLoading what="facilities" updating={Boolean(visible)} />}
+      {facilities.error && <p role="alert">{facilities.error.message}</p>}
+      {facilities.fromCache && visible && (
+        <p role="status">Showing the last saved facility list.</p>
+      )}
+      {visible && list.length === 0 ? <p>You do not have access to any facility yet.</p> : null}
       <ul className="card-list">
         {list.map((f) => (
           <li key={f.id} className="card">
@@ -38,7 +53,7 @@ export function StaffFacility(): ReactElement {
   const announce = useAnnounce();
   const facility = useCachedLoad(() => api.getFacility(fid), `f-${fid}`);
   const queues = useCachedLoad(() => api.facilityQueues(fid), `q-${fid}`);
-  if (!user || facility.loading || queues.loading) return <Loading what="queues" />;
+  if (!user || facility.loading || queues.loading) return <FacilityLoading what="queues" />;
   if (facility.error || queues.error || !facility.data || !queues.data) {
     return (
       <>

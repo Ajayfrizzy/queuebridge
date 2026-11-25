@@ -20,14 +20,14 @@ test('new organization configures a facility end to end and onboards a staff mem
   // --- Organization signup -------------------------------------------------------------
   await page.goto('/');
   // M7.2: the landing page's primary call to action starts the same sign-up flow
-  await page.getByRole('link', { name: 'Set up your facility' }).click();
+  await page.locator('.hero').getByRole('link', { name: 'Set up your facility' }).click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Create your organization');
   await page.getByLabel('Organization name').fill(orgName);
   const orgSlug = await page.getByLabel('Organization URL identifier').inputValue();
   expect(orgSlug).toMatch(/^journey-hospital-j-[0-9a-f]{8}$/); // auto-suggested from the name
   await page.getByLabel('Your name').fill('Ada Admin');
   await page.getByLabel('Your email').fill(adminEmail);
-  await page.getByLabel('Password').fill(PASSWORD);
+  await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
   await page.getByRole('button', { name: 'Create organization' }).click();
 
   await expect(page).toHaveURL(/\/admin$/);
@@ -127,7 +127,7 @@ test('new organization configures a facility end to end and onboards a staff mem
   await expect(invitee.getByText('Counter operator')).toBeVisible();
   await expect(invitee.getByText('counter.operator@example.test')).toBeVisible();
   await invitee.getByLabel('Your name').fill('Chidi Operator');
-  await invitee.getByLabel('Password').fill(PASSWORD);
+  await invitee.getByLabel('Password', { exact: true }).fill(PASSWORD);
   await invitee.getByRole('button', { name: 'Accept invitation' }).click();
   await expect(invitee).toHaveURL(/\/admin$/);
   expect(invitee.url()).not.toContain('token'); // secret scrubbed from the address bar
@@ -195,7 +195,7 @@ test('staff role revocation takes effect for an already signed-in user', async (
   const staffPage = await ctx.newPage();
   await staffPage.goto(accept_url);
   await staffPage.getByLabel('Your name').fill('Soon Revoked');
-  await staffPage.getByLabel('Password').fill(PASSWORD);
+  await staffPage.getByLabel('Password', { exact: true }).fill(PASSWORD);
   await staffPage.getByRole('button', { name: 'Accept invitation' }).click();
   await expect(staffPage.getByRole('link', { name: 'Main Clinic' })).toBeVisible();
 

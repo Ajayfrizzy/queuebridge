@@ -1,3 +1,4 @@
+import './staff-recovery.css';
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
 import type {
   RecoveryReasonCode,

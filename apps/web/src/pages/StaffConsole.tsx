@@ -26,7 +26,8 @@ import { SyncStateIndicator } from '@queuebridge/ui';
 import { useAuth } from '../auth.js';
 import { TurnAlertStatus } from '../components/TurnAlertStatus.js';
 import { useAnnounce } from '../components/Announcer.js';
-import { Loading, StatusBadge } from '../components/Form.js';
+import { FacilityLoading } from '../components/FacilityLoading.js';
+import { StatusBadge } from '../components/Form.js';
 import { api, apiUrl, ApiRequestError } from '../lib/api.js';
 import { formatEstimate, formatTime, STATE_LABEL } from '../lib/format.js';
 import { useLiveUpdates } from '../lib/live.js';
@@ -260,7 +261,7 @@ export function StaffConsole(): ReactElement {
     [viewTickets, counterId],
   );
 
-  if (!user || (queue.loading && !q)) return <Loading what="queue" />;
+  if (!user || (queue.loading && !q)) return <FacilityLoading what="queue" />;
   if (!q) {
     return (
       <>

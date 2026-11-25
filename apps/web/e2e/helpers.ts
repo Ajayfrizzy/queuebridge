@@ -57,7 +57,7 @@ export async function uiLogin(
   await page.goto('/login');
   await page.getByLabel('Organization URL identifier').fill(orgSlug);
   await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill(password);
+  await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
 }
 

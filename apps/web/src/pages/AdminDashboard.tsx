@@ -7,6 +7,12 @@ import { api, ApiRequestError } from '../lib/api.js';
 import { isOrgAdmin, slugify } from '../lib/permissions.js';
 import { useLoad } from '../lib/useLoad.js';
 
+import {
+  FacilityLoading,
+  useFacilityPreview,
+  useFacilitySessionKey,
+} from '../components/FacilityLoading.js';
+
 function timeZones(): string[] {
   try {
     return Intl.supportedValuesOf('timeZone');
@@ -16,9 +22,14 @@ function timeZones(): string[] {
 }
 
 export function AdminDashboard(): ReactElement {
+  return <AdminDashboardContent key={useFacilitySessionKey()} />;
+}
+
+function AdminDashboardContent(): ReactElement {
   const { user } = useAuth();
   const announce = useAnnounce();
   const facilities = useLoad(() => api.listFacilities(), 'facilities');
+  const visible = useFacilityPreview(facilities);
   const [error, setError] = useState<ApiRequestError | null>(null);
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
@@ -64,13 +75,15 @@ export function AdminDashboard(): ReactElement {
       <div className="split">
         <section aria-labelledby="facilities-heading" className="split-main">
           <h2 id="facilities-heading">Facilities</h2>
-          {facilities.loading ? <Loading what="facilities" /> : null}
+          {facilities.loading ? (
+            <FacilityLoading what="facilities" updating={Boolean(visible)} />
+          ) : null}
           {facilities.error ? (
             <p role="alert" className="alert alert-error">
               {facilities.error.message}
             </p>
           ) : null}
-          {facilities.data && facilities.data.facilities.length === 0 ? (
+          {visible && visible.facilities.length === 0 ? (
             <p data-testid="no-facilities">
               {canCreate
                 ? 'No facilities yet. Create your first facility below.'
@@ -78,7 +91,7 @@ export function AdminDashboard(): ReactElement {
             </p>
           ) : null}
           <ul className="card-list">
-            {facilities.data?.facilities.map((f) => (
+            {visible?.facilities.map((f) => (
               <li key={f.id} className="card">
                 <h3>
                   <Link to={`/admin/facilities/${f.id}`}>{f.name}</Link>
@@ -150,6 +163,7 @@ export function AdminDashboard(): ReactElement {
                 )}
               </Field>
               <button type="submit" className="btn btn-primary" disabled={busy}>
+                {busy && <span className="facility-spinner" aria-hidden="true" />}
                 {busy ? 'Creating…' : 'Create facility'}
               </button>
             </form>
