@@ -959,6 +959,7 @@ export function StaffConsole(): ReactElement {
                       <button
                         type="button"
                         className="btn btn-secondary"
+                        id={`manage-${t.id}`}
                         aria-expanded={false}
                         onClick={() => setManaging(t.id)}
                       >
@@ -979,12 +980,25 @@ export function StaffConsole(): ReactElement {
                       canCallOutOfOrder={isSupervisor}
                       disabled={onlineOnlyDisabled}
                       run={runOnline}
-                      onClose={() => setManaging(null)}
+                      onClose={() => {
+                        setManaging(null);
+                        requestAnimationFrame(() =>
+                          document.getElementById(`manage-${t.id}`)?.focus(),
+                        );
+                      }}
                     />
                   ) : null}
                   {canWalkIn && !t.provisional ? (
                     confirmCancel === t.id ? (
                       <span className="ticket-row-actions">
+                        <strong>Cancel ticket {t.public_code}?</strong>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => setConfirmCancel(null)}
+                        >
+                          Keep ticket
+                        </button>
                         <button
                           type="button"
                           className="btn btn-danger"
@@ -997,14 +1011,8 @@ export function StaffConsole(): ReactElement {
                             );
                           }}
                         >
-                          Confirm cancel<span className="visually-hidden"> {t.public_code}</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-secondary"
-                          onClick={() => setConfirmCancel(null)}
-                        >
-                          Keep
+                          Confirm cancellation
+                          <span className="visually-hidden"> {t.public_code}</span>
                         </button>
                       </span>
                     ) : (
@@ -1030,7 +1038,7 @@ export function StaffConsole(): ReactElement {
                           className="btn btn-secondary"
                           onClick={() => setConfirmCancel(t.id)}
                         >
-                          Cancel<span className="visually-hidden"> {t.public_code}</span>
+                          Cancel ticket<span className="visually-hidden"> {t.public_code}</span>
                         </button>
                       </span>
                     )

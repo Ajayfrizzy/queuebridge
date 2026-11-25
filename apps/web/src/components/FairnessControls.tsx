@@ -206,7 +206,10 @@ export function TicketOverridePanel({
                 className="btn btn-primary"
                 disabled={disabled || !textOk || !toClass || !reason}
               >
-                {confirming ? 'Confirm priority change' : 'Change priority'}
+                {confirming ? 'Confirm priority change' : 'Save priority change'}
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={onClose}>
+                Close without saving
               </button>
               {confirming ? (
                 <button
@@ -292,11 +295,14 @@ export function TicketOverridePanel({
           </fieldset>
         </form>
       ) : null}
-      <div className="btn-row">
-        <button type="button" className="btn btn-secondary" onClick={onClose}>
-          Close<span className="visually-hidden"> supervisor actions for {ticket.public_code}</span>
-        </button>
-      </div>
+      {classes.length === 0 && (
+        <div className="btn-row">
+          <button type="button" className="btn btn-secondary" onClick={onClose}>
+            Close
+            <span className="visually-hidden"> supervisor actions for {ticket.public_code}</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

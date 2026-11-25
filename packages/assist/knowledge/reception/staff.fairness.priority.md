@@ -6,8 +6,8 @@ topics: [staff_operations]
 requiresCapabilities: []
 relatedRoutes: [staff.console, staff.audit, admin.facility]
 availableSince: M4
-version: 1
-lastReviewed: 2026-11-18
+version: 2
+lastReviewed: 2026-11-25
 keywords: [priority, urgent, order, fairness, first come first served, override, change priority, jump the queue, call out of order, reason, explanation, published order]
 ---
 
@@ -17,7 +17,7 @@ Visitors are called by priority class, where the service has classes, then by ho
 
 ## Changing a visitor's priority
 
-1. Under **Supervisor actions**, choose **Change priority**.
+1. Open **Supervisor actions** and use the **Change priority** form. **Close without saving** discards the draft and keeps the ticket in the queue.
 2. Pick a reason from the service's list and write an explanation of at least 5 characters.
 3. Confirm. The change is recorded with your name, the reason and the policy version.
 

@@ -78,13 +78,23 @@ test.describe('@responsive M4 supervisor priority override', () => {
     await sup.page.getByRole('button', { name: 'Supervisor actions for G003' }).click();
     const panel = sup.page.getByTestId('override-panel');
     const form = panel.getByRole('form', { name: 'Change priority of G003' });
+    await form.getByLabel(/Explanation/).fill('Unsaved draft');
+    await form.getByRole('button', { name: 'Close without saving' }).click();
+    const opener = sup.page.getByRole('button', { name: 'Supervisor actions for G003' });
+    await expect(opener).toBeFocused();
+    expect(await waitingCodes(sup.page)).toEqual(['G001', 'G002', 'G003']);
+    await sup.page.getByRole('button', { name: 'Cancel ticket G003' }).click();
+    await expect(sup.page.getByText('Cancel ticket G003?', { exact: true })).toBeVisible();
+    await sup.page.getByRole('button', { name: 'Keep ticket' }).click();
+    await opener.click();
+    await expect(form.getByLabel(/Explanation/)).toHaveValue('');
     await form.getByLabel('New class').selectOption('priority');
     await form.getByLabel('Reason').selectOption('accessibility_need');
     // Too-short explanation keeps the action disabled
     await form.getByLabel(/Explanation/).fill('abc');
-    await expect(form.getByRole('button', { name: 'Change priority' })).toBeDisabled();
+    await expect(form.getByRole('button', { name: 'Save priority change' })).toBeDisabled();
     await form.getByLabel(/Explanation/).fill('Visitor uses a wheelchair and cannot stand');
-    await form.getByRole('button', { name: 'Change priority' }).click();
+    await form.getByRole('button', { name: 'Save priority change' }).click();
     // Explicit confirmation step naming what will be recorded
     await expect(form.getByTestId('override-confirm')).toContainText(
       'Move G003 from Normal to Priority',
