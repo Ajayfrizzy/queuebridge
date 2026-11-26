@@ -1,0 +1,13 @@
+# Submission review
+
+| Official criterion                 | Evidence to inspect                                                                                             | Remaining evidence or limitation                                            |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Potential Impact · 20%             | Visitor join and reception walk-in show how one facility serves people with different devices.                  | Fictional facility and owner acceptance only. No field impact measurements. |
+| Technological Implementation · 20% | Kiro CLI record, specs, steering, coordinator decision, reconciliation and audit history.                       | Attribute later Codex work separately.                                      |
+| Design · 20%                       | Judge walkthrough covers ticket feedback, contrast, keyboard use and distinct staff roles.                      | Showcase actual device footage.                                             |
+| Innovation/Idea · 20%              | One designated offline coordinator and explicit server dispositions address competing claims about who is next. | Demonstrate an actual disconnect and reconnect.                             |
+| Presentation · 20%                 | Timed script connects a single visitor journey to staff decisions and the resulting audit trail.                | Record and publish the final video.                                         |
+
+The submission period opened October 30, 2026 at 09:00 Pacific (16:00 UTC). The earliest reachable commit on this branch, `c48c20a`, is dated October 31 at 12:53:25 UTC. The original architecture carries an October 30 date without a time. Git history supports development inside the period but cannot establish when uncommitted work began. The entrant must confirm the creation time and disclose applicable pre-existing work. Select the entry category and confirm entrant eligibility on Devpost. [Official rules](https://kiroween.devpost.com/rules)
+
+The local tree includes the MIT license and seven tracked files under the root Kiro directory. An anonymous GitHub API lookup for Ajayfrizzy/queuebridge returned “Not Found.” Before submission, verify the intended public repository and default branch from a signed-out browser, including the README, license badge, Kiro artifacts and complete sources. Provide private Judge Demo access through the approved channel and a public YouTube video under three minutes. [License](../../LICENSE) · [Kiro evidence](kiro.md) · [Video plan](demo-video.md)
