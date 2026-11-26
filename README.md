@@ -2,38 +2,17 @@
 
 **Resilient, accessible, accountable queue-coordination platform**
 
-QueueBridge keeps service moving through unreliable connectivity across web, staff-assisted, SMS, and USSD channels. Built for the **Kiroween 2026** hackathon.
+QueueBridge helps service desks keep track of who is next, even when connectivity drops. Visitors join online or through reception. Staff can record permitted work during an outage, reconcile it on reconnect and explain priority decisions afterward.
 
----
+## Evaluate QueueBridge
 
-## What makes QueueBridge different
+1. [Product overview and real-world impact](docs/judging/overview.md)
+2. [Judge Demo access and walkthrough](docs/judging/walkthrough.md)
+3. [How the deployed system works](docs/judging/architecture.md)
+4. [How the team used Kiro](docs/judging/kiro.md)
+5. [Demo video script and shots](docs/judging/demo-video.md)
 
-QueueBridge is not a QR ticket generator. Its key differentiator is the **Continuity Engine** — a system that:
-
-- Keeps designated queue operations running during internet outages
-- Ensures offline-captured operations are safely reconciled (never silently overwritten) when connectivity returns
-- Surfaces conflicts for supervisor review rather than claiming false consistency
-- Provides an inclusive, accessible experience for visitors without smartphones (SMS, USSD, staff-assisted)
-
-## Feature overview
-
-| #   | Feature                                                               | Status |
-| --- | --------------------------------------------------------------------- | ------ |
-| F1  | Offline-first queue operations                                        | M3     |
-| F2  | Inclusive registration (web, staff, SMS, USSD)                        | M2/M6  |
-| F3  | Queue fairness and transparency                                       | M4     |
-| F4  | Ticket recovery and missed-turn handling                              | M5     |
-| F5  | Adaptive service routing                                              | M4     |
-| F6  | Explainable wait-time estimates                                       | M2     |
-| F7  | Accessibility-first visitor experience                                | M5     |
-| F8  | Tamper-evident operational history                                    | M4     |
-| F9  | Connectivity and recovery dashboard                                   | M3     |
-| F10 | Portable facility setup                                               | M1     |
-| F11 | Real SMS incl. SMS turn alerts (sandbox ready; live pending provider) | M6     |
-| F12 | Real USSD (sandbox ready; live pending provider)                      | M6     |
-| F13 | Ask Que Anything (planned)                                            | MQ     |
-| F14 | Smart Turn Alerts (in-app alert; opt-in Web Push, best effort)        | M5     |
-| F15 | Final UI/UX, branding, landing page (planned)                         | M7     |
+[Submission evidence matrix](docs/judging/submission-review.md) · [Historical inventory](docs/archive/inventory.md) · [Deployment runbook](docs/deployment/RUMPTYCLOUD-DEPLOYMENT.md)
 
 ## Architecture
 
@@ -50,29 +29,29 @@ packages/ui          → Accessible React components
 
 infra/migrations/    → Numbered idempotent SQL migrations
 infra/seeds/         → Development fixture data
-docs/adr/            → Architecture Decision Records (ADR-001 through ADR-010)
+docs/archive/adr/            → Architecture Decision Records (ADR-001 through ADR-015)
 ```
 
-See [`docs/QueueBridge_Technical_Architecture_v1.0.md`](docs/QueueBridge_Technical_Architecture_v1.0.md) for the full architecture specification.
+See [`docs/judging/architecture.md`](docs/judging/architecture.md) for the as-built overview.
 
 ## Local development setup
 
 ### Prerequisites
 
-- **Node.js 24+** (`node --version`)
-- **pnpm 9+** (`npm install -g pnpm@9`)
+- **Node.js 24** (`node --version`)
+- **pnpm 9.15.9** (`npm install -g pnpm@9.15.9`)
 - **PostgreSQL 16+** (local install or Docker)
 
 ### Quick start
 
 ```bash
 # 1. Clone and install
-git clone https://github.com/your-org/queuebridge
+git clone https://github.com/Ajayfrizzy/queuebridge
 cd queuebridge
-pnpm install
+pnpm install --frozen-lockfile
 
-# 2. Configure environment (details: docs/local-environment.md)
-cp .env.example .env          # DATABASE_URL / TEST_DATABASE_URL → localhost:55433 (queuebridge-pg)
+# 2. Configure environment (details: docs/development/local-environment.md)
+cp -n .env.example .env          # DATABASE_URL / TEST_DATABASE_URL → localhost:55433 (queuebridge-pg)
 pnpm env:generate             # fresh random secrets + audit key id; values are never printed
 
 # 3. Build, load the environment (EVERY terminal — nothing reads .env automatically) and check
@@ -88,7 +67,7 @@ pnpm db:seed                  # optional: load dev fixture data
 # 5. Start development servers (each in a terminal with the environment loaded)
 pnpm dev:api                  # Fastify API on http://localhost:3002
 pnpm dev:web                  # Vite/React on http://localhost:5173
-pnpm dev:worker               # Audit checkpoint worker (one pass: node apps/worker/dist/worker.js --once)
+pnpm dev:worker               # Notification outbox and audit checkpoint worker (one pass: node apps/worker/dist/worker.js --once)
 ```
 
 ### Running tests
@@ -127,20 +106,21 @@ queuebridge/
 │   ├── migrations/   # SQL migrations (idempotent)
 │   └── seeds/        # Dev fixture data
 ├── docs/
-│   ├── adr/          # Architecture Decision Records
-│   └── testing/      # Test evidence
+│   ├── archive/      # Historical decisions, reports and evidence
+│   ├── development/  # Local setup
+│   ├── deployment/   # Operator guides
+│   └── judging/      # Judge walkthrough and submission materials
 ├── .kiro/
 │   ├── steering/     # Kiro persistent guidance
 │   └── specs/        # Spec-driven development artifacts
 ├── .github/
 │   └── workflows/    # GitHub Actions CI
-├── AGENTS.md         # AI agent instructions
-└── M0-completion.md  # M0 implementation report
+└── AGENTS.md         # AI agent instructions
 ```
 
 ## Kiro contribution
 
-QueueBridge was developed with substantial Kiro assistance across every phase:
+The M0 completion report documents how the team used Kiro to turn the product requirements into a design, implementation tasks and persistent engineering guidance:
 
 - **Spec creation**: Requirements, design, and task files in `.kiro/specs/queuebridge/` authored with Kiro
 - **Steering files**: Always-on product, architecture, security, and testing guidance in `.kiro/steering/`
@@ -148,7 +128,11 @@ QueueBridge was developed with substantial Kiro assistance across every phase:
 - **Implementation**: Package implementations, database schema, CI workflows, ADRs, and test suite
 - **Architecture review**: ADR-001 through ADR-010 reviewed and refined with Kiro guidance
 
-See `M0-completion.md` for a detailed account of Kiro's contributions.
+One example is the outage workflow. The requirements describe what staff must be able to do during an outage. The design assigns authority to one coordinator, and the tasks turn that constraint into replay, fencing and conflict-review checks. This gives reviewers a trail from a user need to an engineering decision and its acceptance criteria. [Requirements](.kiro/specs/queuebridge/requirements.md) · [Design](.kiro/specs/queuebridge/design.md) · [Tasks](.kiro/specs/queuebridge/tasks.md) · [Kiro contribution record](docs/archive/milestones/M0-completion.md)
+
+## Evaluation evidence
+
+The owner reported **89 of 89 manual checks passed** in Owner QA. Judge Demo was provisioned separately with fictional records. Hosted provisioning verification covered six role logins, facility access, the public join endpoint, the seeded queue states and a denied cross-tenant read. Two checkpoints were observed on the new queues. These observations describe the provisioning session. Today's queues and ticket counts can change as people use the demo.
 
 ## Milestones
 
@@ -160,9 +144,9 @@ See `M0-completion.md` for a detailed account of Kiro's contributions.
 | M3        | Continuity Engine, offline sync, conflict UI                                                                       | ✅ Merged (PR #5)                |
 | M4        | Fairness, overrides, audit, routing, ETA                                                                           | ✅ Merged (PR #6)                |
 | M5        | Recovery, accessibility, device health, Smart Turn Alerts (in-app, sound, vibration, opt-in Web Push; best effort) | ✅ Merged (PR #8)                |
-| MQ        | Ask Que Anything (after M5, before M6)                                                                             | Planned (next)                   |
-| M6        | SMS turn alerts and USSD adapters, sandbox tests                                                                   | Planned                          |
-| M7        | Final UI/UX, branding, animated landing page, hardening, demo data, submission                                     | Planned                          |
+| MQ        | Ask Que Anything (after M5, before M6)                                                                             | Implemented                      |
+| M6        | SMS turn alerts and USSD adapters, sandbox tests                                                                   | Implemented                      |
+| M7        | Final UI/UX, branding, animated landing page, hardening, demo data, submission                                     | Implemented                      |
 
 ## License
 

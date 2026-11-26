@@ -1,6 +1,6 @@
 # RumptyCloud managed configuration implementation
 
-**Recommendation: stage for review; hold hosted activation.** The accepted candidate is one managed Web Service/Backend for the PWA and API, an independent single-replica worker deployment, and private PostgreSQL 16+. Both processes accept the platform port. Settings, environment ownership, operator jobs and release order are in the [managed deployment runbook](../deployment/RUMPTYCLOUD-DEPLOYMENT.md).
+**Recommendation: stage for review; hold hosted activation.** The accepted candidate is one managed Web Service/Backend for the PWA and API, an independent single-replica worker deployment, and private PostgreSQL 16+. Both processes accept the platform port. Settings, environment ownership, operator jobs and release order are in the [managed deployment runbook](../../deployment/RUMPTYCLOUD-DEPLOYMENT.md).
 
 ## Managed adaptation inventory
 
@@ -30,7 +30,7 @@ Hosted acceptance remains open for origin TLS, forwarded client attribution, pro
 
 The following records the earlier VM candidate and disposable exercises. The managed runbook above supersedes its release disposition and inventory.
 
-Prepared on feature/m7-rumptycloud-deployment against 0ebda6a. The selected candidate uses a directly reachable Caddy HTTPS proxy, static React PWA, separate systemd-managed API and worker on the same Linux VM, and workspace-private managed PostgreSQL. Public documentation establishes the VM transfer interface and proxy support. The target workspace has yet to demonstrate private database routing, verified TLS and probe access. The release procedure, environment matrix, hosted acceptance worksheet and rollback gates are in the [deployment runbook](../deployment/RUMPTYCLOUD-DEPLOYMENT.md).
+Prepared on feature/m7-rumptycloud-deployment against 0ebda6a. The selected candidate uses a directly reachable Caddy HTTPS proxy, static React PWA, separate systemd-managed API and worker on the same Linux VM, and workspace-private managed PostgreSQL. Public documentation establishes the VM transfer interface and proxy support. The target workspace has yet to demonstrate private database routing, verified TLS and probe access. The release procedure, environment matrix, hosted acceptance worksheet and rollback gates are in the [deployment runbook](../../deployment/RUMPTYCLOUD-DEPLOYMENT.md).
 
 | File                                                     | Purpose                                                                                        |
 | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |

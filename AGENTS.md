@@ -13,8 +13,8 @@ It keeps service moving through unreliable connectivity across web, staff-assist
 
 **Source of truth:**
 
-- Product requirements: `docs/QueueBridge_PRD_v1.0.md`
-- Architecture: `docs/QueueBridge_Technical_Architecture_v1.0.md`
+- Product requirements: `docs/archive/original-specifications/QueueBridge_PRD_v1.0.md`
+- Architecture: `docs/archive/original-specifications/QueueBridge_Technical_Architecture_v1.0.md`
 - `.kiro/steering/` — persistent per-topic guidance
 - `.kiro/specs/queuebridge/` — spec-driven requirements, design, and tasks
 
@@ -41,7 +41,7 @@ and ADR-011. Do not implement before MQ.
 **MQ → M6 → M7**. Do not implement a later milestone's scope early.
 M5 manual acceptance runs in two sets (approved 2026-11-16): Set 1 (checks 1–14) closed during
 development; Set 2 (checks 15–41) is final acceptance after M7, before submission
-(`docs/testing/M5-manual-acceptance.md` §0a). A confirmed critical security or integrity defect is
+(`docs/archive/testing/M5-manual-acceptance.md` §0a). A confirmed critical security or integrity defect is
 never deferred; automated testing and CI continue on every change.
 
 ---
@@ -65,16 +65,17 @@ queuebridge/
 │   ├── migrations/   # Numbered SQL migrations (repeatable, idempotent where possible)
 │   └── seeds/        # Development fixture data
 ├── docs/
-│   ├── adr/          # Architecture Decision Records (numbered, dated)
-│   └── testing/      # Test evidence and acceptance reports
+│   ├── archive/      # Historical decisions, reports and evidence
+│   ├── development/  # Local setup
+│   ├── deployment/   # Operator guides
+│   └── judging/      # Judge walkthrough and submission materials
 ├── .kiro/
 │   ├── steering/     # Persistent Kiro steering files
 │   └── specs/        # Spec-driven development artifacts
 ├── .github/
 │   └── workflows/    # GitHub Actions CI
 ├── AGENTS.md         # ← this file
-├── README.md
-└── M0-completion.md  # Generated at M0
+└── README.md
 ```
 
 ### Package boundaries (enforced)
@@ -110,7 +111,7 @@ queuebridge/
 | Linting            | ESLint 9 flat-config                             | With TypeScript plugin                                |
 | Formatting         | Prettier                                         | 2-space indent, single quotes                         |
 | CI                 | GitHub Actions                                   | Free tier                                             |
-| Env validation     | `zod` (no dotenv: env comes from the shell)      | `docs/local-environment.md`                           |
+| Env validation     | `zod` (no dotenv: env comes from the shell)      | `docs/development/local-environment.md`                           |
 | Web Push (from M5) | `http_ece` 1.2.1 (MIT) + `node:crypto` VAPID     | RFC 8030/8291/8292; ADR-013; `packages/channels` only |
 
 **Paid services:** explicitly prohibited. Do not add any dependency with a paid tier requirement for local or CI use.
@@ -293,7 +294,7 @@ Core invariants that tests must cover by M3:
 
 - Use Kiro substantially for spec-driven planning, implementation, review, and verification.
 - Every spec in `.kiro/specs/` must reflect real usage — do not fabricate Kiro artifacts.
-- Document concrete Kiro contributions in `M0-completion.md` and the final submission materials.
+- Document concrete Kiro contributions in `docs/archive/milestones/M0-completion.md` and the final submission materials.
 - Steering files in `.kiro/steering/` are always-on instructions — keep them current as the project evolves.
 - Before implementing offline advancement (M3), answer all six questions in Architecture §16 in code **and** tests.
 

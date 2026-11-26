@@ -32,4 +32,4 @@ explicitly, and this document and the source file change together.
 - **Not verifiable until deployment:** that the production edge sends them; HSTS behaviour over
   real HTTPS (browsers ignore HSTS on `http://localhost`); TLS configuration. After deployment, check
   with `curl -sI https://<host>/` and the browser devtools, and record the result in
-  `docs/testing/M7-evidence.md` (M7.3/M7.5).
+  `docs/archive/testing/M7-evidence.md` (M7.3/M7.5).

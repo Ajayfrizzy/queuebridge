@@ -288,3 +288,9 @@ with a number, call the ticket with the ticket page open and visible, wait out t
 run the worker once. The SMS row is recorded `suppressed` / `alert_seen` and the monitoring
 table says "Not sent (the ticket page showed the alert first)". With the ticket page closed the
 message is sent (test provider) after the delay.
+
+## Developer setup for the judging release
+
+Use Node 24, pnpm 9.15.9 and the committed lockfile. PostgreSQL 16+ supplies the operational database and outbox. Redis is unnecessary. Run development and database tests on separate local databases. Keep both URLs distinct from hosted resources. Start the API, web app and worker in separate terminals with the appropriate local environment loaded. See the [quick start and verification commands](../../README.md#local-development-setup).
+
+The environment template and service schemas distinguish required settings from optional transports. Configure database identity and URL, session secret, allowed origin and public web base URL for the API. Supply contact encryption and matching audit key material to the processes that use them. The VAPID private key belongs to the worker when push is enabled. Leave optional AI disabled. Internal SMS and USSD sandbox modes are for non-production use. The hosted deployment uses separate runtime environments and an explicit web or worker role. [Environment template](../../.env.example) · [API schema](../../apps/api/src/env.ts) · [Worker schema](../../apps/worker/src/env.ts) · [Managed deployment](../deployment/RUMPTYCLOUD-DEPLOYMENT.md)
