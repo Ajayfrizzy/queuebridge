@@ -150,7 +150,7 @@ queuebridge/
 
 ## Kiro contribution
 
-QueueBridge was developed using **Kiro CLI and Kiro IDE**. The CLI established the project foundation and early implementation; the project owner then moved to the IDE for continued development, using its approval settings to reduce repetitive terminal interruptions.
+**Kiro was the primary development tool used to build QueueBridge's functional features.** Kiro CLI established the project foundation and early implementation; the owner then moved to Kiro IDE for the bulk of feature development, using its approval settings to reduce repetitive terminal interruptions.
 
 Kiro's contribution extends beyond scaffolding:
 
@@ -159,7 +159,7 @@ Kiro's contribution extends beyond scaffolding:
 - **Working foundation:** The [M0 completion report](docs/archive/milestones/M0-completion.md) records shared package implementations, database schema, application foundations, architecture decisions and 121 passing initial tests.
 - **Implementation traceability:** The [Continuity Engine milestone](docs/archive/milestones/M3-completion.md) connects the offline coordinator decision to authority checks, reconciliation and regression evidence.
 
-Codex also participated in implementation reviews and later hardening and release work. The [documented handover](docs/archive/handover/QUEUEBRIDGE-CODEX-HANDOVER.md) records the transition at M7.3. The Kiro specifications and engineering constraints remained the reference for continued development.
+The [documented handover](docs/archive/handover/QUEUEBRIDGE-CODEX-HANDOVER.md) establishes that M0–M6, Ask Que, M7.1 and M7.2 were implemented and merged before the transition at M7.3. The owner switched to Codex for final hardening, verification, refinements and release preparation because the remaining Kiro credits were insufficient to finish that phase. Codex also provided earlier code reviews. The Kiro-built functional product, specifications and engineering constraints remained the foundation for the final release.
 
 One example is the outage workflow: requirements identify the risk of competing disconnected workstations; the design assigns offline advancement authority to one coordinator; and the tasks specify replay, fencing and conflict-review checks. The [supplementary documentary](https://youtu.be/pXa5h-StyYM) shows actual offline registration and reconciliation in the deployed application.
 
