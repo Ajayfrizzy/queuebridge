@@ -6,7 +6,7 @@ QueueBridge helps service desks keep track of who is next, even when connectivit
 
 ## Live application and demo videos
 
-**[Launch the live QueueBridge application](https://queuebridge.rumptycloud.app)** · **[Watch the 2:45 product film on YouTube](https://youtu.be/YRyKmyMb2Ms)**
+**[Launch the live QueueBridge application](https://queuebridge.rumptycloud.app)**
 
 [![QueueBridge — Service Doesn't Have to Stop (video thumbnail)](https://img.youtube.com/vi/YRyKmyMb2Ms/maxresdefault.jpg)](https://youtu.be/YRyKmyMb2Ms)
 
