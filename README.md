@@ -4,15 +4,15 @@
 
 QueueBridge helps service desks keep track of who is next, even when connectivity drops. Visitors join online or through reception. Staff can record permitted work during an outage, reconcile it on reconnect and explain priority decisions afterward.
 
-## Live application and demo film
+## Live application and demo video
 
-**[Launch the live QueueBridge application](https://queuebridge.rumptycloud.app)** · **[Watch the 2:45 product film on YouTube](https://youtu.be/YRyKmyMb2Ms)**
+**[Launch the live QueueBridge application](https://queuebridge.rumptycloud.app)** · **[Watch QueueBridge — Continuity in Action on YouTube (2:55)](https://youtu.be/pXa5h-StyYM)**
 
-[![QueueBridge — Service Doesn't Have to Stop (video thumbnail)](https://img.youtube.com/vi/YRyKmyMb2Ms/maxresdefault.jpg)](https://youtu.be/YRyKmyMb2Ms)
+[![QueueBridge — Continuity in Action (video thumbnail)](https://img.youtube.com/vi/pXa5h-StyYM/maxresdefault.jpg)](https://youtu.be/pXa5h-StyYM)
 
-*Click the thumbnail to watch the QueueBridge demo video.*
+Recorded in the deployed application with fictional demonstration records, this technical demonstration shows a staff workstation losing connectivity, three provisional walk-in registrations saved locally, actual reconnection and reconciliation, confirmed tickets I013–I015, mobile visitor recovery, service completion and audit integrity verification. Offline queue advancement requires a designated coordinator; this recording demonstrates offline registration and subsequent online service. The earlier audit snapshot verifies 54 events, two signed checkpoints and 12 routing decisions, with 19 recent events awaiting checkpoint coverage. [Video evidence and chapters](docs/judging/demo-video.md#technical-demonstration)
 
-QueueBridge is a **mobile-first web application** for visitors and a desktop-friendly workspace for reception, counters, supervisors and auditors. The film includes footage from the working Android and desktop web experiences, alongside clearly identified illustrations of offline reconciliation and other workflows.
+QueueBridge is a **mobile-first web application** for visitors and a desktop-friendly workspace for reception, counters, supervisors and auditors.
 
 **For evaluators:** [Visitor entry — Willow Crossing Service Centre](https://queuebridge.rumptycloud.app/join/judge-demo/session-1) · [Staff sign-in](https://queuebridge.rumptycloud.app/login) · [Judge walkthrough and role guide](docs/judging/walkthrough.md). The demonstration uses fictional data; staff passwords are provided separately through the approved private judge channel.
 
@@ -32,7 +32,7 @@ QueueBridge is a **mobile-first web application** for visitors and a desktop-fri
 2. [Judge Demo access and walkthrough](docs/judging/walkthrough.md)
 3. [How the deployed system works](docs/judging/architecture.md)
 4. [How the team used Kiro](docs/judging/kiro.md)
-5. [Demo video script and shots](docs/judging/demo-video.md)
+5. [Published demo video and evidence](docs/judging/demo-video.md)
 
 [Submission evidence matrix](docs/judging/submission-review.md) · [Historical inventory](docs/archive/inventory.md) · [Deployment runbook](docs/deployment/RUMPTYCLOUD-DEPLOYMENT.md)
 
@@ -142,15 +142,21 @@ queuebridge/
 
 ## Kiro contribution
 
-The M0 completion report documents how the team used Kiro to turn the product requirements into a design, implementation tasks and persistent engineering guidance:
+**Kiro was the primary development tool used to build QueueBridge's functional features.** Kiro CLI established the project foundation and early implementation; the owner then moved to Kiro IDE for the bulk of feature development, using its approval settings to reduce repetitive terminal interruptions.
 
-- **Spec creation**: Requirements, design, and task files in `.kiro/specs/queuebridge/` authored with Kiro
-- **Steering files**: Always-on product, architecture, security, and testing guidance in `.kiro/steering/`
-- **AGENTS.md**: Engineering rules, security standards, and validation requirements
-- **Implementation**: Package implementations, database schema, CI workflows, ADRs, and test suite
-- **Architecture review**: ADR-001 through ADR-010 reviewed and refined with Kiro guidance
+Kiro's contribution extends beyond scaffolding:
 
-One example is the outage workflow. The requirements describe what staff must be able to do during an outage. The design assigns authority to one coordinator, and the tasks turn that constraint into replay, fencing and conflict-review checks. This gives reviewers a trail from a user need to an engineering decision and its acceptance criteria. [Requirements](.kiro/specs/queuebridge/requirements.md) · [Design](.kiro/specs/queuebridge/design.md) · [Tasks](.kiro/specs/queuebridge/tasks.md) · [Kiro contribution record](docs/archive/milestones/M0-completion.md)
+- **Spec-driven development:** Requirements, design and milestone tasks in [`.kiro/specs/queuebridge/`](.kiro/specs/queuebridge) connect product needs to implementation and acceptance criteria.
+- **Persistent steering:** [`.kiro/steering/`](.kiro/steering) contains product, architecture, security and testing guidance.
+- **Working foundation:** The [M0 completion report](docs/archive/milestones/M0-completion.md) records shared package implementations, database schema, application foundations, architecture decisions and 121 passing initial tests.
+- **Implementation traceability:** The [Continuity Engine milestone](docs/archive/milestones/M3-completion.md) connects the offline coordinator decision to authority checks, reconciliation and regression evidence.
+
+The [documented handover](docs/archive/handover/QUEUEBRIDGE-CODEX-HANDOVER.md) establishes that M0–M6, Ask Que, M7.1 and M7.2 were implemented and merged before the transition at M7.3. The owner switched to Codex for final hardening, verification, refinements and release preparation because the remaining Kiro credits were insufficient to finish that phase. Codex also provided earlier code reviews. The Kiro-built functional product, specifications and engineering constraints remained the foundation for the final release.
+
+One example is the outage workflow: requirements identify the risk of competing disconnected workstations; the design assigns offline advancement authority to one coordinator; and the tasks specify replay, fencing and conflict-review checks. The [technical demonstration](https://youtu.be/pXa5h-StyYM) shows actual offline registration and reconciliation in the deployed application.
+
+**[Read the complete Kiro contribution guide](docs/judging/kiro.md)** for the CLI-to-IDE workflow, milestone evidence, architecture traceability and tool attribution.
+
 
 ## Evaluation evidence
 
