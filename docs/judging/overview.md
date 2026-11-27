@@ -6,7 +6,7 @@ When the internet drops at a busy service desk, who remembers who was next? Queu
 
 A designated staff device can keep recording permitted work through an outage. When it reconnects, the server confirms each operation or flags it for review. A supervisor can explain a priority change, and an auditor can trace how the queue moved. A clinic intake desk, municipal service centre or registration hall can use the same workflow with its own services, counters and staff permissions.
 
-Try Willow Crossing Service Centre with fictional records. [Judge walkthrough](walkthrough.md) · [Hosted application](https://queuebridge.rumptycloud.app) · [Demo recording script](demo-video.md)
+Try Willow Crossing Service Centre with fictional records. [Judge walkthrough](walkthrough.md) · [Hosted application](https://queuebridge.rumptycloud.app) · [Demo video and evidence](demo-video.md)
 
 ## Feature overview
 
