@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "tsBuildInfoFile": "./tsconfig.tsbuildinfo",
+    "lib": ["ES2022"]
+  },
+  "references": [
+    { "path": "../../packages/contracts" },
+    { "path": "../../packages/channels" },
+    { "path": "../../packages/domain" }
+  ],
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

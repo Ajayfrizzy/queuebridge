@@ -1,0 +1,6 @@
+{
+  "$comment": "Scoped, temporary dependency-audit exceptions. Read by infra/scripts/audit-gate.js. Every change needs product-owner review; see docs/testing/MQ-evidence.md. None active: GHSA-fc5q-39xc-vjpf (picomatch, development tools only) was removed on 2026-11-20 after GitHub withdrew the advisory on 2026-11-18 as not a security issue (proof in docs/testing/M6-evidence.md).",
+  "policyVersion": 1,
+  "maxValidityDays": 45,
+  "exceptions": []
+}

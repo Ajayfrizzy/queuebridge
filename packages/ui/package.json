@@ -1,0 +1,38 @@
+{
+  "name": "@queuebridge/ui",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Reusable accessible React components for QueueBridge",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "typecheck": "tsc --noEmit --project tsconfig.json",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo",
+    "tokens:css": "tsc --project tsconfig.json && node scripts/write-tokens-css.mjs"
+  },
+  "dependencies": {
+    "@queuebridge/contracts": "workspace:*",
+    "react": "19.0.0",
+    "react-dom": "19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.0.1",
+    "@types/react-dom": "19.0.2",
+    "@vitest/coverage-v8": "4.1.12",
+    "vitest": "4.1.12"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  }
+}

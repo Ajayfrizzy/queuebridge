@@ -1,0 +1,27 @@
+.facility-spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  margin-inline-end: 0.5em;
+  vertical-align: -0.12em;
+  border: 2px solid currentColor;
+  border-inline-end-color: transparent;
+  border-radius: 50%;
+}
+@media (prefers-reduced-motion: no-preference) {
+  html:not([data-motion='reduce']) .facility-spinner {
+    animation: facility-spin 1s linear infinite;
+  }
+}
+@keyframes facility-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+.facility-placeholder {
+  height: 4rem;
+  margin-block: var(--qb-space-2);
+  background: var(--qb-color-surface);
+  border: 1px solid var(--qb-color-border);
+  border-radius: var(--qb-radius-lg);
+}

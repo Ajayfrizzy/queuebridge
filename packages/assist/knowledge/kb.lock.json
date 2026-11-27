@@ -1,0 +1,193 @@
+{
+  "kbVersion": 11,
+  "articles": {
+    "staff.alerts.status": {
+      "version": 1,
+      "hash": "071453ba6eedc11abb8ad0c7f694d62e66a5b4ed7074cd6bbde3cedd064180d9"
+    },
+    "staff.auto_miss": {
+      "version": 2,
+      "hash": "ac313f161566e38da986a1ab4f1174f178ad5dece743f79aadb6a20d49ffe50d"
+    },
+    "staff.coordinator.limits": {
+      "version": 1,
+      "hash": "59e961047e3873c89cf66c683691571ba6570eb912db70be4c30ba0b81ae237d"
+    },
+    "staff.counter.calling": {
+      "version": 2,
+      "hash": "ecfaa76d7f513f7000715f716b2bdc341bd8c573efdff0cc8f3d337d14b1d6fb"
+    },
+    "staff.missed.rejoin": {
+      "version": 1,
+      "hash": "3c094e4c31472e427a80d350132c2cf27f520a4de27baf381953cadbb64949df"
+    },
+    "staff.sync.states": {
+      "version": 2,
+      "hash": "f78a7c8228be326043d873e34fcdcd305fa546a352fc5e110b5166e7c96c91a2"
+    },
+    "staff.transfers": {
+      "version": 1,
+      "hash": "10206495d34468964366fd30c5b9336b8165302c79c87829d8d5a9a03f70b404"
+    },
+    "admin.channels.sms": {
+      "version": 1,
+      "hash": "288451d1295d9a3d5efe989e5f52a6f856e807d5b22e106321a40bc74bb9c4eb"
+    },
+    "admin.channels.ussd": {
+      "version": 1,
+      "hash": "4ed8dbf2495a9ecdc138680c04d7b0017a3ef10d0456216d1480415bff809bf9"
+    },
+    "admin.counters": {
+      "version": 1,
+      "hash": "2ff6fcaf03c1846d9ca36f50ded5d9f98588fa77361e060edc22b0f760ab2740"
+    },
+    "admin.facility.create": {
+      "version": 1,
+      "hash": "26d5951ec14ae840c167d962ad51ba891ed4dc8fe6d75a64ffd0d5a873f7c10b"
+    },
+    "admin.policy.recovery": {
+      "version": 1,
+      "hash": "42b1fd53d850863befa72cb78c0d9fb1eaeb6f355416575ee3d207a3427a41f6"
+    },
+    "admin.que_ai": {
+      "version": 1,
+      "hash": "86ad52d5afd22d12981fb40524f0d1428581960bc96463e45954269cb37754eb"
+    },
+    "admin.services": {
+      "version": 2,
+      "hash": "48cb0525e371008a37e663851ed573847e1dece6a04bdcd7272e951d692a57b0"
+    },
+    "admin.staff.invite": {
+      "version": 1,
+      "hash": "d4225fde582ecf234bd05c72c0b5763d08c012e9cd80c0a9aefef1d45d555a0a"
+    },
+    "admin.readiness.join_link": {
+      "version": 1,
+      "hash": "bc792739b77fa8bbc416ebaf54fcd6e63cd0c340bfaf5bfe23e83bbf7dc6cf4a"
+    },
+    "staff.device.health": {
+      "version": 1,
+      "hash": "b306e87c7fc419c6fd7f1970756ca81e1d1c8c6fdb80b386868daaceebdbb12f"
+    },
+    "staff.device.lost": {
+      "version": 1,
+      "hash": "6bbcd7241c7a882a70635be8cd8364d20c61bc0ba8c339d66f43141e21fbe81c"
+    },
+    "staff.fairness.priority": {
+      "version": 3,
+      "hash": "8450a5221b00e6c7a446e218fc164b55a9226dc55975b04ac66ec3feab30bf30"
+    },
+    "staff.queue.open": {
+      "version": 1,
+      "hash": "1fd06865d47d310b2c5c13b51980a9bddfddf3a107ec8ecaf2b9fa666902f167"
+    },
+    "staff.recovery.assist": {
+      "version": 2,
+      "hash": "82e68e590e5ddb8f528ac336d996548ee885613be48d32e22709eff807069ee2"
+    },
+    "staff.roles.workflows": {
+      "version": 1,
+      "hash": "048651cac165b3c33d73ee1f9a45a071744a8f7e67465f651c3249787639fc57"
+    },
+    "staff.sms.alerts": {
+      "version": 2,
+      "hash": "8209d059a3946bd6809404af9338d1aff95259461ff25ff8a988436124d6045e"
+    },
+    "staff.walkin": {
+      "version": 1,
+      "hash": "d7cb1eca2d8b921bbae34ea9a404f89d60b412a082810e5c49551b9a2c0c9cf8"
+    },
+    "staff.audit.trail": {
+      "version": 1,
+      "hash": "1b38fdecc505150bc899c8ec8d47aeb4a2885fd61a32cebd8e86137dd939a822"
+    },
+    "staff.conflicts.review": {
+      "version": 1,
+      "hash": "fef767b13e1605d243201b3e1c5dac801cc578fb5274de0f4386ad1ddc9dbbf7"
+    },
+    "staff.coordinator.manage": {
+      "version": 1,
+      "hash": "08d6371c4833376ec3d40498d59fc1921e7db63b629afde05a34e0d9a97ec261"
+    },
+    "staff.recovery.activity": {
+      "version": 1,
+      "hash": "3e4bb73747b86434f0e57342344b75e551aa4dbbe611abafe6ae1b58802601d5"
+    },
+    "staff.recovery.approve": {
+      "version": 1,
+      "hash": "0aeee9f0e49985ef06152ef66340e73dacda8a831f04bda9e46674a98d93744d"
+    },
+    "org.signin": {
+      "version": 1,
+      "hash": "f341b5e65647c410202d8af05e7b36fa0df7e6b33eb23f313a8b9fa3db5dadce"
+    },
+    "org.signup": {
+      "version": 3,
+      "hash": "cbd9f491294f3bbf35ee2849655c80582154d5ca7a2e30376ef62feac8436937"
+    },
+    "staff.invite.accept": {
+      "version": 1,
+      "hash": "6859409085f4f3f57d06d6c4094cb33e7d01e84f59f0d6523a48ebe301c9f5d2"
+    },
+    "visitor.accessibility": {
+      "version": 3,
+      "hash": "fcd369e5c1e3c17c40fae4f0f0eb1f88a427ec0d58269da991d9e3b9979ddac6"
+    },
+    "visitor.alerts": {
+      "version": 1,
+      "hash": "1f739f009d53525027f8e105350811a4fcd0e6f2e18f04fbbea3ed193f01aff9"
+    },
+    "visitor.alerts.push": {
+      "version": 1,
+      "hash": "7ab75264521fb3356ce996f6b3a64755ca38aa60f3d29bcb95455d4afb0e0a4e"
+    },
+    "visitor.alerts.sms": {
+      "version": 3,
+      "hash": "3d356f0bd22cbdca1d824c5988cf0ab9850eb985705176204bb9634b2c09a32e"
+    },
+    "visitor.auto_miss": {
+      "version": 1,
+      "hash": "6547d05aecf6f20b082732a32a3330921c6ad7a52c11014db910915682cb5753"
+    },
+    "visitor.display.board": {
+      "version": 1,
+      "hash": "f62319eed3b086682518018119bcb7341c02c2c93b06f856d75897b6fc5c9196"
+    },
+    "visitor.join.status": {
+      "version": 1,
+      "hash": "1dbee375b9e3ab942353c5b183b542c7998227b22d85aa0814683090271d74fd"
+    },
+    "visitor.missed.grace": {
+      "version": 1,
+      "hash": "811f48460b8b02151d0613f85f9e37c1ab562dcbd5eab5b76da5cdb34416f4a8"
+    },
+    "visitor.offline": {
+      "version": 1,
+      "hash": "c77a75c93f576720abc03cf3a36ef6542629a7b9b465c023659b07538885b1f4"
+    },
+    "visitor.recovery.how": {
+      "version": 2,
+      "hash": "d940c23f809655d3bee6e0bdbef5cf30868cfd951b0f046d2006fa606abfcc86"
+    },
+    "visitor.recovery.key": {
+      "version": 1,
+      "hash": "2a0cb6337f8d31e52e5684889b533a2e6a0c3fe33a7a990c99274f810091293c"
+    },
+    "visitor.recovery.staff": {
+      "version": 2,
+      "hash": "e529f27e626aa63bc171ee0cd1bd3daee6c460668633c417e298616230f60818"
+    },
+    "visitor.ticket.states": {
+      "version": 2,
+      "hash": "486eded6cdba8a5e0c732257c43200245953a7f8305a2a1710166ab47fc9ca7a"
+    },
+    "visitor.ussd": {
+      "version": 2,
+      "hash": "dace5cd2a12019e17799d53e539616f31931a7798317ff221644365b651d0f1c"
+    },
+    "visitor.wait.estimate": {
+      "version": 1,
+      "hash": "fe20b2740d17a2c625373bd16f526d302f67ef52fc2f4149d87eb373594fe084"
+    }
+  }
+}

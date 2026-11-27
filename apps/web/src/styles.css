@@ -1,0 +1,1724 @@
+/* QueueBridge — M7.1 design system (docs/design/QUEUEBRIDGE-DESIGN-SYSTEM.md, ADR-014).
+   Mobile-first, high-contrast and reduced-motion aware. Every colour, size and timing comes from
+   the generated tokens (tokens.css, from packages/ui/src/tokens.ts); this file only composes
+   them. Status is always words plus a symbol, never colour alone. */
+
+/* Compatibility names read by older components and tests: aliases of the semantic tokens */
+:root {
+  --muted: var(--qb-color-text-muted);
+  --border: var(--qb-color-border-strong);
+  --control-h: var(--qb-size-control);
+  --radius: var(--qb-radius-md);
+  --space-1: var(--qb-space-1);
+  --space-2: var(--qb-space-2);
+  --space-3: var(--qb-space-3);
+  --space-4: var(--qb-space-4);
+  --space-5: var(--qb-space-5);
+  --space-6: var(--qb-space-6);
+  font-family: var(--qb-font-family-sans);
+  font-size: 100%; /* respects user text-size preferences */
+  line-height: var(--qb-font-line-height);
+  color: var(--qb-color-text);
+  background: var(--qb-color-bg);
+  -webkit-text-size-adjust: 100%;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--qb-color-bg);
+  color: var(--qb-color-text);
+  min-width: 0;
+  font-size: var(--qb-font-body);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  color: var(--qb-color-text);
+  letter-spacing: -0.01em;
+}
+h1 {
+  font-size: var(--qb-font-page-title);
+  line-height: var(--qb-font-line-height-tight);
+  font-weight: 700;
+  margin: 0 0 var(--qb-space-3);
+}
+h2 {
+  font-size: var(--qb-font-section);
+  line-height: 1.3;
+  font-weight: 650;
+  margin: var(--qb-space-5) 0 var(--qb-space-2);
+}
+h3 {
+  font-size: var(--qb-font-card);
+  line-height: 1.35;
+  font-weight: 650;
+  margin: 0 0 var(--qb-space-1);
+}
+@media (min-width: 64rem) {
+  h1 {
+    font-size: var(--qb-font-page-title-desktop);
+  }
+  h2 {
+    font-size: var(--qb-font-section-desktop);
+  }
+}
+
+a {
+  color: var(--qb-color-link);
+  text-underline-offset: 0.15em;
+}
+
+:focus-visible {
+  outline: 3px solid var(--qb-color-focus);
+  outline-offset: 2px;
+}
+main:focus {
+  outline: none;
+}
+
+.container {
+  width: 100%;
+  max-width: var(--qb-size-container); /* wide enough to use desktop screens */
+  margin: 0 auto;
+  padding: 0 var(--qb-space-4);
+}
+@media (min-width: 64rem) {
+  .container {
+    padding: 0 var(--qb-space-5);
+  }
+}
+.main {
+  padding-block: var(--qb-space-5) var(--qb-space-7);
+}
+:root {
+  --qb-launcher-inset: max(var(--qb-space-4), env(safe-area-inset-right));
+  --qb-launcher-bottom: max(var(--qb-space-4), env(safe-area-inset-bottom));
+}
+
+/* Keep the page scrollport above the launcher, even halfway through a long page. */
+@media screen {
+  .app-shell:not([data-page-flow]) {
+    height: calc(100dvh - var(--qb-launcher-bottom) - 3rem - var(--qb-space-2));
+    overflow: auto;
+  }
+}
+
+.skip-link {
+  position: absolute;
+  left: 0.5rem;
+  top: -4rem;
+  background: var(--qb-color-surface);
+  color: var(--qb-color-text);
+  padding: 0.5rem 1rem;
+  border: 2px solid var(--qb-color-text);
+  border-radius: var(--qb-radius-sm);
+  z-index: 100;
+}
+.skip-link:focus {
+  top: 0.5rem;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Interaction feedback: short, token-timed, colour/shadow only (never layout); zero under reduced
+   motion. Banners, alerts and the page itself declare no motion. */
+.btn,
+.nav-list a,
+input,
+select,
+textarea,
+.que-article-link,
+.sidebar-toggle {
+  transition-property: background-color, border-color, color, box-shadow;
+  transition-duration: var(--qb-duration-fast);
+  transition-timing-function: var(--qb-easing);
+}
+
+/* Switch high-contrast palettes atomically to avoid unreadable intermediate colours. */
+html[data-contrast='high'] {
+  --qb-duration-fast: 0ms;
+}
+
+/* ---- Application shell: top bar, and a collapsible navy sidebar for signed-in staff ---------- */
+.site-header {
+  border-bottom: 1px solid var(--qb-color-divider);
+  background: var(--qb-color-surface);
+}
+.header-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--qb-space-2) var(--qb-space-4);
+  padding-block: var(--qb-space-2);
+  min-height: 4rem;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--qb-space-2);
+  min-height: var(--qb-size-control);
+  font-weight: 750;
+  font-size: 1.2rem;
+  letter-spacing: -0.01em;
+  color: var(--qb-color-text);
+  text-decoration: none;
+}
+/* The supplied mark has a light ground: it always sits on a white tile, so it keeps its contrast
+   on navy, dark and high-contrast surfaces without a second logo drawing. */
+.brand-mark {
+  display: block;
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  padding: 0.125rem;
+  border-radius: var(--qb-radius-sm);
+  background: #fff;
+  box-shadow: 0 0 0 1px var(--qb-color-border);
+}
+.brand-name {
+  white-space: nowrap;
+}
+.nav-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--qb-space-1) var(--qb-space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.nav-list a {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--qb-space-2);
+  padding: var(--qb-space-2) var(--qb-space-3);
+  min-height: var(--qb-size-control);
+  border-radius: var(--qb-radius-md);
+  color: var(--qb-color-text);
+  font-weight: 550;
+  text-decoration: none;
+}
+.nav-list a:hover {
+  background: var(--qb-color-surface-muted);
+}
+/* Never animate the link colour: when the shell switches to the navy sidebar (after sign-in is
+   known) a colour transition would pass through low-contrast values (found by axe, M7.2) */
+.nav-list a {
+  transition-property: background-color, box-shadow;
+}
+.nav-list a[aria-current='page'] {
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 3px;
+  text-underline-offset: 0.35em;
+  color: var(--qb-color-link);
+}
+
+.nav-icon {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+}
+.btn.menu-toggle,
+.sidebar-toggle {
+  display: none;
+}
+.who {
+  color: var(--qb-color-text-muted);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.site-nav {
+  margin-left: auto;
+}
+.account {
+  display: flex;
+  align-items: center;
+  gap: var(--qb-space-2) var(--qb-space-3);
+  min-width: 0;
+}
+/* Narrow (< 40rem): brand, then navigation, then the account row: nothing wraps unpredictably */
+@media (max-width: 40rem) {
+  .btn.menu-toggle {
+    display: flex;
+  }
+  .header-row :is(nav, #header-tools, .account) {
+    width: 100%;
+  }
+  [data-menu-open='false'] :is(nav, .header-tools, .account) {
+    display: none;
+  }
+
+  .header-row {
+    gap: var(--qb-space-1);
+  }
+  .site-nav {
+    margin-left: 0;
+  }
+  .site-nav .nav-list {
+    gap: 0 var(--qb-space-2);
+  }
+  /* Phones: text-only links so both fit on one row at 320 px */
+  .site-nav .nav-icon {
+    display: none;
+  }
+
+  .site-nav .nav-list a {
+    padding-inline: var(--qb-space-2);
+  }
+  .account {
+    justify-content: space-between;
+    border-top: 1px solid var(--qb-color-divider);
+    padding-top: var(--qb-space-2);
+  }
+}
+
+/* Desktop (64rem+): staff navigation becomes a navy sidebar, collapsible to an icon rail. The
+   brand, the toggle and the navigation are positioned into it; everything else shifts right. */
+@media (min-width: 64rem) {
+  .app-shell.has-sidebar {
+    --qb-sidebar-current: var(--qb-size-sidebar);
+    padding-left: var(--qb-sidebar-current);
+  }
+  .app-shell.has-sidebar.is-collapsed {
+    --qb-sidebar-current: var(--qb-size-sidebar-collapsed);
+  }
+  .app-shell.has-sidebar::before {
+    content: '';
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: var(--qb-sidebar-current);
+    background: var(--qb-color-brand-navy);
+    border-right: 1px solid var(--qb-color-border);
+    z-index: 30;
+  }
+  .has-sidebar .brand {
+    position: fixed;
+    background: var(--qb-color-brand-navy);
+    top: 0;
+    left: 0;
+    z-index: 31;
+    width: var(--qb-sidebar-current);
+    height: 4.25rem;
+    padding: 0 var(--qb-space-4);
+    color: var(--qb-color-on-brand-navy);
+  }
+  .has-sidebar .site-nav {
+    position: fixed;
+    background: var(--qb-color-brand-navy);
+    top: 4.25rem;
+    bottom: 4.5rem;
+    left: 0;
+    z-index: 31;
+    width: var(--qb-sidebar-current);
+    margin: 0;
+    padding: var(--qb-space-3);
+    overflow-y: auto;
+  }
+  .has-sidebar .site-nav .nav-list {
+    flex-direction: column;
+    align-items: stretch;
+    flex-wrap: nowrap;
+    gap: var(--qb-space-1);
+  }
+  .has-sidebar .site-nav .nav-list a {
+    display: flex;
+    width: 100%;
+    color: var(--qb-color-on-brand-navy);
+  }
+  .has-sidebar .site-nav .nav-list a:hover {
+    background: rgb(255 255 255 / 0.1);
+  }
+  .has-sidebar .site-nav .nav-list a[aria-current='page'] {
+    color: var(--qb-color-on-brand-navy);
+    background: rgb(255 255 255 / 0.14);
+    box-shadow: inset 4px 0 0 var(--qb-color-accent);
+    text-decoration: underline;
+  }
+  .has-sidebar .sidebar-toggle {
+    position: fixed;
+    left: var(--qb-space-3);
+    bottom: var(--qb-space-4);
+    z-index: 31;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--qb-space-2);
+    width: calc(var(--qb-sidebar-current) - 1.5rem);
+    min-height: var(--qb-size-control);
+    padding: var(--qb-space-2);
+    border: 1px solid var(--qb-color-on-brand-navy-muted);
+    border-radius: var(--qb-radius-md);
+    background: var(--qb-color-brand-navy);
+    color: var(--qb-color-on-brand-navy);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .has-sidebar .sidebar-toggle:hover {
+    background: rgb(255 255 255 / 0.1);
+  }
+  .has-sidebar :is(.brand, .site-nav a, .sidebar-toggle):focus-visible {
+    outline-color: var(--qb-color-on-brand-navy);
+    outline-offset: -3px;
+  }
+  .has-sidebar .header-row {
+    justify-content: flex-end;
+  }
+  .is-collapsed .brand {
+    justify-content: center;
+    padding: 0;
+  }
+  .is-collapsed .site-nav .nav-list a {
+    justify-content: center;
+  }
+  .is-collapsed .brand-name,
+  .is-collapsed .nav-label,
+  .is-collapsed .sidebar-toggle-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+}
+
+.subnav {
+  border-bottom: 1px solid var(--qb-color-divider);
+  margin-bottom: var(--qb-space-5);
+}
+
+.lead {
+  font-size: 1.15rem;
+  max-width: var(--qb-size-readable);
+  color: var(--qb-color-text-muted);
+}
+.muted {
+  color: var(--qb-color-text-muted);
+}
+.mono {
+  font-family: var(--qb-font-family-mono);
+  font-size: 0.95em;
+}
+.wrap {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.tabular,
+.stat dd,
+.data-table td,
+.ticket-code,
+.ticket-row-code,
+.board-code,
+.code-chips li {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Buttons ------------------------------------------------------------------------------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--qb-space-2);
+  min-height: var(--qb-size-control); /* >= 44px touch target */
+  padding: 0.55rem 1.1rem;
+  border-radius: var(--qb-radius-md);
+  border: 2px solid var(--qb-color-primary);
+  font: inherit;
+  font-weight: 600;
+  line-height: 1.25;
+  text-decoration: none;
+  cursor: pointer;
+  text-align: center;
+}
+.btn-primary {
+  background: var(--qb-color-primary);
+  border-color: var(--qb-color-primary);
+  color: var(--qb-color-on-primary);
+  box-shadow: var(--qb-shadow-sm);
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--qb-color-primary-hover);
+  border-color: var(--qb-color-primary-hover);
+}
+.btn-secondary {
+  background: var(--qb-color-surface);
+  color: var(--qb-color-link);
+  border-color: var(--qb-color-border-strong);
+}
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--qb-color-primary);
+  background: var(--qb-color-surface-muted);
+}
+.btn-tertiary {
+  background: transparent;
+  border-color: transparent;
+  color: var(--qb-color-link);
+  text-decoration: underline;
+}
+.btn-danger {
+  background: var(--qb-color-danger);
+  border-color: var(--qb-color-danger);
+  color: var(--qb-color-on-danger);
+}
+.btn:disabled,
+.btn[aria-disabled='true'] {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--qb-space-3);
+}
+.btn-large {
+  font-size: 1.15rem;
+  min-height: var(--qb-size-control-large);
+  width: 100%;
+}
+@media (min-width: 40rem) {
+  .btn-large {
+    width: auto;
+    min-width: 14rem;
+  }
+}
+
+/* Toolbar: one aligned line of status items and small controls (wraps on mobile) */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--qb-space-2) var(--qb-space-4);
+  margin: 0 0 var(--qb-space-4);
+}
+.toolbar > * {
+  margin: 0;
+}
+.toolbar-spread {
+  justify-content: space-between;
+}
+/* Page header block: title + meta lines with consistent rhythm */
+.page-head {
+  margin-bottom: var(--qb-space-5);
+}
+.page-head > * {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.page-head > * + * {
+  margin-top: var(--qb-space-2);
+}
+
+/* ---- Cards and lists ----------------------------------------------------------------------- */
+.card {
+  border: 1px solid var(--qb-color-border);
+  border-radius: var(--qb-radius-lg);
+  padding: var(--qb-space-4);
+  background: var(--qb-color-surface);
+  box-shadow: var(--qb-shadow-sm);
+  overflow-wrap: anywhere;
+}
+@media (min-width: 40rem) {
+  .card {
+    padding: var(--qb-space-5);
+  }
+}
+.card-title {
+  font-size: var(--qb-font-card);
+  margin: 0 0 var(--qb-space-1);
+}
+.card-list {
+  list-style: none;
+  padding: 0;
+  margin: var(--qb-space-2) 0;
+  display: grid;
+  gap: var(--qb-space-3);
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 40rem) {
+  .card-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.plain-list {
+  list-style: none;
+  padding: 0;
+  margin: var(--qb-space-2) 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+/* Flow spacing: inside cards and alerts, children have no outer margins and are separated by
+   one consistent gap, so headings, paragraphs, lists and forms line up on every screen. */
+.card > *,
+.alert > *,
+.stack > * {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.card > * + *,
+.alert > * + * {
+  margin-top: var(--qb-space-3);
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--qb-space-4);
+}
+.stack-sm {
+  gap: var(--qb-space-2);
+}
+
+/* Two-column workspace on desktop: content on the left, forms/side panels on the right.
+   Single column (mobile-first) below 64rem. Panels in a column are always clearly separated. */
+.split-main > *,
+.split-side > * {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.split-main > * + *,
+.split-side > * + * {
+  margin-top: var(--qb-space-5);
+}
+.split {
+  display: grid;
+  gap: var(--qb-space-5);
+  grid-template-columns: minmax(0, 1fr);
+}
+.split-main:only-child {
+  grid-column: 1 / -1;
+}
+@media (min-width: 64rem) {
+  .split {
+    grid-template-columns: minmax(0, 2fr) minmax(20rem, 1fr);
+    align-items: start;
+  }
+  .split-side {
+    position: sticky;
+    top: var(--qb-space-4);
+  }
+  .split .card-list {
+    grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  }
+  .split-side .card-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (min-width: 40rem) {
+  .split-side .card-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.split > * > h2:first-child {
+  margin-top: 0;
+}
+
+/* ---- Forms --------------------------------------------------------------------------------- */
+.form {
+  display: grid;
+  gap: var(--qb-space-4);
+  max-width: 34rem;
+}
+.field label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: var(--qb-space-1);
+}
+.hint {
+  margin: 0 0 var(--qb-space-1);
+  color: var(--qb-color-text-muted);
+  font-size: var(--qb-font-meta);
+}
+input,
+select,
+textarea {
+  width: 100%;
+  min-height: var(--qb-size-control);
+  padding: 0.55rem 0.75rem;
+  font: inherit;
+  color: var(--qb-color-text);
+  background: var(--qb-color-surface);
+  border: 1.5px solid var(--qb-color-border-strong);
+  border-radius: var(--qb-radius-md);
+}
+input:hover:not(:disabled),
+select:hover:not(:disabled),
+textarea:hover:not(:disabled) {
+  border-color: var(--qb-color-text);
+}
+/* Selects: keep the native element (semantics, keyboard, OS picker) but draw a consistent
+   chevron with a reserved gutter so long option text never runs under the arrow. */
+select {
+  appearance: none;
+  padding-right: 2.75rem;
+  background-image: var(--qb-select-arrow);
+  background-repeat: no-repeat;
+  background-position: right var(--qb-space-3) center;
+  background-size: 1rem;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+select:disabled,
+input:disabled,
+textarea:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+/* Forced colors (Windows High Contrast) drop background images: restore the native arrow. */
+@media (forced-colors: active) {
+  select {
+    appearance: auto;
+    background-image: none;
+    padding-right: 0.65rem;
+  }
+}
+input[type='checkbox'],
+input[type='radio'] {
+  width: 1.5rem; /* 24 CSS px: WCAG 2.5.8 minimum target */
+  min-width: 1.5rem; /* never shrinks inside a narrow flex row */
+  flex: none;
+  min-height: 1.5rem;
+  vertical-align: middle;
+  accent-color: var(--qb-color-primary);
+}
+input[aria-invalid='true'],
+select[aria-invalid='true'],
+textarea[aria-invalid='true'] {
+  border-color: var(--qb-color-danger);
+  border-width: 2px;
+}
+fieldset {
+  border: 1px solid var(--qb-color-border);
+  border-radius: var(--qb-radius-lg);
+  padding: var(--qb-space-2) var(--qb-space-3);
+  margin: 0;
+  min-width: 0;
+}
+legend {
+  font-weight: 650;
+  padding: 0 var(--qb-space-1);
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: var(--qb-space-2);
+  min-height: var(--qb-size-control);
+}
+.check.inline {
+  display: inline-flex;
+  min-height: var(--qb-size-control);
+}
+.field-error {
+  color: var(--qb-color-danger);
+  font-weight: 600;
+  margin: var(--qb-space-1) 0 0;
+}
+.field-error::before {
+  content: '⚠ ';
+}
+.inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--qb-space-2);
+}
+.inline-form select {
+  width: auto;
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+/* Responsive form grid: each .field is a label stacked over its control; fields flow into
+   columns when there is room and stack on narrow screens. Actions align with the controls. */
+.form-grid {
+  display: grid;
+  gap: var(--qb-space-3) var(--qb-space-4);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  align-items: end;
+  margin: 0;
+  padding: var(--qb-space-3) var(--qb-space-4) var(--qb-space-4);
+}
+.form-grid > legend {
+  padding: 0 var(--qb-space-1);
+}
+.form-grid .field label {
+  margin-bottom: var(--qb-space-1);
+}
+.form-grid > .field {
+  min-width: 0;
+}
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--qb-space-2);
+  align-items: flex-end;
+}
+/* Long option text (device labels) must never widen the page on narrow screens */
+.card select,
+.form-grid select {
+  max-width: 100%;
+  min-width: 0;
+  width: 100%;
+}
+
+/* ---- Alerts: a left rule + tinted ground + the words carry the meaning ---------------------- */
+.alert {
+  border: 1px solid var(--qb-color-border);
+  border-left-width: 5px;
+  border-radius: var(--qb-radius-lg);
+  padding: var(--qb-space-3) var(--qb-space-4);
+  margin: var(--qb-space-3) 0;
+  background: var(--qb-color-surface);
+}
+.alert-title {
+  margin: 0 0 var(--qb-space-1);
+  font-size: 1.05rem;
+}
+.alert-error {
+  border-color: var(--qb-color-danger);
+  background: var(--qb-color-danger-bg);
+}
+.alert-success {
+  border-color: var(--qb-color-success);
+  background: var(--qb-color-success-bg);
+}
+.alert-info {
+  border-color: var(--qb-color-info);
+  background: var(--qb-color-info-bg);
+}
+.alert-warn {
+  border-color: var(--qb-color-warning);
+  background: var(--qb-color-warning-bg);
+}
+
+/* ---- Badges, chips and status pills -------------------------------------------------------- */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.1rem 0.6rem;
+  border-radius: var(--qb-radius-pill);
+  border: 1px solid currentColor;
+  background: var(--qb-color-surface);
+  font-size: var(--qb-font-meta);
+  font-weight: 600;
+  line-height: 1.5;
+}
+.badge-ok {
+  color: var(--qb-color-success);
+  background: var(--qb-color-success-bg);
+}
+.badge-off {
+  color: var(--qb-color-text-muted);
+  background: var(--qb-color-surface-muted);
+}
+/* Priority class (M4): text + symbol carry the meaning; colour only reinforces it */
+.badge-priority {
+  color: var(--qb-color-warning);
+  background: var(--qb-color-warning-bg);
+}
+.chips {
+  list-style: none;
+  padding: 0;
+  margin: var(--qb-space-2) 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--qb-space-2);
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: 1px solid var(--qb-color-border-strong);
+  border-radius: var(--qb-radius-pill);
+  background: var(--qb-color-surface-muted);
+  padding: 0.1rem 0.25rem 0.1rem 0.75rem;
+}
+.chip-remove {
+  min-width: var(--qb-size-control);
+  min-height: var(--qb-size-control);
+  border: 0;
+  border-radius: var(--qb-radius-pill);
+  background: transparent;
+  color: var(--qb-color-danger);
+  font-size: 1.25rem;
+  cursor: pointer;
+}
+
+.qr {
+  width: 100%;
+  max-width: 16rem;
+  height: auto;
+  border: 1px solid var(--qb-color-border);
+  border-radius: var(--qb-radius-md);
+  background: #fff; /* scanners need dark-on-white in every theme */
+  display: block;
+  margin: var(--qb-space-2) 0 var(--qb-space-4);
+}
+
+/* ---- Toast (fixed, never covers focus: see scroll-padding) --------------------------------- */
+.toast {
+  position: fixed;
+  left: 0.5rem;
+  right: 0.5rem;
+  bottom: 0.5rem;
+  margin: 0 auto;
+  max-width: 30rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--qb-space-2);
+  padding: 0.25rem 0.25rem 0.25rem 1rem;
+  background: var(--qb-color-text);
+  color: var(--qb-color-bg);
+  border-radius: var(--qb-radius-lg);
+  box-shadow: var(--qb-shadow-lg);
+  font-weight: 600;
+  z-index: 50;
+}
+.toast-dismiss {
+  flex: none;
+  min-width: var(--qb-size-control);
+  min-height: var(--qb-size-control);
+  border: 0;
+  border-radius: var(--qb-radius-md);
+  background: transparent;
+  color: inherit;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.toast-dismiss:focus-visible {
+  outline-color: var(--qb-color-bg);
+}
+/* Phones: the full-width toast sits above the floating Ask Que launcher, never under it */
+@media (max-width: 40rem) {
+  .toast {
+    bottom: calc(var(--qb-launcher-bottom) + 3.75rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media print {
+  .site-header,
+  .subnav,
+  .no-print,
+  .toast,
+  .skip-link,
+  h1 + p,
+  section:not(.printable) {
+    display: none !important;
+  }
+  .app-shell.has-sidebar {
+    padding-left: 0 !important;
+  }
+  .app-shell.has-sidebar::before {
+    display: none !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Visitor ticket, display board, staff console
+   --------------------------------------------------------------------------- */
+
+.ticket-code {
+  display: inline-block;
+  font-family: var(--qb-font-family-mono);
+  font-size: 2.5rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1.1;
+  color: var(--qb-color-text);
+}
+.ticket-code-xl {
+  font-size: var(--qb-font-ticket);
+}
+
+/* Key figures (queue state, waiting count, live mode) shown as labelled stats */
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+  max-width: 40rem;
+  gap: var(--qb-space-3);
+  margin: 0 0 var(--qb-space-5);
+  padding: 0;
+}
+.stat {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--qb-space-1);
+  min-width: 0;
+  padding: var(--qb-space-3);
+  border: 1px solid var(--qb-color-border);
+  border-radius: var(--qb-radius-lg);
+  background: var(--qb-color-surface);
+  box-shadow: var(--qb-shadow-sm);
+  margin: 0;
+}
+.stat dt {
+  font-size: var(--qb-font-meta);
+  color: var(--qb-color-text-muted);
+}
+.stat dd {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+.stat dd.stat-value-lg {
+  font-size: 1.75rem;
+  line-height: 1.1;
+}
+
+/* Visitor status card */
+.status-card {
+  border-width: 2px;
+  border-color: var(--qb-color-border-strong);
+}
+.status-called {
+  border-color: var(--qb-color-called-border);
+  background: var(--qb-color-called-bg);
+}
+.status-message {
+  font-size: 1.2rem;
+  font-weight: 650;
+}
+.meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--qb-space-2) var(--qb-space-3);
+  color: var(--qb-color-text-muted);
+}
+
+/* Staff console: the ticket at this counter is the focal point */
+.current-ticket {
+  border: 1px solid var(--qb-color-border);
+  border-left: 0.5rem solid var(--qb-color-primary);
+  border-radius: var(--qb-radius-lg);
+  padding: var(--qb-space-4);
+  background: var(--qb-color-info-bg);
+  box-shadow: var(--qb-shadow-md);
+}
+.current-ticket > * {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.current-ticket > * + * {
+  margin-top: var(--qb-space-3);
+}
+.current-ticket .ticket-code {
+  font-size: var(--qb-font-ticket-console);
+}
+.current-ticket-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--qb-space-2) var(--qb-space-4);
+}
+.current-ticket-head > * {
+  margin: 0;
+}
+.current-ticket .form-grid {
+  margin-top: var(--qb-space-4);
+  background: var(--qb-color-surface);
+}
+/* Very narrow screens: less nested padding so controls keep usable width */
+@media (max-width: 24rem) {
+  .current-ticket,
+  .form-grid {
+    padding-inline: var(--qb-space-3);
+  }
+}
+
+/* Ticket lists: code | details | action, action kept to the right when it fits */
+.ticket-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--qb-space-2);
+}
+.ticket-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, max-content);
+  align-items: center;
+  gap: var(--qb-space-2) var(--qb-space-3);
+  border: 1px solid var(--qb-color-border);
+  border-radius: var(--qb-radius-lg);
+  background: var(--qb-color-surface);
+  padding: var(--qb-space-2) var(--qb-space-3);
+}
+.ticket-row.is-provisional {
+  border-style: dashed;
+  border-color: var(--qb-color-warning);
+}
+/* Supervisor actions for one ticket span the whole row (M4) */
+.ticket-row-panel {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.ticket-row-code {
+  font-family: var(--qb-font-family-mono);
+  font-weight: 750;
+  font-size: 1.15rem;
+  min-width: 4.5rem;
+}
+.ticket-row-meta {
+  min-width: 0;
+}
+.ticket-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--qb-space-2);
+  min-width: 0;
+}
+/* Large text on a phone: long action labels wrap inside the row instead of widening the page */
+.ticket-row-actions .btn {
+  max-width: 100%;
+  white-space: normal;
+}
+
+/* QR hand-off panel (walk-in status link) */
+.qr-panel {
+  text-align: center;
+}
+/* Centred content: an even border, so the QR sits in the true centre of the panel */
+.alert.qr-panel {
+  border-left-width: 2px;
+  border-width: 2px;
+}
+.qr-panel .qr {
+  max-width: 13rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+.qr-panel .btn-row {
+  justify-content: center;
+}
+.qr-panel details {
+  text-align: left;
+}
+
+/* Public display board: navy, high contrast, identifiers sized for distance */
+.board {
+  margin: calc(-1 * var(--qb-space-2)) 0 0;
+  padding: var(--qb-space-4);
+  border-radius: var(--qb-radius-xl);
+  background: var(--qb-color-brand-navy);
+  color: var(--qb-color-on-brand-navy);
+}
+@media (min-width: 48rem) {
+  .board {
+    padding: var(--qb-space-6);
+  }
+}
+.board h1,
+.board h2,
+.board h3 {
+  color: var(--qb-color-on-brand-navy);
+}
+.board .muted {
+  color: var(--qb-color-on-brand-navy-muted);
+}
+.board .card {
+  background: rgb(255 255 255 / 0.06);
+  border-color: var(--qb-color-on-brand-navy-muted);
+  box-shadow: none;
+  color: var(--qb-color-on-brand-navy);
+}
+.board .badge,
+.board .badge-off {
+  color: var(--qb-color-on-brand-navy);
+  background: transparent;
+}
+.board :focus-visible {
+  outline-color: var(--qb-color-on-brand-navy);
+}
+.board-grid {
+  display: grid;
+  gap: var(--qb-space-4);
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 48rem) {
+  .board-grid {
+    grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  }
+}
+.board-calls {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: var(--qb-space-2);
+}
+.board-call {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--qb-space-1) var(--qb-space-3);
+}
+.board-code {
+  font-family: var(--qb-font-family-mono);
+  font-size: var(--qb-font-board-code);
+  font-weight: 800;
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+}
+.board-counter {
+  font-size: var(--qb-font-board-counter);
+  font-weight: 650;
+}
+.code-chips {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--qb-space-2);
+}
+.code-chips li {
+  font-family: var(--qb-font-family-mono);
+  font-weight: 700;
+  font-size: 1.25rem;
+  padding: var(--qb-space-1) var(--qb-space-3);
+  border: 1px solid var(--qb-color-border-strong);
+  border-radius: var(--qb-radius-md);
+}
+.board .code-chips li {
+  border-color: var(--qb-color-on-brand-navy-muted);
+}
+.code-chips li.muted {
+  border: 0;
+  padding-left: 0;
+  font-family: inherit;
+  font-weight: 400;
+  font-size: 1rem;
+}
+
+/* ---- Continuity: sync states, connectivity bar --------------------------------------------- */
+.qb-sync-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.1rem 0.55rem;
+  border: 2px solid currentColor;
+  border-radius: var(--qb-radius-pill);
+  background: var(--qb-color-surface);
+  font-size: var(--qb-font-meta);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.qb-sync-local {
+  color: var(--qb-color-warning);
+  border-style: dashed;
+}
+.qb-sync-pending {
+  color: var(--qb-color-info);
+}
+.qb-sync-committed,
+.qb-sync-duplicate {
+  color: var(--qb-color-success);
+}
+.qb-sync-review {
+  color: var(--qb-color-warning);
+  background: var(--qb-color-warning-bg);
+}
+.qb-sync-rejected {
+  color: var(--qb-color-danger);
+}
+.connectivity-bar {
+  border-bottom: 1px solid var(--qb-color-divider);
+  background: var(--qb-color-surface-muted);
+}
+.connectivity-bar .container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--qb-space-2) var(--qb-space-4);
+  align-items: center;
+  padding-block: var(--qb-space-2);
+}
+.connectivity-bar.is-offline {
+  background: var(--qb-color-warning-bg);
+  border-bottom: 2px solid var(--qb-color-warning);
+}
+.op-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--qb-space-2);
+}
+.op-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--qb-space-2) var(--qb-space-3);
+  align-items: center;
+  padding: var(--qb-space-2) var(--qb-space-3);
+  border: 1px solid var(--qb-color-border);
+  border-radius: var(--qb-radius-lg);
+  background: var(--qb-color-surface);
+}
+
+/* ---- Tables: compact rows; the scroller is a labelled, focusable region -------------------- */
+.table-scroll {
+  /* positioned, so visually-hidden (absolutely positioned) text cannot escape the scroller */
+  position: relative;
+  overflow-x: auto;
+  max-width: 100%;
+  border: 1px solid var(--qb-color-border);
+  border-radius: var(--qb-radius-lg);
+  background: var(--qb-color-surface);
+}
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+}
+.data-table th,
+.data-table td {
+  text-align: left;
+  padding: var(--qb-space-2) var(--qb-space-3);
+  border-bottom: 1px solid var(--qb-color-divider);
+  vertical-align: top;
+}
+.data-table thead th {
+  background: var(--qb-color-surface-muted);
+  font-size: var(--qb-font-meta);
+  font-weight: 650;
+  color: var(--qb-color-text);
+}
+.data-table tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
+/* M5.1 recovery key: large, wrapping, selectable; never truncated at 320 px or 200 % zoom */
+.recovery-key-text {
+  font-size: 1.25rem;
+  line-height: 1.6;
+  letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  user-select: all;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Printing the recovery key (manual check 3). The general print rule above hides every
+ * `section:not(.printable)`, which hid this panel and with it the key. While the panel is on
+ * screen, printing (the Print button or the browser's own command) produces only the key sheet:
+ * ticket code, facility, the grouped key and the privacy note. Everything else on the page, and
+ * the panel's buttons, hints and QR, is left out. Pure CSS: nothing is copied, stored or sent.
+ */
+.print-only {
+  display: none;
+}
+@media print {
+  body:has(.recovery-key-panel)
+    *:not(:has(.recovery-key-panel)):not(.recovery-key-panel):not(.recovery-key-panel *) {
+    display: none !important;
+  }
+  html body section.recovery-key-panel {
+    display: block !important;
+    border: 0;
+    box-shadow: none;
+    padding: 0;
+  }
+  .recovery-key-panel .btn-row,
+  .recovery-key-panel .hint,
+  .recovery-key-panel .qr-panel,
+  .recovery-key-panel .screen-only {
+    display: none !important;
+  }
+  .recovery-key-panel .print-only {
+    display: block !important;
+  }
+}
+
+/* ===== M5.2 device-local display preferences (data-* set on <html> before first render) =====
+   Text size and the contrast palettes live in tokens.css; these are the structural additions. */
+
+/* Focus is never hidden under the fixed notification at the bottom of the screen (WCAG 2.4.11) */
+html,
+.app-shell {
+  scroll-padding-block: 1rem 8rem; /* clear of the toast */
+}
+h1:focus {
+  outline: none; /* the focused heading is a landmark for the new page, not a control */
+}
+html[data-contrast='high'] .card,
+html[data-contrast='high'] .alert,
+html[data-contrast='high'] .toast,
+html[data-contrast='high'] .stat,
+html[data-contrast='high'] .ticket-row,
+html[data-contrast='high'] .table-scroll {
+  border-width: 2px;
+  border-style: solid;
+  border-color: var(--qb-color-border);
+  box-shadow: none;
+}
+html[data-contrast='high'] .alert {
+  border-left-width: 6px;
+}
+html[data-contrast='high'] .alert.qr-panel {
+  border-left-width: 2px;
+}
+html[data-contrast='high'] a {
+  text-decoration-thickness: 2px;
+}
+html[data-contrast='high'] :focus-visible {
+  outline-width: 4px;
+}
+html[data-contrast='high'] .board .card {
+  background: transparent;
+}
+
+/* Reduced motion chosen in the app: same effect as the operating-system setting */
+html[data-motion='reduce'] *,
+html[data-motion='reduce'] *::before,
+html[data-motion='reduce'] *::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+
+/* Header: the "Display and alerts" control sits with the navigation on every screen */
+.header-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--qb-space-2);
+}
+@media (max-width: 40rem) {
+  .header-tools .btn {
+    width: 100%;
+  }
+}
+
+/* ---- Dialogs: native modal <dialog>; scrolls inside itself so it fits 320 px and large text -- */
+.settings-dialog {
+  width: min(32rem, calc(100vw - 1rem));
+  max-height: calc(100dvh - 1rem);
+  padding: 0;
+  border: 1px solid var(--qb-color-border);
+  border-radius: var(--qb-radius-xl);
+  background: var(--qb-color-surface-raised);
+  color: var(--qb-color-text);
+  box-shadow: var(--qb-shadow-lg);
+  overflow: auto;
+}
+.settings-dialog::backdrop {
+  background: rgb(0 0 0 / 0.6);
+}
+html[data-contrast='high'] .settings-dialog {
+  border-width: 2px;
+}
+.settings-body {
+  padding: var(--qb-space-4);
+  display: grid;
+  gap: var(--qb-space-3);
+}
+.settings-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--qb-space-2);
+}
+.settings-title {
+  margin: 0;
+  font-size: 1.3rem;
+}
+.settings-title:focus {
+  outline: none;
+}
+
+/* M5.3 device health */
+.alert-item.alert-sev-high {
+  border-left: 6px solid var(--qb-color-danger);
+}
+.alert-item.alert-sev-medium {
+  border-left: 6px solid var(--qb-color-warning);
+}
+.alert-item.alert-sev-low {
+  border-left: 3px solid var(--qb-color-border-strong);
+}
+.alert-banner .plain-list {
+  margin: var(--qb-space-1) 0 0;
+}
+.device-filter {
+  max-width: 20rem;
+}
+/* M5.4 turn alert: a persistent banner, distinguished by text, an icon and a thick border (never
+   colour alone) and never by movement: the app declares no animation (M5.2, 11.A6). */
+.turn-banner {
+  border: 4px solid var(--qb-color-called-border);
+  background: var(--qb-color-called-bg);
+  border-radius: var(--qb-radius-lg);
+  padding: var(--qb-space-3) var(--qb-space-4);
+}
+.turn-banner-title {
+  margin: 0 0 var(--qb-space-2);
+  font-size: 1.4rem;
+}
+.turn-banner-main {
+  font-size: 1.2rem;
+  overflow-wrap: anywhere;
+}
+.turn-banner p {
+  margin: 0 0 var(--qb-space-2);
+}
+
+/* Ask Que launcher (M7.2): floats at the bottom right of every screen, clear of the safe areas */
+.que-launcher {
+  position: fixed;
+  right: var(--qb-launcher-inset);
+  bottom: var(--qb-launcher-bottom);
+  z-index: 45;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--qb-space-2);
+  min-height: 3rem;
+  padding: 0 var(--qb-space-3);
+  border: 2px solid var(--qb-color-surface);
+  border-radius: var(--qb-radius-pill);
+  background: var(--qb-color-primary);
+  color: var(--qb-color-on-primary);
+  box-shadow:
+    0 0 0 3px var(--qb-color-accent),
+    var(--qb-shadow-lg);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition-property: background-color, box-shadow;
+  transition-duration: var(--qb-duration-fast);
+}
+.que-launcher:hover {
+  background: var(--qb-color-primary-hover);
+}
+.que-launcher[aria-expanded='true'] {
+  background: var(--qb-color-brand-navy);
+  color: var(--qb-color-on-brand-navy);
+}
+.que-launcher:focus-visible {
+  outline: 3px solid var(--qb-color-focus);
+  outline-offset: 5px;
+}
+.que-launcher-icon {
+  flex: none;
+  width: 1.375rem;
+  height: 1.375rem;
+}
+html[data-contrast='high'] .que-launcher {
+  border-color: var(--qb-color-text);
+  box-shadow: none;
+}
+@media print {
+  .que-launcher {
+    display: none !important;
+  }
+}
+
+/* Ask Que (MQ.3): a non-modal panel beside the page on wide screens, a full-height modal sheet
+   on phones. No animation; scrolls inside itself at 320 px, 200 % zoom and large text. */
+.que-panel {
+  /* M7.2: opens just above the floating launcher (which stays visible and toggles it) and is
+     kept clear of the header, so the page's own controls stay usable beside it */
+  position: fixed;
+  inset: auto var(--qb-launcher-inset) calc(var(--qb-launcher-bottom) + 3.75rem) auto;
+  z-index: 40;
+  width: min(26rem, calc(100vw - 2rem));
+  max-height: min(42rem, calc(100dvh - 11rem));
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--qb-color-border);
+  border-radius: var(--qb-radius-xl);
+  background: var(--qb-color-surface-raised);
+  color: var(--qb-color-text);
+  overflow: auto;
+  box-shadow: var(--qb-shadow-lg);
+}
+.que-panel.que-sheet {
+  inset: 0;
+  width: 100%;
+  max-width: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+  border-radius: 0;
+  border-width: 0;
+}
+.que-panel::backdrop {
+  background: rgb(0 0 0 / 0.6);
+}
+.que-body {
+  padding: var(--qb-space-4);
+  display: grid;
+  gap: var(--qb-space-3);
+}
+.que-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--qb-space-2);
+  padding-bottom: var(--qb-space-2);
+  border-bottom: 1px solid var(--qb-color-divider);
+}
+.que-title {
+  margin: 0;
+}
+.que-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--qb-space-2);
+  margin: 0;
+}
+.que-badge {
+  display: inline-block;
+  padding: 0 var(--qb-space-2);
+  border: 1px solid var(--qb-color-border-strong);
+  border-radius: var(--qb-radius-pill);
+  background: var(--qb-color-surface-muted);
+  font-size: var(--qb-font-meta);
+}
+.que-badge-offline {
+  font-weight: 700;
+}
+.que-note,
+.que-lead,
+.que-footnote {
+  margin: 0;
+}
+.que-footnote {
+  color: var(--qb-color-text-muted);
+  font-size: var(--qb-font-meta);
+}
+.que-search {
+  display: grid;
+  gap: var(--qb-space-1);
+}
+.que-search input {
+  min-height: var(--qb-size-control);
+  width: 100%;
+}
+.que-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--qb-space-2);
+}
+.que-article-link {
+  min-height: var(--qb-size-control);
+  width: 100%;
+  padding: var(--qb-space-2) var(--qb-space-3);
+  border: 1px solid var(--qb-color-border);
+  border-radius: var(--qb-radius-md);
+  background: var(--qb-color-surface);
+  color: var(--qb-color-link);
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.que-article-link:hover {
+  border-color: var(--qb-color-primary);
+  background: var(--qb-color-surface-muted);
+}
+.que-notices {
+  margin: 0;
+  padding-left: var(--qb-space-5);
+}
+.que-article {
+  display: grid;
+  gap: var(--qb-space-2);
+}
+.que-article h3 {
+  margin: 0;
+}
+.que-article-body h4 {
+  margin: var(--qb-space-2) 0 0;
+}
+.que-chunk-error,
+.que-loading-chunk {
+  position: fixed;
+  right: var(--qb-launcher-inset);
+  bottom: calc(var(--qb-launcher-bottom) + 3.75rem);
+  z-index: 40;
+  max-width: calc(100vw - 1rem);
+}
+html[data-contrast='high'] .que-panel,
+html[data-contrast='high'] .que-badge {
+  border-width: 2px;
+  border-color: var(--qb-color-text);
+  box-shadow: none;
+}
+
+/* Ask Que AI explanations (MQ.4): the label is text, never colour alone */
+.que-ai {
+  display: grid;
+  gap: var(--qb-space-2);
+}
+.que-ai-answer {
+  display: grid;
+  gap: var(--qb-space-2);
+  padding: var(--qb-space-3);
+  border: 2px dashed var(--qb-color-border-strong);
+  border-radius: var(--qb-radius-md);
+}
+.que-ai-answer h3,
+.que-ai-answer p {
+  margin: 0;
+}
+.que-badge-ai {
+  font-weight: 700;
+}
+.que-ai-consent {
+  display: grid;
+  gap: var(--qb-space-2);
+  max-width: 40rem;
+}
+
+/* M6.3 channel settings: readiness list and the display-only provider mode */
+.readiness {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--qb-space-2);
+}
+.provider-mode {
+  border: 1px solid var(--qb-color-border);
+  padding: var(--qb-space-2);
+  margin: var(--qb-space-2) 0;
+  max-width: 100%;
+}

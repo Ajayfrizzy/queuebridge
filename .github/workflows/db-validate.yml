@@ -1,0 +1,228 @@
+name: Database Validation
+
+on:
+  push:
+    paths:
+      - 'infra/migrations/**'
+      - 'infra/scripts/**'
+      - '.github/workflows/db-validate.yml'
+  pull_request:
+    paths:
+      - 'infra/migrations/**'
+      - 'infra/scripts/**'
+
+jobs:
+  migrate-and-validate:
+    name: Apply migrations and validate constraints
+    runs-on: ubuntu-latest
+    # MQ.2: bounded like the CI jobs (migrations take well under a minute)
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: queuebridge_validate
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/queuebridge_validate
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '9'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply migrations (first run)
+        run: node infra/scripts/migrate.js
+
+      - name: Apply migrations again (idempotency check)
+        run: node infra/scripts/migrate.js
+
+      - name: Verify queue_events append-only trigger
+        run: |
+          psql "$DATABASE_URL" -c "
+            -- Insert a test org required by FK
+            INSERT INTO organizations (id, name, slug) VALUES (
+              '018d0000-0000-7000-8000-000000000001',
+              'CI Validate Org',
+              'ci-validate-org'
+            );
+
+            -- Insert a test facility
+            INSERT INTO facilities (id, organization_id, name, slug) VALUES (
+              '018d0000-0000-7000-8000-000000000002',
+              '018d0000-0000-7000-8000-000000000001',
+              'CI Facility',
+              'ci-facility'
+            );
+
+            -- Insert a test service
+            INSERT INTO services (id, facility_id, organization_id, name, policy) VALUES (
+              '018d0000-0000-7000-8000-000000000003',
+              '018d0000-0000-7000-8000-000000000002',
+              '018d0000-0000-7000-8000-000000000001',
+              'CI Service',
+              '{}'
+            );
+
+            -- Insert a queue session
+            INSERT INTO queue_sessions (id, facility_id, organization_id, service_id, operational_date) VALUES (
+              '018d0000-0000-7000-8000-000000000004',
+              '018d0000-0000-7000-8000-000000000002',
+              '018d0000-0000-7000-8000-000000000001',
+              '018d0000-0000-7000-8000-000000000003',
+              CURRENT_DATE
+            );
+
+            -- Insert a queue event (genesis)
+            INSERT INTO queue_events (
+              id, organization_id, queue_session_id,
+              sequence, event_type, payload,
+              prev_hash, event_hash
+            ) VALUES (
+              '018d0000-0000-7000-8000-000000000005',
+              '018d0000-0000-7000-8000-000000000001',
+              '018d0000-0000-7000-8000-000000000004',
+              1, 'queue.open', '{}',
+              'genesis_hash_placeholder_64_chars_padded_to_64_chars_xxxxxx',
+              'event_hash_placeholder_64_chars_padded_to_64_chars_xxxxxxxxx'
+            );
+          "
+
+      - name: Verify UPDATE on queue_events is blocked
+        run: |
+          # This should FAIL with an exception — we verify the trigger works
+          if psql "$DATABASE_URL" -c "UPDATE queue_events SET payload = '{\"modified\": true}' WHERE id = '018d0000-0000-7000-8000-000000000005'" 2>/dev/null; then
+            echo "ERROR: UPDATE on queue_events succeeded — append-only trigger is NOT working!"
+            exit 1
+          else
+            echo "OK: UPDATE on queue_events was correctly rejected by the trigger."
+          fi
+
+      - name: Verify DELETE on queue_events is blocked
+        run: |
+          if psql "$DATABASE_URL" -c "DELETE FROM queue_events WHERE id = '018d0000-0000-7000-8000-000000000005'" 2>/dev/null; then
+            echo "ERROR: DELETE on queue_events succeeded — append-only trigger is NOT working!"
+            exit 1
+          else
+            echo "OK: DELETE on queue_events was correctly rejected by the trigger."
+          fi
+
+      - name: Verify TRUNCATE on append-only audit tables is blocked (M4)
+        run: |
+          for t in queue_events admin_events service_policy_versions priority_overrides audit_checkpoints audit_integrity_alerts; do
+            if out=$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "TRUNCATE $t CASCADE" 2>&1); then
+              echo "ERROR: TRUNCATE on $t succeeded — append-only guard is NOT working!"
+              exit 1
+            elif echo "$out" | grep -q 'append-only'; then
+              echo "OK: TRUNCATE on $t was rejected by the append-only guard."
+            else
+              echo "ERROR: TRUNCATE on $t failed for an unexpected reason: $out"
+              exit 1
+            fi
+          done
+          test "$(psql "$DATABASE_URL" -tAc "SELECT count(*) FROM queue_events")" = "1"
+
+      - name: Verify UNIQUE (queue_session_id, sequence) constraint
+        run: |
+          if psql "$DATABASE_URL" -c "
+            INSERT INTO queue_events (
+              id, organization_id, queue_session_id,
+              sequence, event_type, payload,
+              prev_hash, event_hash
+            ) VALUES (
+              '018d0000-0000-7000-8000-000000000006',
+              '018d0000-0000-7000-8000-000000000001',
+              '018d0000-0000-7000-8000-000000000004',
+              1, 'queue.open', '{}',
+              'genesis_hash_placeholder_64_chars_padded_to_64_chars_xxxxxx',
+              'event_hash_placeholder2_64_chars_padded_to_64_chars_xxxxxxx'
+            );
+          " 2>/dev/null; then
+            echo "ERROR: Duplicate (queue_session_id, sequence) was allowed — unique constraint is NOT working!"
+            exit 1
+          else
+            echo "OK: Duplicate sequence correctly rejected by UNIQUE constraint."
+          fi
+
+      - name: Verify UNIQUE (organization_id, operation_id) on client_operations
+        run: |
+          # Set up prerequisites: staff_user and device (required by FKs on client_operations)
+          psql "$DATABASE_URL" -c "
+            INSERT INTO staff_users (
+              id, organization_id, email, password_hash, display_name
+            ) VALUES (
+              '018d0000-0000-7000-8000-000000000020',
+              '018d0000-0000-7000-8000-000000000001',
+              'ci-test@example.com',
+              'hash_placeholder_not_real',
+              'CI Test User'
+            );
+
+            INSERT INTO devices (
+              id, facility_id, organization_id, staff_user_id, public_key_or_session
+            ) VALUES (
+              '018d0000-0000-7000-8000-000000000021',
+              '018d0000-0000-7000-8000-000000000002',
+              '018d0000-0000-7000-8000-000000000001',
+              '018d0000-0000-7000-8000-000000000020',
+              'ci-test-device-key'
+            );
+          "
+
+          # Insert a valid client_operations row
+          psql "$DATABASE_URL" -c "
+            INSERT INTO client_operations (
+              id, organization_id, queue_session_id,
+              device_id, actor_id, operation_id,
+              client_sequence, action, status
+            ) VALUES (
+              '018d0000-0000-7000-8000-000000000022',
+              '018d0000-0000-7000-8000-000000000001',
+              '018d0000-0000-7000-8000-000000000004',
+              '018d0000-0000-7000-8000-000000000021',
+              '018d0000-0000-7000-8000-000000000020',
+              '018d0000-0000-7000-8000-000000000023',
+              1, 'ticket.create', 'committed'
+            );
+          "
+
+          # Attempt to insert a second row with the same (organization_id, operation_id)
+          if psql "$DATABASE_URL" -c "
+            INSERT INTO client_operations (
+              id, organization_id, queue_session_id,
+              device_id, actor_id, operation_id,
+              client_sequence, action, status
+            ) VALUES (
+              '018d0000-0000-7000-8000-000000000024',
+              '018d0000-0000-7000-8000-000000000001',
+              '018d0000-0000-7000-8000-000000000004',
+              '018d0000-0000-7000-8000-000000000021',
+              '018d0000-0000-7000-8000-000000000020',
+              '018d0000-0000-7000-8000-000000000023',
+              2, 'ticket.create', 'committed'
+            );
+          " 2>/dev/null; then
+            echo "ERROR: Duplicate (organization_id, operation_id) was allowed — unique constraint is NOT working!"
+            exit 1
+          else
+            echo "OK: Duplicate (organization_id, operation_id) correctly rejected by UNIQUE constraint."
+          fi

@@ -1,0 +1,90 @@
+{
+  "contractVersion": 1,
+  "capabilities": {
+    "visitor_join": {
+      "status": "live",
+      "defaultAvailability": "available",
+      "articles": ["visitor.join.status", "admin.readiness.join_link"]
+    },
+    "ticket_recovery_key": {
+      "status": "live",
+      "defaultAvailability": "available",
+      "articles": ["visitor.recovery.key", "visitor.recovery.how"]
+    },
+    "staff_assisted_recovery": {
+      "status": "live",
+      "defaultAvailability": "available",
+      "articles": [
+        "visitor.recovery.staff",
+        "staff.recovery.assist",
+        "staff.recovery.approve",
+        "admin.policy.recovery"
+      ]
+    },
+    "recovery_audit_view": {
+      "status": "live",
+      "defaultAvailability": "available",
+      "articles": ["staff.recovery.activity"]
+    },
+    "self_resume": {
+      "status": "live",
+      "defaultAvailability": "available",
+      "articles": ["visitor.missed.grace", "staff.missed.rejoin", "admin.policy.recovery"]
+    },
+    "auto_miss": {
+      "status": "live",
+      "defaultAvailability": "available",
+      "articles": ["visitor.auto_miss", "staff.auto_miss", "admin.policy.recovery"]
+    },
+    "offline_coordinator": {
+      "status": "live",
+      "defaultAvailability": "available",
+      "articles": ["staff.coordinator.limits", "staff.coordinator.manage", "staff.sync.states"]
+    },
+    "device_health": {
+      "status": "live",
+      "defaultAvailability": "available",
+      "articles": ["staff.device.health", "staff.device.lost"]
+    },
+    "turn_alert_in_app": {
+      "status": "live",
+      "defaultAvailability": "available",
+      "articles": ["visitor.alerts"]
+    },
+    "turn_alert_sound": {
+      "status": "live",
+      "defaultAvailability": "available",
+      "articles": ["visitor.alerts", "visitor.accessibility"]
+    },
+    "turn_alert_vibration": {
+      "status": "live",
+      "defaultAvailability": "available",
+      "articles": ["visitor.alerts", "visitor.accessibility"]
+    },
+    "turn_alert_web_push": {
+      "status": "live",
+      "defaultAvailability": "not_configured",
+      "articles": ["visitor.alerts.push", "staff.alerts.status"]
+    },
+    "accessibility_prefs": {
+      "status": "live",
+      "defaultAvailability": "available",
+      "articles": ["visitor.accessibility"]
+    },
+    "sms_turn_alerts": {
+      "status": "sandbox",
+      "defaultAvailability": "not_configured",
+      "articles": ["visitor.alerts.sms", "staff.sms.alerts", "admin.channels.sms"]
+    },
+    "ussd": {
+      "status": "sandbox",
+      "defaultAvailability": "not_configured",
+      "articles": ["visitor.ussd", "admin.channels.ussd"]
+    },
+    "ask_que_ai": {
+      "status": "live",
+      "defaultAvailability": "switched_off",
+      "articles": ["admin.que_ai"]
+    }
+  }
+}

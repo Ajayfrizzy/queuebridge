@@ -1,0 +1,10 @@
+dist/
+node_modules/
+coverage/
+*.d.ts
+pnpm-lock.yaml
+infra/migrations/*.sql
+infra/seeds/*.sql
+
+# M7.1: generated from packages/ui/src/tokens.ts (drift is caught by apps/web/src/tokens.test.ts)
+apps/web/src/tokens.css

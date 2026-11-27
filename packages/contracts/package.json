@@ -1,0 +1,29 @@
+{
+  "name": "@queuebridge/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Zod schemas, shared enums, API DTOs, and event schemas for QueueBridge",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "typecheck": "tsc --noEmit --project tsconfig.json",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo"
+  },
+  "dependencies": {
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "4.1.12",
+    "vitest": "4.1.12"
+  }
+}
