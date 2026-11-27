@@ -4,6 +4,28 @@
 
 QueueBridge helps service desks keep track of who is next, even when connectivity drops. Visitors join online or through reception. Staff can record permitted work during an outage, reconcile it on reconnect and explain priority decisions afterward.
 
+## Live application and demo film
+
+**[Launch the live QueueBridge application](https://queuebridge.rumptycloud.app)** · **[Watch the 2:45 product film on YouTube](https://youtu.be/YRyKmyMb2Ms)**
+
+[![QueueBridge — Service Doesn't Have to Stop (video thumbnail)](https://img.youtube.com/vi/YRyKmyMb2Ms/maxresdefault.jpg)](https://youtu.be/YRyKmyMb2Ms)
+
+*Click the thumbnail to watch the QueueBridge demo video.*
+
+QueueBridge is a **mobile-first web application** for visitors and a desktop-friendly workspace for reception, counters, supervisors and auditors. The film includes footage from the working Android and desktop web experiences, alongside clearly identified illustrations of offline reconciliation and other workflows.
+
+**For evaluators:** [Visitor entry — Willow Crossing Service Centre](https://queuebridge.rumptycloud.app/join/judge-demo/session-1) · [Staff sign-in](https://queuebridge.rumptycloud.app/login) · [Judge walkthrough and role guide](docs/judging/walkthrough.md). The demonstration uses fictional data; staff passwords are provided separately through the approved private judge channel.
+
+## Why QueueBridge
+
+- **Continue through outages:** One authorized coordinator can record permitted provisional operations offline; the server reconciles and verifies them after reconnecting, including duplicates and conflicts.
+- **Make queue order explainable:** Configurable priority policies, service-capable desks, supervisor explanations and clear ticket progress.
+- **Include visitors with different needs:** QR/web joining, assisted walk-in registration, accessible display controls, private ticket recovery and best-effort turn alerts.
+- **Make operations accountable:** Role-based access, operational history, integrity verification and signed audit checkpoints.
+- **Serve multiple facilities:** Organization and facility administration, service/counter setup and isolated staff permissions.
+
+**Channel scope:** SMS and USSD adapters currently run in internal simulation, not live telecom delivery. Optional generative AI is disabled; Ask Que provides curated, role-aware assistance.
+
 ## Evaluate QueueBridge
 
 1. [Product overview and real-world impact](docs/judging/overview.md)
