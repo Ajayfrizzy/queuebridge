@@ -150,15 +150,21 @@ queuebridge/
 
 ## Kiro contribution
 
-The M0 completion report documents how the team used Kiro to turn the product requirements into a design, implementation tasks and persistent engineering guidance:
+QueueBridge was developed using **Kiro CLI and Kiro IDE**. The CLI established the project foundation and early implementation; the project owner then moved to the IDE for continued development, using its approval settings to reduce repetitive terminal interruptions.
 
-- **Spec creation**: Requirements, design, and task files in `.kiro/specs/queuebridge/` authored with Kiro
-- **Steering files**: Always-on product, architecture, security, and testing guidance in `.kiro/steering/`
-- **AGENTS.md**: Engineering rules, security standards, and validation requirements
-- **Implementation**: Package implementations, database schema, CI workflows, ADRs, and test suite
-- **Architecture review**: ADR-001 through ADR-010 reviewed and refined with Kiro guidance
+Kiro's contribution extends beyond scaffolding:
 
-One example is the outage workflow. The requirements describe what staff must be able to do during an outage. The design assigns authority to one coordinator, and the tasks turn that constraint into replay, fencing and conflict-review checks. This gives reviewers a trail from a user need to an engineering decision and its acceptance criteria. [Requirements](.kiro/specs/queuebridge/requirements.md) · [Design](.kiro/specs/queuebridge/design.md) · [Tasks](.kiro/specs/queuebridge/tasks.md) · [Kiro contribution record](docs/archive/milestones/M0-completion.md)
+- **Spec-driven development:** Requirements, design and milestone tasks in [`.kiro/specs/queuebridge/`](.kiro/specs/queuebridge) connect product needs to implementation and acceptance criteria.
+- **Persistent steering:** [`.kiro/steering/`](.kiro/steering) contains product, architecture, security and testing guidance.
+- **Working foundation:** The [M0 completion report](docs/archive/milestones/M0-completion.md) records shared package implementations, database schema, application foundations, architecture decisions and 121 passing initial tests.
+- **Implementation traceability:** The [Continuity Engine milestone](docs/archive/milestones/M3-completion.md) connects the offline coordinator decision to authority checks, reconciliation and regression evidence.
+
+Codex also participated in implementation reviews and later hardening and release work. The [documented handover](docs/archive/handover/QUEUEBRIDGE-CODEX-HANDOVER.md) records the transition at M7.3. The Kiro specifications and engineering constraints remained the reference for continued development.
+
+One example is the outage workflow: requirements identify the risk of competing disconnected workstations; the design assigns offline advancement authority to one coordinator; and the tasks specify replay, fencing and conflict-review checks. The [supplementary documentary](https://youtu.be/pXa5h-StyYM) shows actual offline registration and reconciliation in the deployed application.
+
+**[Read the complete Kiro contribution guide](docs/judging/kiro.md)** for the CLI-to-IDE workflow, milestone evidence, architecture traceability and tool attribution.
+
 
 ## Evaluation evidence
 
