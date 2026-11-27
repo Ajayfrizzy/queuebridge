@@ -90,6 +90,7 @@ export function Layout(): ReactElement {
   return (
     <div
       data-page-flow={
+        /^\/admin\/?$/.test(location.pathname) ||
         /^\/(staff|supervisor|join|ticket|recover|login|signup)(\/|$)/.test(location.pathname) ||
         undefined
       }
