@@ -1,17 +1,17 @@
 # Building QueueBridge with Kiro
 
-QueueBridge used both **Kiro CLI and Kiro IDE** during development. Kiro was not limited to generating an initial prototype: its specifications, steering documents and engineering decisions provided the foundation for the subsequent implementation.
+**Kiro was the primary implementation tool for QueueBridge.** The project owner began with Kiro CLI and moved to Kiro IDE, using Kiro to build the vast majority of the product's functional features, not merely to scaffold or plan the application. The documented handover confirms that M0–M6, Ask Que, M7.1 and M7.2 were implemented and merged before Codex took over the final implementation phase at M7.3. The owner explains that this transition was necessary because the remaining Kiro credits were insufficient to complete the final phase.
 
 ## Development workflow and attribution
 
 | Phase | Contribution | Evidence |
 | --- | --- | --- |
 | Kiro CLI | Initial scaffolding and early implementation: breaking down the product requirements, establishing package boundaries, creating the API, worker and PWA foundations, database schema, shared packages and initial tests. | [M0 completion report](../archive/milestones/M0-completion.md) |
-| Kiro IDE | The project owner moved from the CLI to the IDE for continued implementation, configuring approval settings to reduce repeated terminal interruptions while working on the existing project. | Owner's development account; [specifications](../../.kiro/specs/queuebridge) and [steering](../../.kiro/steering) provide the shared engineering context. |
+| Kiro IDE | Primary environment for continued feature implementation: the owner moved from CLI to IDE and configured approval settings to reduce repeated interruptions. Kiro built the core product capabilities before the final hardening phase. | Owner's development account; [specifications](../../.kiro/specs/queuebridge) and [steering](../../.kiro/steering) provide the shared engineering context. |
 | Codex reviews | Earlier implementation review and defect identification, including continuity, tenant isolation and fairness-related regression fixes documented in milestone reports. | [M1](../archive/milestones/M1-completion.md), [M2](../archive/milestones/M2-completion.md), [M3](../archive/milestones/M3-completion.md), [M4](../archive/milestones/M4-completion.md) |
-| Later Codex implementation | The documented M7.3 handover identifies M7.2 as the completed baseline and establishes the constraints for later hardening and release work. | [Codex handover](../archive/handover/QUEUEBRIDGE-CODEX-HANDOVER.md) |
+| Later Codex implementation | When the owner approached the Kiro credit limit, Codex took over final hardening, independent verification, refinements and release preparation. The M7.3 handover identifies the completed M7.2 baseline and preserves the established architecture. | [Codex handover](../archive/handover/QUEUEBRIDGE-CODEX-HANDOVER.md) |
 
-The CLI-to-IDE transition is confirmed by the project owner. The repository records the work and its acceptance evidence, but does not independently identify the interface used for every individual edit. We do not attribute every commit or test exclusively to Kiro, or claim use of unverified Kiro capabilities.
+The project owner confirms that Kiro was the main feature implementation tool, the CLI-to-IDE transition and the credit-related reason for switching to Codex. The milestone reports and handover corroborate the completed scope and timing of the transition. Earlier Codex review contributions remain separately credited. No precise percentage or exclusive per-commit attribution is claimed.
 
 ## How Kiro shaped the engineering process
 
@@ -22,7 +22,7 @@ The CLI-to-IDE transition is confirmed by the project owner. The repository reco
 
 ## Milestone traceability
 
-These records demonstrate the progression from the Kiro-established specifications to implemented product capabilities. They are evidence of the development process, not exclusive tool-attribution logs.
+These records document the core product capabilities built during the Kiro-led implementation phase, as confirmed by the owner. They establish the scope already implemented before the final Codex handover; they are not exclusive per-commit tool-attribution logs.
 
 | Milestone | Implemented capability | Evidence |
 | --- | --- | --- |
@@ -48,4 +48,4 @@ The [M3 completion record](../archive/milestones/M3-completion.md) also describe
 
 ## Why Kiro mattered
 
-Kiro helped convert a real operational problem into explicit requirements, implementation tasks and verifiable engineering constraints. Its CLI established the initial working foundation, while the IDE supported continued development with fewer repetitive approval interruptions. The retained artifacts allow reviewers to trace decisions from requirements through code and acceptance evidence, including after the later tool handover.
+Kiro helped convert a real operational problem into explicit requirements, implementation tasks and verifiable engineering constraints, and was the primary tool used to implement those requirements as a working product. Its CLI established the initial working foundation, and its IDE supported the bulk of feature development with fewer repetitive approval interruptions. The subsequent Codex hardening phase continued from the working product Kiro had helped build, rather than replacing it. The retained artifacts allow reviewers to trace decisions from requirements through code and acceptance evidence.
