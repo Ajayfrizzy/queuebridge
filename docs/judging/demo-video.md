@@ -1,9 +1,5 @@
 # QueueBridge published demo videos
 
-## Primary product film
-
-[Service Doesn't Have to Stop (2:45)](https://youtu.be/YRyKmyMb2Ms) is the primary submission video. It combines actual application captures with identified explanatory illustrations to communicate the product vision and Kiro contribution.
-
 ## Supplementary technical demonstration
 
 [Continuity in Action](https://youtu.be/pXa5h-StyYM) is a supplementary documentary published on November 27, 2026 (2:54 source master; YouTube displays 2:55). It uses genuine desktop and mobile recordings from the deployed application with fictional demonstration records, privacy-preserving crops, labelled edits and locally synthesized narration.
