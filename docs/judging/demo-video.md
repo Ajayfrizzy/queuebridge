@@ -1,4 +1,29 @@
-# QueueBridge demo video plan
+# QueueBridge published demo videos
+
+## Primary product film
+
+[Service Doesn't Have to Stop (2:45)](https://youtu.be/YRyKmyMb2Ms) is the primary submission video. It combines actual application captures with identified explanatory illustrations to communicate the product vision and Kiro contribution.
+
+## Supplementary technical demonstration
+
+[Continuity in Action](https://youtu.be/pXa5h-StyYM) is a supplementary documentary published on November 27, 2026 (2:54 source master; YouTube displays 2:55). It uses genuine desktop and mobile recordings from the deployed application with fictional demonstration records, privacy-preserving crops, labelled edits and locally synthesized narration.
+
+| Time | Recorded evidence |
+| --- | --- |
+| 0:00 | Introduction and online staff/visitor operations |
+| 0:32 | Staff workstation loses connectivity |
+| 0:51 | Provisional walk-in registration and local persistence |
+| 1:22 | Reconnection and sending pending registrations |
+| 1:28 | Three confirmed walk-in tickets appear in the server queue |
+| 1:43 | Visitor ticket tracking and connectivity recovery |
+| 2:16 | Service and completion after reconnection |
+| 2:30 | Earlier audit snapshot and issuance events |
+| 2:39 | Integrity result: 54 checked events, two valid signed checkpoints, 12 matching routing decisions, 19 recent events awaiting signed-checkpoint coverage |
+| 2:49 | Closing |
+
+The recording demonstrates actual offline registration, batch reconciliation and subsequent online queue operations. A designated device can perform permitted offline advancement under the coordinator architecture; staff role permission alone does not establish that authority. The demonstration does not establish a one-to-one mapping between each temporary reference and final ticket number. Earlier audit footage is identified as such.
+
+## Original product film recording plan (historical)
 
 Target **2 minutes 45 seconds**, including the closing frame. Capture the hosted application on a phone and a staff desktop using the fictional Judge Demo facility. Prepare separate signed-in browser profiles, an open service, and one authorized coordinator before recording. Use captions, record a natural speaking voice, and leave time to read the status changes. Crop browser chrome, private credentials and recovery QR codes at capture time. The official rules call for functioning product footage and a publicly visible YouTube upload under three minutes. Use footage and audio you have permission to publish. [Kiroween 2026 official rules](https://kiroween.devpost.com/rules)
 
