@@ -4,15 +4,23 @@
 
 QueueBridge helps service desks keep track of who is next, even when connectivity drops. Visitors join online or through reception. Staff can record permitted work during an outage, reconcile it on reconnect and explain priority decisions afterward.
 
-## Live application and demo film
+## Live application and demo videos
 
 **[Launch the live QueueBridge application](https://queuebridge.rumptycloud.app)** · **[Watch the 2:45 product film on YouTube](https://youtu.be/YRyKmyMb2Ms)**
 
 [![QueueBridge — Service Doesn't Have to Stop (video thumbnail)](https://img.youtube.com/vi/YRyKmyMb2Ms/maxresdefault.jpg)](https://youtu.be/YRyKmyMb2Ms)
 
-*Click the thumbnail to watch the QueueBridge demo video.*
+*Primary product film: click the thumbnail to watch.*
 
-QueueBridge is a **mobile-first web application** for visitors and a desktop-friendly workspace for reception, counters, supervisors and auditors. The film includes footage from the working Android and desktop web experiences, alongside clearly identified illustrations of offline reconciliation and other workflows.
+### Continuity in Action — supplementary technical demonstration
+
+**[Watch the real outage and recovery demonstration (under 3 minutes)](https://youtu.be/pXa5h-StyYM)**
+
+[![QueueBridge — Continuity in Action (video thumbnail)](https://img.youtube.com/vi/pXa5h-StyYM/maxresdefault.jpg)](https://youtu.be/pXa5h-StyYM)
+
+Recorded in the deployed application with fictional demonstration records, this documentary shows a staff workstation losing connectivity, three provisional walk-in registrations saved locally, actual reconnection and reconciliation, confirmed tickets I013–I015, mobile visitor recovery, service completion and audit integrity verification. Offline queue advancement requires a designated coordinator; this recording demonstrates offline registration and subsequent online service. The earlier audit snapshot verifies 54 events, two signed checkpoints and 12 routing decisions, with 19 recent events awaiting checkpoint coverage. [Video evidence and chapters](docs/judging/demo-video.md#supplementary-technical-demonstration)
+
+QueueBridge is a **mobile-first web application** for visitors and a desktop-friendly workspace for reception, counters, supervisors and auditors. The primary product film includes footage from the working Android and desktop web experiences, alongside clearly identified illustrations of offline reconciliation and other workflows.
 
 **For evaluators:** [Visitor entry — Willow Crossing Service Centre](https://queuebridge.rumptycloud.app/join/judge-demo/session-1) · [Staff sign-in](https://queuebridge.rumptycloud.app/login) · [Judge walkthrough and role guide](docs/judging/walkthrough.md). The demonstration uses fictional data; staff passwords are provided separately through the approved private judge channel.
 
@@ -32,7 +40,7 @@ QueueBridge is a **mobile-first web application** for visitors and a desktop-fri
 2. [Judge Demo access and walkthrough](docs/judging/walkthrough.md)
 3. [How the deployed system works](docs/judging/architecture.md)
 4. [How the team used Kiro](docs/judging/kiro.md)
-5. [Demo video script and shots](docs/judging/demo-video.md)
+5. [Published videos, evidence and original recording plan](docs/judging/demo-video.md)
 
 [Submission evidence matrix](docs/judging/submission-review.md) · [Historical inventory](docs/archive/inventory.md) · [Deployment runbook](docs/deployment/RUMPTYCLOUD-DEPLOYMENT.md)
 
